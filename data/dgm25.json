@@ -1,0 +1,79 @@
+{
+  "format": "int16le, Dezimeter (Höhe = Wert/10 m), NoData -32768, Zeile 0 = Norden, Spalte 0 = Westen",
+  "file": "dgm25.bin",
+  "dtype": "int16le",
+  "scale": 0.1,
+  "unit": "m",
+  "nodata": -32768,
+  "crs": "EPSG:4326",
+  "crs_note": "Geografische Koordinaten (ETRS89 gleich WGS84 gesetzt, Abweichung < 1 m). Gewählt, weil js/grid.js mit lat/lon und lokaler Projektion arbeitet (kein proj4).",
+  "vertical": "DHHN2016 (Normalhöhen NHN), laut Kachel-Metadaten DE_DHHN2016_NH",
+  "west": 7.20082,
+  "north": 50.954175,
+  "east": 7.48127,
+  "south": 50.761575,
+  "dLon": 0.000355,
+  "dLat": 0.000225,
+  "nx": 790,
+  "ny": 856,
+  "cellM_approx": [
+    24.92,
+    25.02
+  ],
+  "pixel": "Flächenpixel; Zellmitte Spalte c / Zeile r: lon = west + (c+0.5)*dLon, lat = north - (r+0.5)*dLat",
+  "source": "DGM1 NRW (Digitales Geländemodell, Rasterweite 1 m, GeoTIFF), Geobasis NRW",
+  "source_url": "https://www.opengeodata.nrw.de/produkte/geobasis/hm/dgm1_tiff/dgm1_tiff/",
+  "source_owner": "Land Nordrhein-Westfalen, Bezirksregierung Köln, Geobasis NRW",
+  "license": "dl-de/zero-2-0",
+  "license_url": "https://www.govdata.de/dl-de/zero-2-0",
+  "attribution": "Geobasis NRW, dl-de/zero-2-0",
+  "license_evidence": "Im Download-Verzeichnis keine Lizenzdatei (nur dgm1_meta.zip mit Kachelinformationen). dl-de/zero-2-0 laut Katalog-Metadaten und laut <Fees> der Geobasis-NRW-WMS (z. B. wms_nw_dgm-schummerung, GetCapabilities). Zu prüfen.",
+  "retrieved": "2026-11-21T16:38:27+00:00",
+  "tiles": {
+    "count": 483,
+    "missing_in_index": [],
+    "range_km": {
+      "E": [
+        373,
+        393
+      ],
+      "N": [
+        5624,
+        5646
+      ]
+    },
+    "years_in_filename": [
+      2020,
+      2021,
+      2022
+    ],
+    "aktualitaet": [
+      "2020-12-18",
+      "2022-02-12"
+    ],
+    "naming": "dgm1_32_<E km>_<N km>_1_nw_<Jahr>.tif, E/N = linke untere Ecke in EPSG:25832, 1000 x 1000 Pixel à 1 m"
+  },
+  "area": {
+    "gemeinde": "Neunkirchen-Seelscheid",
+    "kn": "05382040",
+    "bbox_utm32": [
+      378636.19,
+      5629853.066,
+      387878.792,
+      5640832.731
+    ],
+    "buffer_m": 5000,
+    "boundary_source": "DVG1 Geobasis NRW (Stand 2025-11-12), https://www.opengeodata.nrw.de/produkte/geobasis/vkg/dvg/dvg1/dvg1_EPSG25832_Shape.zip"
+  },
+  "processing": "gdalbuildvrt + gdalwarp -r average (Flächenmittel) von 1 m nach ca. 25 m, EPSG:25832 -> EPSG:4326; GDAL 3.8.4, released 2024/02/08; tools/build-dgm.py",
+  "stats": {
+    "min_m": 53.6,
+    "max_m": 382.2,
+    "mean_m": 175.5,
+    "p01_m": 60.5,
+    "p99_m": 321.5,
+    "nodata_cells": 0,
+    "cells": 676240
+  },
+  "sha256": "2e74ab292243a4075465e4d04705ea860ad6c685ccfb27fa587b3a7854eb8177"
+}

@@ -1,0 +1,112 @@
+{
+  "schema_version": 1,
+  "stand": "2026-11-21",
+  "hinweis": "Fahrzeug- und Wachendaten der Freiwilligen Feuerwehr Neunkirchen-Seelscheid. Die Website www.ffnkse.de war in der Erstellungsumgebung nicht direkt abrufbar (Netzwerk gesperrt). Die Angaben stammen aus dem Suchindex-Auszug dieser Seiten (Websuche, beschränkt auf ffnkse.de) und müssen gegen die Originalseiten geprüft werden. Werte mit 'Annahme: Normwert' sind nicht von der Website, sondern Mindest-/Normwerte des Fahrzeugtyps. Funkrufnamen, Maße, Gewichte und Geländegängigkeit fehlen (Offen).",
+  "quellen": {
+    "lz-nk": "https://www.ffnkse.de/departments/lz-nk",
+    "lz-se": "https://www.ffnkse.de/departments/lz-se",
+    "se-lfkats": "https://www.ffnkse.de/info/car-details?id=se-lfkats",
+    "abruf": "Websuche (Suchindex), 2026-11-21; Direktabruf blockiert"
+  },
+  "wachen": [
+    {
+      "id": "lz-nk",
+      "name": "Löschzug Neunkirchen (LZ1)",
+      "adresse": "Sankt-Franziskus-Weg 3, 53819 Neunkirchen-Seelscheid",
+      "adresse_quelle": "ffnkse.de/departments/lz-nk (Suchindex); Ortsname Neunkirchen-Seelscheid aus PLZ 53819 ergänzt",
+      "lat": null,
+      "lon": null,
+      "koordinate_status": "Offen: Koordinate prüfen (Geokodierung in der Erstellungsumgebung nicht möglich)",
+      "bemerkung": "Neues Gerätehaus, eingeweiht im Juni 2025 (laut Website)."
+    },
+    {
+      "id": "lz-se",
+      "name": "Löschzug Seelscheid (LZ2)",
+      "adresse": "Hausener Straße 2, 53819 Neunkirchen-Seelscheid",
+      "adresse_quelle": "ffnkse.de/departments/lz-se (Suchindex); Ortsname Neunkirchen-Seelscheid aus PLZ 53819 ergänzt",
+      "lat": null,
+      "lon": null,
+      "koordinate_status": "Offen: Koordinate prüfen (Geokodierung in der Erstellungsumgebung nicht möglich)",
+      "bemerkung": "Gerätehaus seit 1987, 2022 erweitert (laut Website)."
+    }
+  ],
+  "fahrzeuge": [
+    {
+      "id": "nk-hlf20", "typ": "HLF 20", "bezeichnung": "HLF 20 (LZ Neunkirchen)", "wache": "lz-nk", "loeschfahrzeug": true,
+      "tank_l": 1600, "tank_quelle": "Annahme: Normwert (HLF 20 nach DIN 14530-27, Mindestwert Löschwasserbehälter; zu prüfen)",
+      "pumpe_lpm": 2000, "pumpe_quelle": "Annahme: Normwert (Feuerlöschkreiselpumpe FPN 10-2000; zu prüfen)",
+      "baujahr": null, "funkrufname": null, "verfuegbar": true,
+      "quelle": "https://www.ffnkse.de/departments/lz-nk", "quelle_hinweis": "Typ laut Website (Suchindex)"
+    },
+    {
+      "id": "nk-lf20", "typ": "LF 20", "bezeichnung": "LF 20 (LZ Neunkirchen)", "wache": "lz-nk", "loeschfahrzeug": true,
+      "tank_l": 2000, "tank_quelle": "Annahme: Normwert (LF 20 nach DIN 14530-11, Mindestwert Löschwasserbehälter; zu prüfen)",
+      "pumpe_lpm": 2000, "pumpe_quelle": "Annahme: Normwert (FPN 10-2000; zu prüfen)",
+      "baujahr": null, "funkrufname": null, "verfuegbar": true,
+      "quelle": "https://www.ffnkse.de/departments/lz-nk", "quelle_hinweis": "Typ laut Website (Suchindex)"
+    },
+    {
+      "id": "nk-gwg", "typ": "GW-G", "bezeichnung": "Gerätewagen Gefahrgut (LZ Neunkirchen)", "wache": "lz-nk", "loeschfahrzeug": false,
+      "tank_l": 0, "tank_quelle": "Annahme: Normwert (Gerätewagen ohne Löschwasserbehälter)",
+      "pumpe_lpm": 0, "pumpe_quelle": "Annahme: Normwert (keine Feuerlöschpumpe)",
+      "baujahr": 2016, "funkrufname": null, "verfuegbar": true,
+      "quelle": "https://www.ffnkse.de/departments/lz-nk", "quelle_hinweis": "Typ und Beschaffung 2016 laut Website (Suchindex); Teil des ABC-Zugs Ost des Rhein-Sieg-Kreises"
+    },
+    {
+      "id": "nk-elw1", "typ": "ELW 1", "bezeichnung": "ELW 1 (LZ Neunkirchen)", "wache": "lz-nk", "loeschfahrzeug": false,
+      "tank_l": 0, "tank_quelle": "Annahme: Normwert (Einsatzleitwagen ohne Löschwasser)",
+      "pumpe_lpm": 0, "pumpe_quelle": "Annahme: Normwert",
+      "baujahr": null, "funkrufname": null, "verfuegbar": true,
+      "quelle": "https://www.ffnkse.de/departments/lz-nk", "quelle_hinweis": "Typ laut Website (Suchindex)"
+    },
+    {
+      "id": "nk-mtf", "typ": "MTF", "bezeichnung": "MTF (LZ Neunkirchen)", "wache": "lz-nk", "loeschfahrzeug": false,
+      "tank_l": 0, "tank_quelle": "Annahme: Normwert (Mannschaftstransportfahrzeug)",
+      "pumpe_lpm": 0, "pumpe_quelle": "Annahme: Normwert",
+      "baujahr": null, "funkrufname": null, "verfuegbar": true,
+      "quelle": "https://www.ffnkse.de/departments/lz-nk", "quelle_hinweis": "Typ laut Website (Suchindex). Ein weiteres MTF der Kinderfeuerwehr ist erwähnt und hier nicht aufgenommen."
+    },
+    {
+      "id": "se-hlf20", "typ": "HLF 20", "bezeichnung": "HLF 20 (LZ Seelscheid)", "wache": "lz-se", "loeschfahrzeug": true,
+      "tank_l": 1600, "tank_quelle": "Annahme: Normwert (HLF 20 nach DIN 14530-27, Mindestwert; zu prüfen)",
+      "pumpe_lpm": 2000, "pumpe_quelle": "Annahme: Normwert (FPN 10-2000; zu prüfen)",
+      "baujahr": null, "funkrufname": null, "verfuegbar": true,
+      "quelle": "https://www.ffnkse.de/departments/lz-se", "quelle_hinweis": "Typ laut Website (Suchindex)"
+    },
+    {
+      "id": "se-lf20", "typ": "LF 20", "bezeichnung": "LF 20 (LZ Seelscheid)", "wache": "lz-se", "loeschfahrzeug": true,
+      "tank_l": 2000, "tank_quelle": "Annahme: Normwert (LF 20 nach DIN 14530-11, Mindestwert; zu prüfen)",
+      "pumpe_lpm": 2000, "pumpe_quelle": "Annahme: Normwert (FPN 10-2000; zu prüfen)",
+      "baujahr": null, "funkrufname": null, "verfuegbar": true,
+      "quelle": "https://www.ffnkse.de/departments/lz-se", "quelle_hinweis": "Typ laut Website (Suchindex)"
+    },
+    {
+      "id": "se-lfkats", "typ": "LF KatS", "bezeichnung": "LF KatS (LZ Seelscheid)", "wache": "lz-se", "loeschfahrzeug": true,
+      "tank_l": 1000, "tank_quelle": "Website: 1.000 l Wassertank (car-details se-lfkats, Suchindex)",
+      "pumpe_lpm": 2000, "pumpe_quelle": "Website: Pumpe 2.000 l/min (car-details se-lfkats, Suchindex)",
+      "baujahr": 2024, "funkrufname": null, "verfuegbar": true,
+      "quelle": "https://www.ffnkse.de/info/car-details?id=se-lfkats", "quelle_hinweis": "Fahrgestell Mercedes Atego; vom Bund über das Land NRW bereitgestellt (laut Website, Suchindex)"
+    },
+    {
+      "id": "se-dlk", "typ": "DLK 23-12", "bezeichnung": "Drehleiter DLK 23-12 (LZ Seelscheid)", "wache": "lz-se", "loeschfahrzeug": false,
+      "tank_l": 0, "tank_quelle": "Annahme: Normwert (Drehleiter ohne Löschwasserbehälter)",
+      "pumpe_lpm": 0, "pumpe_quelle": "Annahme: Normwert (keine Feuerlöschpumpe)",
+      "baujahr": 2018, "funkrufname": null, "verfuegbar": true,
+      "quelle": "https://www.ffnkse.de/departments/lz-se", "quelle_hinweis": "Typ und Baujahr 2018 laut Website (Suchindex)"
+    },
+    {
+      "id": "se-kef", "typ": "KEF", "bezeichnung": "Kleineinsatzfahrzeug (LZ Seelscheid)", "wache": "lz-se", "loeschfahrzeug": false,
+      "tank_l": null, "tank_quelle": "Offen: kein genormter Fahrzeugtyp, Ausstattung unbekannt",
+      "pumpe_lpm": null, "pumpe_quelle": "Offen",
+      "baujahr": null, "funkrufname": null, "verfuegbar": true,
+      "quelle": "https://www.ffnkse.de/departments/lz-se", "quelle_hinweis": "Typ laut Website (Suchindex)"
+    },
+    {
+      "id": "se-mtf", "typ": "MTF", "bezeichnung": "MTF (LZ Seelscheid)", "wache": "lz-se", "loeschfahrzeug": false,
+      "tank_l": 0, "tank_quelle": "Annahme: Normwert (Mannschaftstransportfahrzeug)",
+      "pumpe_lpm": 0, "pumpe_quelle": "Annahme: Normwert",
+      "baujahr": null, "funkrufname": null, "verfuegbar": true,
+      "quelle": "https://www.ffnkse.de/departments/lz-se", "quelle_hinweis": "Typ laut Website (Suchindex)"
+    }
+  ]
+}

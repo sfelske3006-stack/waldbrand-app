@@ -1,0 +1,145 @@
+# Waldbrand-Lagebild Neunkirchen-Seelscheid (Prototyp, Version 0.3.0)
+
+> **Modellprognose, unvalidiert. Keine Handlungsanweisung. Entscheidung und Verantwortung liegen bei der Einsatzleitung.**
+
+Browser-App für Einsatzleiter bei Vegetations- und Waldbränden: Brandfläche einzeichnen, Wetter laden oder vor Ort eingeben, Ausbreitung für 1/2/4/6 h mit Unsicherheitsband berechnen, einfache Vorschläge für Riegelstellungen und Fahrzeugstandorte. Die gesamte Rechnung läuft im Browser, ein Server ist nicht nötig.
+
+## Start
+
+```bash
+cd waldbrand-app
+python3 -m http.server 8080      # oder: npm start
+```
+
+Dann im Browser `http://localhost:8080` öffnen. Ein statischer Server ist nötig, weil die Fahrzeugliste per `fetch` geladen wird (über `file://` geht das nicht; dann die Liste in der Ansicht „Fahrzeuge“ importieren).
+
+Tests:
+
+```bash
+npm test          # Unit- und Szenariotests des Berechnungskerns (node --test)
+npm run e2e       # Browser-Test mit Playwright/Chromium, Screenshots nach docs/ (u. a. screenshot-konturen.png, screenshot-raster.png)
+npm run build:vorschau   # Einzeldatei-Vorschau dist/vorschau.html (für die Artifact-Seite)
+```
+
+Geländemodell neu erzeugen (nur nötig bei neuem DGM-Stand oder anderem Gebiet; Ergebnis liegt bereits in `data/`):
+
+```bash
+# Voraussetzungen: GDAL-Kommandozeilenwerkzeuge (z. B. apt-get install gdal-bin), Python 3 mit numpy,
+# Netzzugang zu www.opengeodata.nrw.de. Rohdaten (~1,2 GB, 483 Kacheln) NICHT ins Projekt legen.
+python3 tools/build-dgm.py --raw-dir /tmp/dgm_raw            # lädt, mittelt, schreibt data/dgm25.bin + .json
+python3 tools/build-dgm.py --raw-dir /tmp/dgm_raw --stream   # bei wenig Plattenplatz: Kachel für Kachel, Rohdaten sofort löschen
+python3 tools/build-dgm.py --raw-dir /tmp/dgm_raw --keep-raw # 1-m-Kacheln als Cache behalten
+```
+
+Das Skript liest die Gemeindegrenze aus den amtlichen Verwaltungsgrenzen (DVG1), legt 5 km Puffer an, lädt nur die nötigen 1-km-Kacheln, mittelt mit `gdalbuildvrt` + `gdalwarp -r average` auf ca. 25 m (EPSG:4326) und prüft den Höhenbereich. Danach `npm test` ausführen (Test „Mitgeliefertes DGM“).
+
+Google Maps (optional): In `config.js` `googleMapsApiKey` eintragen. Erst dann erscheint im Ebenen-Menü „Google Luftbild (nur Anzeige)“. Ohne Key gibt es keinen Umschalter. Google-Bilder werden nie ausgewertet; die Analyse nutzt nur offene Daten.
+
+## Bedienung (Kurzfassung)
+
+1. Beim Start die Modellgrenzen bestätigen (einmal je Sitzung, wird protokolliert).
+2. **Brandfläche zeichnen**: Eckpunkte antippen, „Fläche fertig“. Punkte bleiben verschiebbar. Alternativ **Zündpunkt + Radius**. „Mein Standort“ zentriert per GPS (nur nach Einwilligung, nur lokal).
+3. **Wetter laden** (Open-Meteo) oder **Beispieldaten** (deutlich als fiktiv markiert). Unter „Werte vor Ort überschreiben“ alle Werte manuell setzen; überschriebene Werte sind mit * markiert.
+4. Optional **OSM-Daten laden** (Brennstoff, Wege, Gewässer, Gebäude, Hydranten). Ohne OSM wird mit einem wählbaren Ersatz-Brennstoff ohne Barrieren gerechnet; das wird im Ergebnis angezeigt. Das **Geländemodell** (DGM, offline) wird beim Start automatisch geladen; Status im Abschnitt „Gelände & Brennstoff“. „Geländeschummerung anzeigen“ blendet eine offline berechnete Schummerung ein; im Ebenen-Menü gibt es zusätzlich die amtliche WMS-Schummerung (online).
+5. **Prognose berechnen**: je Horizont „wahrscheinlich“ (halbtransparente Fläche, durchgezogener Rand) und „möglich“ (Schraffur, gestrichelter Rand), dünne schwarze Linie = Referenzlauf, Beschriftung „1 h … 6 h“. **Darstellung umschaltbar in der Legende**: „Konturen“ (Standard; Isochronen aus dem 25-m-Raster per Marching Squares, Chaikin-Glättung, Hinweis zur Flächenabweichung) oder „Raster 25 m“ (ungeglättete Zellen, Umrisse entlang der Zellränder, für Fachleute). Die Wahl wird auf dem Gerät gespeichert. Kennzahlen beruhen immer auf dem Raster.
+6. **Einsatzvorschläge**: Riegellinien (R1…R3) nur, wenn sie zum Zeitpunkt der Einsatzbereitschaft (Anfahrt 30 min + Aufbau 45 min = 75 min, zuzüglich 30 min Mindest-Wirkzeit, Annahmen) vollständig außerhalb der „möglich“-Zone liegen, quer zur Hauptausbreitungsrichtung und vor der Front; diese Grenze ist als lila gepunktete Linie eingezeichnet. Sonst Meldung „Keine geeignete Riegelstellung gefunden“ mit Grund. Löschfahrzeuge mit Wasser werden nach Linienlänge (300 m je Fahrzeug), Objektschutz an bedrohter Bebauung und Wasserversorgung/Pendelverkehr verteilt; nur echte Reserve, ELW (Führung) und MTF (Personal) stehen im **Bereitstellungsraum** (ein Marker mit Liste). Fahrzeuge ohne Löschwasser (ELW, MTF, DLK, GW-G) nie im Löscheinsatz. Fahrzeuge auf der Karte verschieben (wird geprüft und markiert), Vorschläge sperren oder verwerfen, „Vorschläge neu berechnen“ zeigt den Unterschied.
+7. **Szenario B** (z. B. „Wind aus 270°“) neben A vergleichen.
+8. **Protokoll**: lokale Hash-Kette (SHA-256), Export als JSON und GeoJSON, Drucken/PDF über den Browser.
+
+## Änderungen in Version 0.3.0
+
+- **Schwarze Kästchen behoben**: Der Referenzlauf-Umriss wurde als deckend schwarze 25-m-Zellen ins Rasterbild gemalt, für jeden der vier Horizonte (Zelle erreicht, 4er-Nachbar nicht erreicht, auch an Gebäuden/Straßen/Gewässern). Bei langsamer Ausbreitung liegen die Horizontgrenzen dicht beieinander, daher Blöcke um die Brandfläche (im Test bis ca. 30 % der farbigen Zellen schwarz). Jetzt: Referenzlauf nur als dünne Linie; Schraffur als SVG-Pattern im Bildschirmmaß statt Bildpixel (vorher Streifen in Rastergröße).
+- **Konturen/Raster umschaltbar** (siehe Bedienung 5).
+- **Riegellogik**: vorher genügte, dass die Linienzellen erst nach 45 min erreicht werden (Linie durfte durch die 1–2-h-Zone gehen); ohne OSM wurde nur ein Punkt auf der Achse geprüft (Front dort ≥ 105 min), die Linie selbst nicht. Jetzt vollständige Prüfung gegen die „möglich“-Zone zum Prüfzeitpunkt, „vor der Front“ und „quer“; sonst keine Linie.
+- **Fahrzeuge**: vorher feste Aufgabenliste (R1 mit genau 2 Fahrzeugen bei 1/3 und 2/3 der Punktliste, bei der geometrischen Linie mit 2 Punkten also an den **Enden**, ein Objektschutz nur für die früheste Gebäudezelle, R2/R3 je 1). Ohne OSM oder mit nur einer Linie blieben daher alle übrigen Löschfahrzeuge im Bereitstellungsraum; dort wurden gleiche Koordinaten als gestapelte Labels gezeichnet. Jetzt Verteilung nach Bedarf (siehe Bedienung 6).
+
+## Architektur
+
+Reines HTML/CSS/JavaScript ohne Build-Schritt, Leaflet 1.9.4 lokal unter `vendor/` (für Offline-Fähigkeit vorbereitet). Details und Begründungen: [docs/architecture.md](docs/architecture.md).
+
+| Datei | Aufgabe |
+|---|---|
+| `config.js` | Betriebskonfiguration (Google-Key, Dienst-URLs). Keine Secrets im Code. |
+| `js/params.js` | Versionierte Modellparameter und alle Annahmen (Brennstoffzuordnung, Ensemble, Schwellen, Vorschlagsgewichte). |
+| `js/model.js` | Berechnungskern: Rothermel, Ellipse, Raster-Minimum-Travel-Time, Ensemble (inkl. Zeit „möglich“/„wahrscheinlich“ je Zelle), Kennzahlen. Reine Funktionen, Seed-deterministisch. Schnittstelle `FireModel.runEnsemble()`. |
+| `js/contour.js` | Anzeigegeometrie: Isochronen (Marching Squares, lineare Interpolation), Chaikin-Glättung, Douglas-Peucker, Löcher/Teilflächen, Zellumrisse für die Rasteransicht. |
+| `js/grid.js` | Rechenraster, lokale Projektion, Rasterisierung von Polygonen/Linien, Höhe/Neigung je Zelle (Horn). |
+| `js/dem.js` | Geländemodell laden (`data/dgm25.*`), bilineare Höhenabfrage, Schummerung. |
+| `js/weather.js` | Open-Meteo, Cache, Überschreibungen, Beispieldaten. |
+| `js/osm.js` | Overpass-Abfrage, Brennstoffkarte, Barrieren, Riegelkandidaten, Objekte, Entnahmestellen. |
+| `js/suggest.js` | Riegel- und Fahrzeugvorschläge, Positionsprüfung, Differenz bei Neuberechnung. |
+| `js/protocol.js` | Sitzungsprotokoll mit SHA-256-Hash-Kette. |
+| `js/app.js` | UI. |
+| `data/fahrzeuge.json` | Fahrzeug- und Wachendaten, editierbar, Quelle je Eintrag. |
+| `data/dgm25.bin`, `data/dgm25.json` | Geländemodell 25 m (Int16, Dezimeter) mit Metadaten (Quelle, Stand, Lizenz, Raster). |
+| `tests/` | Unit-/Szenariotests (`model.test.mjs`), Browser-Test (`e2e.mjs`), synthetische OSM-Testdaten (`synth-osm.mjs`, keine echten Daten). |
+| `tools/build-artifact.mjs` | Erzeugt die Einzeldatei-Vorschau. |
+| `tools/build-dgm.py` | Erzeugt `data/dgm25.*` aus dem DGM1 NRW. |
+
+## Datenquellen, Lizenzen, Status
+
+| Zweck | Quelle | Lizenz / Bedingungen | Status |
+|---|---|---|---|
+| Luftbild | Geobasis NRW WMS `https://www.wms.nrw.de/geobasis/wms_nw_dop`, Layer `nw_dop_rgb` | dl-de/zero-2-0 (laut `<Fees>` in GetCapabilities) | **Geprüft 21.11.2026**: GetCapabilities und GetMap (EPSG:3857) liefern Bilder; URL und Layername stimmten. |
+| Topografie | Geobasis NRW WMS `https://www.wms.nrw.de/geobasis/wms_nw_dtk`, Layer `nw_dtk_col` | laut GetCapabilities: P10 (1:4.100–11.000), DTK250, DTK500 vom BKG: **© GeoBasis-DE / BKG (Jahr) dl-de/by-2-0** (Namensnennung); übrige Maßstäbe: Verweis auf Lizenzbedingungen Geobasis NRW (PDF auf bezreg-koeln.nrw.de, nicht abrufbar) | **Geprüft 21.11.2026**: URL und Layername stimmten. **Korrigiert**: Attribution um BKG ergänzt (vorher pauschal dl-de/zero-2-0). Lizenz der übrigen Maßstäbe **zu prüfen**. |
+| Geländemodell | DGM1 NRW (1 m, GeoTIFF), `https://www.opengeodata.nrw.de/produkte/geobasis/hm/dgm1_tiff/dgm1_tiff/`, 483 Kacheln, auf 25 m gemittelt → `data/dgm25.bin` | **dl-de/zero-2-0**, Attribution „Geobasis NRW, dl-de/zero-2-0“. Befund: im Download-Verzeichnis **keine Lizenzdatei** (nur `dgm1_meta.zip` mit Kachelinformationen, Eigentümer „Land NRW, Bezirksregierung Köln, Geobasis NRW“); Lizenzangabe aus Katalog-Metadaten (laut Recherche teils widersprüchlich) und aus den `<Fees>` der Geobasis-WMS (dort ausdrücklich dl-de/zero-2-0) | eingebunden, offline. Stand der Kacheln 18.12.2020 bis 12.02.2022 (Kachel-Metadaten), abgerufen 21.11.2026. Lizenz **zu prüfen** (Katalogeintrag). |
+| Schummerung (online) | Geobasis NRW WMS `https://www.wms.nrw.de/geobasis/wms_nw_dgm-schummerung`, Layer `nw_dgm-schummerung_pan` (auch `_col`, `_pan_ne`, `_col_ne`) | dl-de/zero-2-0 (laut GetCapabilities) | **Geprüft 21.11.2026**, optionale Ebene im Ebenen-Menü |
+| Gemeindegrenze (nur Build) | DVG1 Verwaltungsgrenzen, Geobasis NRW (Stand 12.11.2025), opengeodata.nrw.de | Lizenz im Paket nicht angegeben (Nutzerinformation ohne Lizenzhinweis); vermutlich dl-de/zero-2-0, **zu prüfen** | nur zur Bestimmung des DGM-Ausschnitts |
+| Ersatzkarte | OpenStreetMap-Kacheln `tile.openstreetmap.org` | ODbL, Tile Usage Policy (kein Massenabruf) | Fallback-Ebene; für Betrieb eigener Kachelserver **zu prüfen** |
+| Wetter | Open-Meteo Forecast-API (`past_days=3`, stündlich, `best_match`) | Daten CC BY 4.0, kostenlos für nicht-kommerzielle Nutzung | **Zu prüfen**: Nutzungsbedingungen für Behörden-/Einsatznutzung. Im Test blockiert, Fallback „Beispieldaten“ getestet. |
+| Wetter (DWD) | DWD Open Data, Waldbrandgefahrenindex | – | **Nicht angebunden** |
+| Brennstoff, Wege, Gewässer, Gebäude, Hydranten | OSM über Overpass API (`overpass-api.de`) | ODbL, Overpass-Nutzungsregeln | Code fertig, im Test mit **synthetischen Testdaten** geprüft (Overpass in der Sandbox blockiert). Für den Betrieb eigene Instanz/Geofabrik-Extrakt **zu prüfen**. |
+| Geokodierung Wachen | Nominatim (manuell per Knopf in „Fahrzeuge“) | ODbL, Nutzungsregeln (max. 1 Anfrage/s) | in der Sandbox blockiert, Koordinaten daher **offen** |
+| Fahrzeuge/Wachen | www.ffnkse.de | Inhalte der Feuerwehr | siehe unten |
+| Leaflet 1.9.4 | npm-Paket, lokal | BSD-2-Clause (`vendor/leaflet/LICENSE`) | eingebunden |
+
+### Fahrzeugdaten (`data/fahrzeuge.json`)
+
+- Die Website `www.ffnkse.de` war in der Erstellungsumgebung **direkt nicht abrufbar** (Netzwerkrichtlinie). Die Angaben stammen aus dem **Suchindex-Auszug** der Seiten `/departments/lz-nk`, `/departments/lz-se` und `/info/car-details?id=se-lfkats`. Sie müssen gegen die Originalseiten geprüft werden.
+- Von der Website: Löschzug Neunkirchen (LZ1, Sankt-Franziskus-Weg 3, 53819): HLF 20, LF 20, GW-G (2016), ELW 1, MTF (+ MTF der Kinderfeuerwehr, nicht aufgenommen). Löschzug Seelscheid (LZ2, Hausener Straße 2, 53819): HLF 20, LF 20, LF KatS (2024, 1.000 l Tank, 2.000 l/min Pumpe), DLK 23-12 (2018), KEF, MTF.
+- **Annahme: Normwert**: Tank und Pumpe von HLF 20 (1.600 l, FPN 10-2000) und LF 20 (2.000 l, FPN 10-2000) als Mindestwerte der Normtypen; Fahrzeuge ohne Löschwasser (GW-G, ELW 1, MTF, DLK) mit 0. KEF: **Offen**.
+- **Offen**: Funkrufnamen, Maße, Gewichte, Geländegängigkeit, Besatzung, Schlauchmaterial. Wachen-Koordinaten: „Offen: Koordinate prüfen“ (Geokodierung nicht möglich; im Browser per Knopf nachholbar, Ergebnis wird als „zu prüfen“ markiert).
+
+## Modellgrenzen
+
+- **Nicht modelliert**: Funkenflug/Spotting (Barrieren stoppen das Feuer vollständig, optimistisch), Windsprünge, lokale Windkanalisierung, Hang-/Talwinde, Tag-Nacht-Effekte, Brandbekämpfungswirkung, Kronenfeuer und Übergänge, Rauch.
+- **Hangneigung vereinfacht** (DGM1 NRW, 25 m): je Rasterkante Steigung = Höhendifferenz / Kantenlänge; bergauf Zuschlag R0 · 5,275 · β^−0,3 · tan² (Rothermel 1972) **addiert** zur Wind-Ellipsenrate, Steigung begrenzt auf tan 0,7 (≈ 35°, Annahme); bergab keine Verlangsamung (konservativ). Keine vektorielle Kombination von Wind und Hang (effektiver Windvektor nach Rothermel/Albini: Phase 2), keine Hang-/Talwinde. Das DGM deckt nur Neunkirchen-Seelscheid + 5 km ab; außerhalb wird eben gerechnet (Warnung). Ohne DGM-Datei rechnet die App wie bisher ohne Hang und zeigt „Hangneigung nicht berücksichtigt“.
+- **Rothermel vereinfacht**: Gewichtung nur über Oberflächenanteile (keine Größenklassen-Gewichtung nach Albini 1976b), Windbegrenzung nach Rothermel 1972. Gleichungen aus der Literatur übertragen, nicht aus einer geprüften Bibliothek. Plausibilitätsabgleich: Für die Anderson-Modelle 1, 2, 3, 8, 9, 10 liegen die Raten bei 8 % Feuchte und 5 mi/h innerhalb ±10 % der Anderson-Tabellenwerte, FM5 ca. −20 %. Die Referenzwerte selbst sind ebenfalls aus Literaturkenntnis übernommen und gegen die Primärquelle **zu prüfen**.
+- **Brennstoffzuordnung** OSM → Anderson-13 (Nadelwald FM10, Laubwald FM9, Mischwald FM8, Grünland/Acker FM1, Gebüsch/Heide FM5, Siedlung/Wasser nicht brennbar) ist eine **Annahme** und muss mit Forst (z. B. Wald und Holz NRW) abgestimmt werden. Nordamerikanische Modelle sind nur begrenzt übertragbar.
+- **Brennstofffeuchte**: Gleichgewichtsfeuchte nach Simard (1968) + Regenzuschlag (Annahme). Lebendfeuchte fest 90/120 %.
+- **Wind**: 10-m-Wind × Reduktionsfaktor (offen 0,4, Wald 0,2; Annahme). Wetter stündlich, an der Quellzelle zum Ankunftszeitpunkt.
+- **Projektion**: lokale äquidistante Näherung statt EPSG:25832 (Fehler im 10-km-Gebiet < 0,1 %).
+- **Raster** 25 m, Gebiet 10 × 10 km um den Brandschwerpunkt. Wege schmaler als eine Zelle werden nicht als Barriere gerechnet (konservativ), Straßen ab „residential“ und Flüsse schon (optimistisch).
+- **Ensemble**: 24 Läufe, Windrichtung ±25°, Windstärke ×0,75–1,35, Tote-Brennstoff-Feuchte ±2 %-Punkte, gleichverteilt; „wahrscheinlich“ ≥ 50 %, „möglich“ ≥ 10 % der Läufe.
+- **Vorschläge**: Riegel nur, wenn zum Prüfzeitpunkt (Anfahrt 30 + Aufbau 45 + Mindest-Wirkzeit 30 = 105 min) vollständig außerhalb der „möglich“-Zone (≥ 50 m Abstand), quer (≥ 45°) und vor der Front; Bewertung heuristisch (Barrieretyp, Vorlauf, Länge, Schutzwirkung, Lage, Abdeckung der Frontbreite). Fahrzeugstandorte: „möglich“-Front frühestens 60 min nach Bereitschaft, kein Lauf vor der Bereitschaft, ≥ 100 m vom 1-h-Bereich. Anfahrt ist eine **pauschale Annahme** (kein Routing), keine Rückzugswege.
+- **Darstellung**: Konturen sind eine Glättung des 25-m-Rasters. Flächenabweichung zur Rasterfläche in den Tests ≤ 3 % für Flächen ab 100 Zellen (6,25 ha); bei sehr kleinen Flächen (wenige Zellen) bis ca. 35 %, dann zeigt die Legende einen Hinweis (Rasteransicht prüfen).
+
+Alle Annahmen mit Werten: [docs/assumptions.md](docs/assumptions.md).
+
+## Nicht umgesetzt
+
+- Routing und echte Anfahrtszeiten (OSRM/Valhalla/GraphHopper), fahrzeugtypabhängige Wegeinschränkungen. Pendelverkehr nur grob über Luftlinie × 1,3 und angenommene 25 km/h.
+- Vollständige Wasserversorgungslogik (Entnahmemengen, Schlauchlängen nach Höhenprofil, Verstärkerpumpen). Umgesetzt sind nur: OSM-Entnahmestellen „nicht verifiziert“, manuelles Hinzufügen/Verifizieren/Löschen, nächstgelegene Stelle je Fahrzeug mit grober Abschätzung.
+- Offline/PWA (Service Worker, Kachel-Cache, vorab gepacktes Datenpaket). Vorbereitet: keine CDN-Abhängigkeit, Rechnung clientseitig, letzte Wetterdaten im lokalen Speicher, Geländemodell und Schummerung als lokale Datei (`data/dgm25.*`).
+- ATKIS/Forstdaten, CORINE. Vektorielle Wind-Hang-Kombination, Exposition als Feuchteeinfluss.
+- DWD Open Data und DWD-Waldbrandgefahrenindex; automatischer Quellen-Fallback zwischen zwei Wetterquellen.
+- Brandfront als Linie (nur Polygon und Zündpunkt + Radius).
+- Drohnen-/Wärmebildimport, Mehrbenutzer-Synchronisation.
+- Schrittweise Ergebnisanzeige (Rechnung ist in der Regel nach wenigen Sekunden fertig; Fortschrittsbalken vorhanden).
+- Authentifizierung für die Stammdatenpflege, Excel-Import (nur JSON/CSV).
+- PDF-Export als eigene Datei (nur Drucken/PDF über den Browser).
+- Phase-0-Entscheidungsdokument in voller Form (Kurzfassung in docs/architecture.md), Validierung gegen historische Brände, Lighthouse-/Accessibility-Prüfung, CI.
+
+## Offene Fragen an den Auftraggeber
+
+1. Rechtliche Freigabe, Haftung und Wortlaut der Warnhinweise (Platzhalter in „Grenzen & Quellen“).
+2. Brennstoffzuordnung: Wer von Forst/Feuerwehr prüft sie (Wald und Holz NRW)? Gibt es Baumarten-/Bestandsdaten?
+3. Fahrzeugliste: Bestätigung der von ffnkse.de übernommenen Daten, echte Tankvolumen/Pumpenleistungen, Funkrufnamen, Maße, Gewichte, Geländegängigkeit, Wachenkoordinaten.
+4. Feuerwehrinterne Sicherheitsabstände und Rückzugsregeln (derzeit Annahmen: Anfahrt 30 min, Aufbau Riegel 45 min, Mindest-Wirkzeit 30 min, Fahrzeugpuffer 60 min, Abstände 50/100 m, 300 m Linienabschnitt je Fahrzeug).
+5. Hydrantenplan/Löschwasserkonzept, Teich-/Zisternenverzeichnis nutzbar?
+6. Nutzungsbedingungen Open-Meteo und Overpass für den Einsatz; Betrieb eigener Instanzen? Geobasis-NRW-Dienste: URLs/Layer sind geprüft; Lizenzbedingungen der DTK (Geobasis-NRW-PDF) und Lizenzangabe des DGM1-Katalogeintrags bestätigen.
+7. Google Maps gewünscht? Wer trägt Key und Kosten?
+8. Zielgeräte, Browser, Netzabdeckung; ist Offline-Betrieb (PWA) für Phase 2 Pflicht?
+9. Daten historischer Brände zur Validierung.
+10. Aufbewahrung und Zugriffsrechte der Einsatzprotokolle; Datenschutzkonzept; Hosting.
+11. Gebiet nur Gemeinde oder auch Nachbargemeinden/Überlandhilfe?

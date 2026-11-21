@@ -1,0 +1,225 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Waldbrand-Lagebild NKS</title>
+<!--LEAFLET-CSS--><link rel="stylesheet" href="vendor/leaflet/leaflet.css">
+<link rel="stylesheet" href="css/app.css">
+</head>
+<body>
+<div id="app">
+  <header class="warnbar" role="note" aria-label="Pflichthinweis">
+    <strong>Modellprognose, unvalidiert. Keine Handlungsanweisung. Entscheidung und Verantwortung liegen bei der Einsatzleitung.</strong>
+    <span id="hdr-status" class="hdr-status"></span>
+  </header>
+
+  <main class="layout">
+    <section class="mapwrap" aria-label="Karte">
+      <div id="map"></div>
+      <div class="maptools" role="toolbar" aria-label="Zeichenwerkzeuge">
+        <button id="btn-draw" class="tool" type="button">Brandfläche zeichnen</button>
+        <button id="btn-point" class="tool" type="button">Zündpunkt + Radius</button>
+        <button id="btn-undo" class="tool" type="button" hidden>Letzten Punkt entfernen</button>
+        <button id="btn-finish" class="tool primary" type="button" hidden>Fläche fertig</button>
+        <button id="btn-clear" class="tool" type="button">Fläche löschen</button>
+        <button id="btn-gps" class="tool" type="button">Mein Standort</button>
+        <button id="btn-addwater" class="tool" type="button">Entnahmestelle setzen</button>
+      </div>
+      <div id="map-hint" class="maphint" hidden></div>
+      <div class="legend" id="legend" aria-label="Legende">
+        <div class="lg-title">Legende Prognose</div>
+        <div class="lg-mode" role="radiogroup" aria-label="Darstellung der Prognose">
+          <button type="button" class="lg-btn" data-mode="kontur" role="radio" aria-checked="true">Konturen</button>
+          <button type="button" class="lg-btn" data-mode="raster" role="radio" aria-checked="false">Raster 25 m</button>
+        </div>
+        <div class="lg-row"><span class="sw sw-likely"></span><span>wahrscheinlich (≥ <span class="p-likely">50</span> % der Läufe)</span></div>
+        <div class="lg-row"><span class="sw sw-possible"></span><span>möglich (≥ <span class="p-possible">10</span> %), schraffiert</span></div>
+        <div class="lg-row"><span class="sw sw-line"></span><span>Referenzlauf (Linie)</span></div>
+        <div class="lg-row"><span class="sw sw-ready"></span><span>„möglich“ bei Einsatzbereitschaft + Wirkzeit (Grenze für Riegel)</span></div>
+        <div class="lg-row lg-h"><span class="hz hz1">1 h</span><span class="hz hz2">2 h</span><span class="hz hz4">4 h</span><span class="hz hz6">6 h</span></div>
+        <div class="lg-note" id="lg-note">Konturen: geglättete Darstellung des 25-m-Rasters.</div>
+      </div>
+    </section>
+
+    <aside class="panel" aria-label="Bedienfeld">
+      <nav class="tabs" role="tablist">
+        <button role="tab" class="tab" data-tab="lage" aria-selected="true" id="tab-lage">Lage</button>
+        <button role="tab" class="tab" data-tab="fahrzeuge" aria-selected="false" id="tab-fahrzeuge">Fahrzeuge</button>
+        <button role="tab" class="tab" data-tab="protokoll" aria-selected="false" id="tab-protokoll">Protokoll</button>
+        <button role="tab" class="tab" data-tab="info" aria-selected="false" id="tab-info">Grenzen &amp; Quellen</button>
+      </nav>
+
+      <div class="tabpanel" id="panel-lage">
+        <section class="card" id="sec-flaeche">
+          <h2><span class="step">1</span> Brandfläche</h2>
+          <p id="poly-status" class="muted">Noch keine Fläche. „Brandfläche zeichnen“ und Punkte auf der Karte antippen.</p>
+          <div class="row">
+            <label for="sel-radius">Startradius Zündpunkt</label>
+            <select id="sel-radius"><option value="25">25 m</option><option value="50" selected>50 m</option><option value="100">100 m</option><option value="200">200 m</option></select>
+          </div>
+        </section>
+
+        <section class="card" id="sec-wetter">
+          <h2><span class="step">2</span> Wetter</h2>
+          <div class="btnrow">
+            <button id="btn-wx" class="btn primary" type="button">Wetter laden (Open-Meteo)</button>
+            <button id="btn-wx-sample" class="btn" type="button">Beispieldaten</button>
+          </div>
+          <div id="wx-status" class="status"></div>
+          <details id="wx-override" class="override">
+            <summary>Werte vor Ort überschreiben</summary>
+            <p class="muted small">Leere Felder = Wert aus der Quelle. Überschriebene Werte gelten für alle Stunden und werden im Ergebnis gekennzeichnet.</p>
+            <div class="grid2">
+              <label>Wind (km/h, 10 m)<input id="ov-windKmh" type="number" inputmode="decimal" min="0" max="150"></label>
+              <label>Wind aus (°)<input id="ov-windDirDeg" type="number" inputmode="numeric" min="0" max="360"></label>
+              <label>Böen (km/h)<input id="ov-gustKmh" type="number" inputmode="decimal" min="0" max="200"></label>
+              <label>Temperatur (°C)<input id="ov-tempC" type="number" inputmode="decimal" min="-20" max="50"></label>
+              <label>rel. Feuchte (%)<input id="ov-rh" type="number" inputmode="numeric" min="1" max="100"></label>
+              <label>Regen 24 h (mm)<input id="ov-rain24" type="number" inputmode="decimal" min="0" max="200"></label>
+              <label>Regen 72 h (mm)<input id="ov-rain72" type="number" inputmode="decimal" min="0" max="400"></label>
+            </div>
+            <button id="btn-ov-clear" class="btn small" type="button">Überschreibungen löschen</button>
+          </details>
+          <div class="tablewrap"><table id="wx-table" class="data"></table></div>
+          <p class="muted small">Waldbrandgefahrenindex (DWD): nicht angebunden (zu prüfen).</p>
+        </section>
+
+        <section class="card" id="sec-daten">
+          <h2><span class="step">3</span> Gelände &amp; Brennstoff</h2>
+          <div class="btnrow">
+            <button id="btn-osm" class="btn" type="button">OSM-Daten laden</button>
+          </div>
+          <div id="osm-status" class="status"></div>
+          <div class="row">
+            <label for="sel-fuel">Ersatz-Brennstoff ohne OSM</label>
+            <select id="sel-fuel"></select>
+          </div>
+          <div id="dem-status" class="status"><div class="msg">Geländemodell (DGM) wird geladen …</div></div>
+          <p class="muted small">Brennstoffzuordnung: Annahme, nicht mit Forst abgestimmt.</p>
+          <label class="check"><input type="checkbox" id="chk-fuelmap"> Brennstoffkarte anzeigen</label>
+          <label class="check"><input type="checkbox" id="chk-shade" disabled> Geländeschummerung anzeigen (DGM, offline)</label>
+        </section>
+
+        <section class="card" id="sec-prognose">
+          <h2><span class="step">4</span> Modellprognose</h2>
+          <button id="btn-run" class="btn primary big" type="button">Prognose berechnen</button>
+          <div id="run-progress" class="progress" hidden><div class="bar"></div><span class="ptext"></span></div>
+          <div id="run-errors" class="status"></div>
+          <div id="results"></div>
+        </section>
+
+        <section class="card" id="sec-szenario">
+          <h2>Szenario-Vergleich</h2>
+          <p class="muted small">Szenario B ändert die Wetterannahmen gegenüber A (aktuelle Eingaben).</p>
+          <div class="grid2">
+            <label>Windrichtung ändern (°)<select id="sc-dir"><option value="0">0</option><option value="-90">−90 (dreht links)</option><option value="-45">−45</option><option value="45">+45</option><option value="90">+90 (dreht rechts)</option><option value="180">180</option></select></label>
+            <label>Wind × Faktor<select id="sc-speed"><option value="1">1,0</option><option value="0.5">0,5</option><option value="1.5">1,5</option><option value="2">2,0</option></select></label>
+            <label>Wind aus (fest, °)<input id="sc-fixdir" type="number" inputmode="numeric" min="0" max="360" placeholder="z. B. 270 = West"></label>
+            <label>rel. Feuchte ± (%-Pkt.)<select id="sc-rh"><option value="0">0</option><option value="-15">−15</option><option value="-10">−10</option><option value="10">+10</option><option value="20">+20</option></select></label>
+          </div>
+          <button id="btn-scenario" class="btn" type="button">Szenario B rechnen</button>
+          <div id="sc-result"></div>
+        </section>
+
+        <section class="card" id="sec-vorschlaege">
+          <h2><span class="step">5</span> Einsatzvorschläge</h2>
+          <p class="muted small">Vorschläge sind keine Anordnung. Jedes Element lässt sich auf der Karte verschieben, sperren oder verwerfen. Danach „Vorschläge neu berechnen“.</p>
+          <button id="btn-resuggest" class="btn" type="button" disabled>Vorschläge neu berechnen</button>
+          <div id="sug-diff" class="status"></div>
+          <div id="suggestions"></div>
+        </section>
+      </div>
+
+      <div class="tabpanel" id="panel-fahrzeuge" hidden>
+        <section class="card">
+          <h2>Fahrzeugliste</h2>
+          <p id="veh-source" class="muted small"></p>
+          <div class="btnrow">
+            <label class="btn filebtn">Liste importieren (JSON/CSV)<input type="file" id="file-veh" accept=".json,.csv,application/json,text/csv"></label>
+            <button id="btn-veh-export" class="btn" type="button">Liste exportieren</button>
+            <button id="btn-veh-reset" class="btn" type="button">Mitgelieferte Liste laden</button>
+          </div>
+          <div id="veh-errors" class="status"></div>
+          <div class="tablewrap"><table id="veh-table" class="data"></table></div>
+          <p class="muted small">Admin-Schutz für die Stammdatenpflege ist im Prototyp nicht umgesetzt (offen). Änderungen bleiben nur auf diesem Gerät.</p>
+        </section>
+        <section class="card">
+          <h2>Wachen / Gerätehäuser</h2>
+          <div id="stations"></div>
+        </section>
+      </div>
+
+      <div class="tabpanel" id="panel-protokoll" hidden>
+        <section class="card">
+          <h2>Sitzungsprotokoll</h2>
+          <div id="proto-verify" class="status"></div>
+          <div class="btnrow">
+            <button id="btn-proto-json" class="btn" type="button">Protokoll exportieren (JSON)</button>
+            <button id="btn-geojson" class="btn" type="button">Lage exportieren (GeoJSON)</button>
+            <button id="btn-print" class="btn" type="button">Drucken / PDF</button>
+            <button id="btn-proto-clear" class="btn danger" type="button">Protokoll leeren</button>
+          </div>
+          <div id="proto-list" class="protolist"></div>
+        </section>
+      </div>
+
+      <div class="tabpanel" id="panel-info" hidden>
+        <section class="card">
+          <h2>Modellgrenzen</h2>
+          <div id="limits-text"></div>
+        </section>
+        <section class="card">
+          <h2>Datenquellen</h2>
+          <div id="sources-text"></div>
+        </section>
+        <section class="card">
+          <h2>Haftung und Freigabe</h2>
+          <p class="placeholder">[PLATZHALTER: Text zur rechtlichen Freigabe und Haftungsregelung. Wird vom Auftraggeber (Gemeinde / Kreisbrandmeister) bereitgestellt. Offen.]</p>
+        </section>
+        <section class="card">
+          <h2>Anzeige</h2>
+          <div class="btnrow">
+            <button id="btn-theme" class="btn" type="button">Tag-/Nachtmodus wechseln</button>
+          </div>
+        </section>
+      </div>
+    </aside>
+  </main>
+</div>
+
+<div id="modal-ack" class="modal" role="dialog" aria-modal="true" aria-labelledby="ack-title" hidden>
+  <div class="modal-box">
+    <h2 id="ack-title">Modellgrenzen bestätigen</h2>
+    <div id="ack-text"></div>
+    <label class="check big"><input type="checkbox" id="chk-ack"> Ich habe die Modellgrenzen gelesen. Die App ersetzt keine Lageerkundung und keine Entscheidung der Einsatzleitung.</label>
+    <button id="btn-ack" class="btn primary big" type="button" disabled>Bestätigen und starten</button>
+  </div>
+</div>
+
+<div id="modal-export" class="modal" role="dialog" aria-modal="true" aria-labelledby="exp-title" hidden>
+  <div class="modal-box wide">
+    <h2 id="exp-title">Export</h2>
+    <textarea id="exp-text" readonly rows="14"></textarea>
+    <div class="btnrow">
+      <button id="btn-exp-copy" class="btn" type="button">Kopieren</button>
+      <button id="btn-exp-download" class="btn primary" type="button">Datei speichern</button>
+      <button id="btn-exp-close" class="btn" type="button">Schließen</button>
+    </div>
+  </div>
+</div>
+
+<!--LEAFLET-JS--><script src="vendor/leaflet/leaflet.js"></script>
+<script src="config.js"></script>
+<script src="js/params.js"></script>
+<script src="js/grid.js"></script>
+<script src="js/dem.js"></script>
+<script src="js/model.js"></script>
+<script src="js/contour.js"></script>
+<script src="js/weather.js"></script>
+<script src="js/osm.js"></script>
+<script src="js/suggest.js"></script>
+<script src="js/protocol.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
