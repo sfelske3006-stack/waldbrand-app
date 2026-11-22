@@ -11,6 +11,8 @@ let chromium;
 try { ({ chromium } = require("playwright")); } catch { ({ chromium } = require("/opt/node22/lib/node_modules/playwright")); }
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
+const VERSION = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).version;
+const ownRequests = [];
 const OUT = process.env.SHOT_DIR || path.join(root, "docs");
 const types = { ".html": "text/html", ".js": "text/javascript", ".css": "text/css", ".json": "application/json", ".png": "image/png", ".bin": "application/octet-stream" };
 const server = http.createServer((req, res) => {
@@ -58,6 +60,7 @@ async function newPage(opts = {}) {
   const pg = await c.newPage();
   pg.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text()); });
   pg.on("pageerror", (e) => consoleErrors.push("PAGEERROR " + e.message));
+  pg.on("request", (r) => { const u = new URL(r.url()); if (u.hostname === "localhost") ownRequests.push(u.pathname + u.search); });
   await pg.route("**/*", (route) => {
     const u = new URL(route.request().url());
     if (u.hostname === "localhost" || u.hostname === "127.0.0.1") {
@@ -79,6 +82,8 @@ const page = await newPage();
 try {
   await page.goto("http://localhost:8099/", { waitUntil: "load" });
   check("Seite lädt, Pflichthinweis sichtbar", await page.locator(".warnbar").isVisible() && (await page.locator(".warnbar").innerText()).includes("Modellprognose, unvalidiert"));
+  const hdr = await page.locator(".warnbar").innerText();
+  check("Kopfzeile: TESTVERSION – nicht für den Einsatz + Versionsnummer", hdr.includes("TESTVERSION – nicht für den Einsatz") && hdr.includes(`Version ${VERSION}`) && await page.locator("#hdr-test").isVisible(), hdr.slice(0, 80));
   check("Modellgrenzen-Dialog erscheint", await page.locator("#modal-ack").isVisible());
   check("Bestätigen-Knopf erst nach Häkchen aktiv", await page.locator("#btn-ack").isDisabled());
   await page.check("#chk-ack");
@@ -127,6 +132,16 @@ try {
     (await page.locator("#lg-note").innerText()).includes("geglättete Darstellung des 25-m-Rasters"));
   const sug1 = await page.locator("#suggestions").innerText();
   check("Vorschläge ohne OSM (geometrisch) erscheinen", sug1.includes("Abwehrlinie") && /Riegel|Bereitstellung/.test(sug1));
+  check("Geländewind im Ergebnis angegeben (aktiv)", res1.includes("Geländewind: aktiv"), (res1.match(/Geländewind:[^\n]*/) || [""])[0].slice(0, 120));
+  check("Anfahrt je Fahrzeug in den Vorschlägen (geschätzt bzw. Vorgabe), Pflichtfahrzeuge, Grundschutz", /Anfahrt:/.test(sug1) && /Pflichtfahrzeug/.test(sug1) && /Grundschutz/.test(sug1) && /(geschätzt, kein Routing|Vorgabe)/.test(sug1));
+  const protoTw = await page.evaluate(() => JSON.stringify(Protocol.all().filter((e) => e.typ === "prognose").pop().daten.gelaendewind));
+  check("Protokoll: Geländewind aktiv vermerkt", protoTw.includes('"aktiv":true'), protoTw.slice(0, 100));
+  // Geländewind aus -> Ergebnis „aus“, wieder an
+  await page.uncheck("#chk-twind"); await page.uncheck("#chk-tmoist");
+  await page.click("#btn-run");
+  await page.waitForFunction(() => document.querySelector("#results")?.innerText.includes("Geländewind: aus"), null, { timeout: 60000 });
+  check("Schalter Geländewind aus -> Ergebnis „Geländewind: aus“", true);
+  await page.check("#chk-twind"); await page.check("#chk-tmoist");
 
   // Lauf 2: mit synthetischen OSM-Testdaten
   const c = await page.evaluate(() => { const p = window.__wb.state.poly; return [p.reduce((s, x) => s + x[0], 0) / p.length, p.reduce((s, x) => s + x[1], 0) / p.length]; });
@@ -217,7 +232,28 @@ try {
   // Fahrzeugliste
   await page.click("#tab-fahrzeuge");
   const veh = await page.locator("#veh-table").innerText();
-  check("Fahrzeugliste geladen und gekennzeichnet", veh.includes("LF KatS") && veh.includes("Annahme: Normwert") && veh.includes("Website"));
+  check("Fahrzeugliste geladen und gekennzeichnet", veh.includes("LF KatS") && veh.includes("Annahme: Normwert") && veh.includes("belegt (Quelle)") && veh.includes("ungeprüft, aus Websuche"));
+  const nAll = await page.locator("#veh-table tbody tr").count();
+  await page.selectOption("#vf-kommune", "Lohmar");
+  const nLohmar = await page.locator("#veh-table tbody tr").count();
+  const komm = await page.$$eval("#veh-table tbody tr td:nth-child(4)", (tds) => tds.map((t) => t.innerText.split("\n")[0]));
+  check("Fahrzeugliste filterbar nach Kommune", nAll >= 100 && nLohmar >= 1 && nLohmar < nAll && komm.every((k) => k === "Lohmar"), `${nAll} gesamt, Lohmar ${nLohmar}`);
+  await page.selectOption("#vf-kommune", "");
+  await page.selectOption("#vf-sort", "anfahrt");
+  const anfs = await page.$$eval("#veh-table tbody tr td:nth-child(5)", (tds) => tds.map((t) => { const m = t.innerText.match(/ca\. (\d+) min/); return m ? +m[1] : Infinity; }));
+  const finite = anfs.filter(Number.isFinite);
+  check("Fahrzeugliste sortiert nach Anfahrtszeit (geschätzt)", finite.length >= 50 && finite.every((v, k) => k === 0 || v >= finite[k - 1]), `${finite.slice(0, 5).join(", ")} … ${finite.length} mit Schätzung`);
+  check("Grundschutz im Fahrzeugbereich (Nachbarkommunen, Anfahrt zum Gerätehaus)", (await page.locator("#gs-panel").innerText()).includes("Grundschutz") && (await page.locator("#gs-panel .gs").count()) === 2);
+  const keepView = await page.evaluate(() => { const m = window.__wb.map; const v = [m.getCenter().lat, m.getCenter().lng, m.getZoom()]; m.setView([50.8, 7.3], 10, { animate: false }); return v; });
+  await page.waitForTimeout(300);
+  const grp = await page.evaluate(() => {
+    const groups = [...document.querySelectorAll(".st-group")].map((e) => parseInt(e.textContent, 10));
+    const singles = document.querySelectorAll(".st-marker").length;
+    const withCoord = window.__wb.state.stations.filter((s) => Number.isFinite(s.lat) && s.lat !== null).length;
+    return { groups: groups.length, inGroups: groups.reduce((a, b) => a + b, 0), singles, withCoord };
+  });
+  check("Wachen-Marker gruppiert (ohne Zusatzbibliothek), alle Wachen mit Koordinate vertreten", grp.groups >= 1 && grp.inGroups + grp.singles === grp.withCoord, JSON.stringify(grp));
+  await page.evaluate((v) => window.__wb.map.setView([v[0], v[1]], v[2], { animate: false }), keepView);
   await page.click("#tab-lage");
 
   // Tablet hochkant
@@ -228,6 +264,11 @@ try {
   check("Kein horizontales Scrollen (Tablet hochkant)", !overflow);
   const protoAll = await page.evaluate(() => JSON.stringify(Protocol.all()));
   check("Protokoll enthält DGM-Quelle/Stand", protoAll.includes("\"gelaende\"") && protoAll.includes("dl-de/zero-2-0") && protoAll.includes("max_tan_hang"));
+  check("Protokoll: Grundschutz, Anfahrt (geschätzt), Gemeindeteil", protoAll.includes("\"grundschutz\"") && protoAll.includes("kein Routing") && protoAll.includes("\"gemeindeteil\""));
+  // Cache-Busting: alle eigenen Skripte/CSS/Daten mit ?v=<Version>
+  const own = ownRequests.filter((u) => /\.(js|css|json|bin)(\?|$)/.test(u));
+  const noV = own.filter((u) => !u.includes(`v=${encodeURIComponent(VERSION)}`));
+  check("Cache-Busting: eigene Skripte, CSS und Datendateien mit ?v=Version", own.length >= 15 && noV.length === 0, `${own.length} Abrufe, ohne Version: ${noV.slice(0, 3).join(", ")}`);
 } catch (e) {
   check("Testablauf", false, e.message);
 }
@@ -318,6 +359,107 @@ try {
   await c2.close();
 } catch (e) {
   check("Testablauf Screenshots Konturen/Raster", false, e.message);
+}
+
+// Gemeindeteil: automatisch aus Gemarkung, manuelle Wahl überschreibt (Bereitschaft 25/40 min, Vorgabe Auftraggeber)
+try {
+  const pg = await newPage();
+  await ack(pg);
+  await pg.evaluate(() => window.__wb.demReady());
+  await pg.waitForFunction(() => !!window.__wb.grenzenReady(), null, { timeout: 15000 });
+  // Brand nahe Gerätehaus Seelscheid (Gemarkung Seelscheid)
+  const lat0 = 50.8705, lon0 = 7.3120, r = 50;
+  const pts = Array.from({ length: 12 }, (_, k) => [lat0 + (r / 111195) * Math.cos((k / 12) * 2 * Math.PI), lon0 + (r / (111195 * Math.cos((lat0 * Math.PI) / 180))) * Math.sin((k / 12) * 2 * Math.PI)]);
+  await pg.evaluate((p) => window.__wb.setPolygon(p), pts);
+  await pg.click("#btn-wx-sample");
+  await pg.selectOption("#sel-fuel", "mischwald");
+  await pg.click("#btn-run");
+  await pg.waitForFunction(() => document.querySelector("#suggestions")?.innerText.length > 0, null, { timeout: 60000 });
+  const st1 = await pg.locator("#teil-status").innerText();
+  const li1 = await pg.evaluate(() => window.__wb.state.sug.lineInfo);
+  check("Gemeindeteil automatisch: Seelscheid (Gemarkung), früheste Bereitschaft 25 min", st1.includes("Gemeindeteil Seelscheid") && li1.readyMin === 25 && li1.anfahrtSource === "Vorgabe", `${li1.readyMin} min; ${st1.slice(0, 120)}`);
+  const se1 = await pg.evaluate(() => window.__wb.state.sug.vehicles.filter((v) => /^se-/.test(v.vehicleId) && v.anfahrt).map((v) => v.anfahrt.ready));
+  await pg.evaluate(() => window.__wb.setTeil("Neunkirchen"));
+  await pg.waitForFunction(() => document.querySelector("#teil-status")?.innerText.includes("Gemeindeteil Neunkirchen"), null, { timeout: 15000 });
+  const se2 = await pg.evaluate(() => window.__wb.state.sug.vehicles.filter((v) => /^se-/.test(v.vehicleId) && v.anfahrt).map((v) => v.anfahrt.ready));
+  const protoT = await pg.evaluate(() => Protocol.all().some((e) => e.typ === "gemeindeteil_wahl" && e.daten.modus === "Neunkirchen"));
+  check("Manuelle Wahl „Neunkirchen“ überschreibt: LZ Seelscheid 40 min, im Protokoll vermerkt", se1.every((v) => v === 25) && se2.length >= 3 && se2.every((v) => v === 40) && protoT, `vorher ${se1.join("/")}, nachher ${se2.join("/")}`);
+  check("Zweite Prüfgrenze (40 min + Wirkzeit) auf der Karte", (await pg.locator("path.wb-ready2").count()) >= 1 || !(await pg.evaluate(() => window.__wb.state.sug.lineInfo.second)));
+  const gsInfo = await pg.evaluate(() => window.__wb.state.sug.grundschutz.map((a) => `${a.wache.name}: ${a.vehicle ? a.vehicle.bezeichnung + " (" + a.kommune + "), " + (a.anfahrt.ok ? Math.round(a.anfahrt.min) + " min" : "unbekannt") : "keins"}`));
+  check("Grundschutz mit Kreisdaten: zwei verschiedene Fahrzeuge aus Nachbarkommunen", gsInfo.length === 2 && !gsInfo.some((t) => t.includes("keins") || t.includes("(Neunkirchen-Seelscheid)")), gsInfo.join(" | "));
+  check("Grundschutz-Marker an den Gerätehäusern", (await pg.locator(".gs-marker").count()) >= 1 || (await pg.locator(".st-group").count()) >= 1);
+  await pg.evaluate(() => window.__wb.setTeil("auto"));
+  await pg.context().close();
+} catch (e) {
+  check("Testablauf Gemeindeteil/Grundschutz", false, e.message);
+}
+
+// GitHub-Pages-Simulation: Projekt unter Unterpfad /waldbrand-app/ (alle Pfade relativ, kein Abruf außerhalb)
+try {
+  const PREFIX = "/waldbrand-app/";
+  const outside = [], notFound = [];
+  const sub = http.createServer((req, res) => {
+    const u = req.url.split("?")[0];
+    if (!u.startsWith(PREFIX)) { outside.push(req.url); res.writeHead(404); res.end(); return; }
+    const p = path.join(root, decodeURIComponent(u.slice(PREFIX.length - 1)).replace(/\/$/, "/index.html"));
+    if (!p.startsWith(root) || !fs.existsSync(p) || fs.statSync(p).isDirectory()) { notFound.push(req.url); res.writeHead(404); res.end(); return; }
+    res.writeHead(200, { "Content-Type": types[path.extname(p)] || "application/octet-stream" });
+    fs.createReadStream(p).pipe(res);
+  });
+  await new Promise((r) => sub.listen(8098, r));
+  const c = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const pg = await c.newPage();
+  const subErr = [];
+  pg.on("pageerror", (e) => subErr.push(e.message));
+  await pg.route("**/*", (route) => { const u = new URL(route.request().url()); if (u.hostname === "localhost") return route.continue(); return route.abort("blockedbyclient"); });
+  await pg.goto(`http://localhost:8098${PREFIX}`, { waitUntil: "load" });
+  await pg.check("#chk-ack"); await pg.click("#btn-ack");
+  await pg.evaluate(() => window.__wb.demReady());
+  await pg.evaluate((p) => window.__wb.setPolygon(p), [[50.858, 7.334], [50.8585, 7.3355], [50.8575, 7.336]]);
+  await pg.click("#btn-wx-sample");
+  await pg.click("#btn-run");
+  await pg.waitForSelector("#results table", { timeout: 60000 });
+  const r = await pg.locator("#results").innerText();
+  const demOk = (await pg.locator("#dem-status").innerText()).includes("DGM1 NRW");
+  const vehOk = await pg.evaluate(() => window.__wb.state.vehicles.length);
+  check("Unterpfad /waldbrand-app/ (GitHub Pages): lädt, DGM + Fahrzeuge + Grenzen, Prognose, keine Abrufe außerhalb, keine 404", r.includes("Geländewind:") && demOk && vehOk >= 100 && outside.length === 0 && notFound.length === 0 && subErr.length === 0, `außerhalb: ${outside.slice(0, 3).join(", ")}; 404: ${notFound.slice(0, 3).join(", ")}; Fehler: ${subErr.slice(0, 2).join(" | ")}`);
+  await c.close();
+  sub.close();
+} catch (e) {
+  check("Testablauf Unterpfad", false, e.message);
+}
+
+// Screenshot Geländewind (deviceScaleFactor 2): Pfeile + Prognose in einem Tal (Tal bei Eischeid, aus DGM gewählt)
+try {
+  const c2 = await browser.newContext({ viewport: { width: 1280, height: 800 }, deviceScaleFactor: 2 });
+  const pg = await c2.newPage();
+  pg.on("pageerror", (e) => consoleErrors.push("PAGEERROR " + e.message));
+  await pg.route("**/*", (route) => { const u = new URL(route.request().url()); if (u.hostname === "localhost") return route.continue(); blocked.add(u.hostname); return route.abort("blockedbyclient"); });
+  await ack(pg);
+  await pg.evaluate(() => { localStorage.removeItem("wb_display"); window.__wb.setDisplay("kontur", false); window.__wb.setTerrain({ wind: true, moisture: true }); });
+  await pg.evaluate(() => window.__wb.demReady());
+  const lat0 = 50.8267, lon0 = 7.3815, r = 50;
+  const pts = Array.from({ length: 12 }, (_, k) => [lat0 + (r / 111195) * Math.cos((k / 12) * 2 * Math.PI), lon0 + (r / (111195 * Math.cos((lat0 * Math.PI) / 180))) * Math.sin((k / 12) * 2 * Math.PI)]);
+  await pg.evaluate((p) => window.__wb.setPolygon(p), pts);
+  await pg.click("#btn-wx-sample");
+  await pg.click("#wx-override summary");
+  for (const [k, v] of [["windKmh", "9"], ["windDirDeg", "225"], ["tempC", "27"], ["rh", "30"]]) { await pg.fill(`#ov-${k}`, v); await pg.locator(`#ov-${k}`).dispatchEvent("change"); }
+  await pg.selectOption("#sel-fuel", "gruenland");
+  await pg.check("#chk-shade");
+  await pg.check("#chk-twlayer");
+  await pg.click("#btn-run");
+  await pg.waitForSelector("#results table", { timeout: 60000 });
+  await pg.waitForTimeout(1500);
+  const tw = await pg.evaluate(() => window.__wb.state.run.twDisplay);
+  check("Ebene Geländewind: Pfeile (ausgedünnt, 250 m) und Legende", (await pg.locator("path.wb-twind").count()) >= 2 && await pg.locator("#lg-wind").isVisible() && tw && tw.arrows > 100, JSON.stringify(tw));
+  await pg.evaluate((c) => window.__wb.map.setView([c[0] + 0.006, c[1] + 0.012], 14, { animate: false }), [lat0, lon0]);
+  await pg.evaluate(() => { document.querySelector(".maptools").style.visibility = "hidden"; const cap = document.createElement("div"); cap.className = "maphint"; cap.style.top = "12px"; cap.style.bottom = "auto"; cap.style.left = "12px"; cap.style.zIndex = "900"; cap.textContent = "Test-Lage Tal bei Eischeid: Beispielwetter, Wind 9 km/h aus SW, Grünland einheitlich (ohne OSM); Pfeile = Geländewind (vereinfacht), Hintergrund DGM-Schummerung; Fahrzeugmarker für die Aufnahme ausgeblendet"; document.querySelector(".mapwrap").appendChild(cap); const st = document.createElement("style"); st.textContent = ".veh-marker,.veh-group,.st-group,.gs-marker{display:none!important}"; document.head.appendChild(st); });
+  await pg.waitForTimeout(800);
+  await pg.screenshot({ path: path.join(OUT, "screenshot-gelaendewind.png") });
+  check("Screenshot Geländewind (deviceScaleFactor 2) erstellt", fs.existsSync(path.join(OUT, "screenshot-gelaendewind.png")));
+  await c2.close();
+} catch (e) {
+  check("Testablauf Screenshot Geländewind", false, e.message);
 }
 
 // Fehlende DGM-Datei -> Fallback ohne Hang mit sichtbarer Warnung

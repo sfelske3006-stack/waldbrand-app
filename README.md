@@ -1,6 +1,8 @@
-# Waldbrand-Lagebild Neunkirchen-Seelscheid (Prototyp, Version 0.3.0)
+# Waldbrand-Lagebild Neunkirchen-Seelscheid (Prototyp, Version 0.4.0-prototyp)
 
-> **Modellprognose, unvalidiert. Keine Handlungsanweisung. Entscheidung und Verantwortung liegen bei der Einsatzleitung.**
+> **TESTVERSION – nicht für den Einsatz.** **Modellprognose, unvalidiert. Keine Handlungsanweisung. Entscheidung und Verantwortung liegen bei der Einsatzleitung.**
+
+Veröffentlicht (Test) unter <https://sfelske3006-stack.github.io/waldbrand-app/> (GitHub Pages, Unterpfad `/waldbrand-app/`; alle Pfade relativ).
 
 Browser-App für Einsatzleiter bei Vegetations- und Waldbränden: Brandfläche einzeichnen, Wetter laden oder vor Ort eingeben, Ausbreitung für 1/2/4/6 h mit Unsicherheitsband berechnen, einfache Vorschläge für Riegelstellungen und Fahrzeugstandorte. Die gesamte Rechnung läuft im Browser, ein Server ist nicht nötig.
 
@@ -21,6 +23,10 @@ npm run e2e       # Browser-Test mit Playwright/Chromium, Screenshots nach docs/
 npm run build:vorschau   # Einzeldatei-Vorschau dist/vorschau.html (für die Artifact-Seite)
 ```
 
+`npm run e2e` prüft zusätzlich den Betrieb unter einem Unterpfad (statischer Server unter `/waldbrand-app/` wie GitHub Pages), das Cache-Busting (`?v=<Version>` an allen eigenen Skripten, CSS- und Datendateien) und erzeugt `docs/screenshot-gelaendewind.png`.
+
+**Version und Cache-Busting:** Die Version steht an drei Stellen und wird per Test auf Gleichheit geprüft: `js/params.js` (`PARAMS.version`), `index.html` (`window.WB_VERSION` im kleinen Loader) und `package.json`. Der Loader in `index.html` lädt alle eigenen CSS- und JS-Dateien aus einer zentralen Liste mit `?v=<Version>`; Datendateien (`data/*.json`, `data/dgm25.bin`) lädt die App ebenfalls mit `?v=`. Bei einer neuen Version alle drei Stellen ändern. Neue JS-Dateien in `WB_JS` (index.html) eintragen (Test prüft das).
+
 Geländemodell neu erzeugen (nur nötig bei neuem DGM-Stand oder anderem Gebiet; Ergebnis liegt bereits in `data/`):
 
 ```bash
@@ -30,6 +36,8 @@ python3 tools/build-dgm.py --raw-dir /tmp/dgm_raw            # lädt, mittelt, s
 python3 tools/build-dgm.py --raw-dir /tmp/dgm_raw --stream   # bei wenig Plattenplatz: Kachel für Kachel, Rohdaten sofort löschen
 python3 tools/build-dgm.py --raw-dir /tmp/dgm_raw --keep-raw # 1-m-Kacheln als Cache behalten
 ```
+
+Weitere Werkzeuge (Rohdaten nicht ins Projekt legen): `tools/build-gemeindeteile.py --gpkg <ALKIS-GeoPackage Rhein-Sieg-Kreis>` erzeugt `data/gemeindeteile.json` (Gemarkungen, ca. 50 KB); `tools/merge-fahrzeuge-rsk.py <fahrzeuge_rsk.json>` führt die Kreis-Fahrzeugrecherche mit `data/fahrzeuge.json` zusammen.
 
 Das Skript liest die Gemeindegrenze aus den amtlichen Verwaltungsgrenzen (DVG1), legt 5 km Puffer an, lädt nur die nötigen 1-km-Kacheln, mittelt mit `gdalbuildvrt` + `gdalwarp -r average` auf ca. 25 m (EPSG:4326) und prüft den Höhenbereich. Danach `npm test` ausführen (Test „Mitgeliefertes DGM“).
 
@@ -42,9 +50,22 @@ Google Maps (optional): In `config.js` `googleMapsApiKey` eintragen. Erst dann e
 3. **Wetter laden** (Open-Meteo) oder **Beispieldaten** (deutlich als fiktiv markiert). Unter „Werte vor Ort überschreiben“ alle Werte manuell setzen; überschriebene Werte sind mit * markiert.
 4. Optional **OSM-Daten laden** (Brennstoff, Wege, Gewässer, Gebäude, Hydranten). Ohne OSM wird mit einem wählbaren Ersatz-Brennstoff ohne Barrieren gerechnet; das wird im Ergebnis angezeigt. Das **Geländemodell** (DGM, offline) wird beim Start automatisch geladen; Status im Abschnitt „Gelände & Brennstoff“. „Geländeschummerung anzeigen“ blendet eine offline berechnete Schummerung ein; im Ebenen-Menü gibt es zusätzlich die amtliche WMS-Schummerung (online).
 5. **Prognose berechnen**: je Horizont „wahrscheinlich“ (halbtransparente Fläche, durchgezogener Rand) und „möglich“ (Schraffur, gestrichelter Rand), dünne schwarze Linie = Referenzlauf, Beschriftung „1 h … 6 h“. **Darstellung umschaltbar in der Legende**: „Konturen“ (Standard; Isochronen aus dem 25-m-Raster per Marching Squares, Chaikin-Glättung, Hinweis zur Flächenabweichung) oder „Raster 25 m“ (ungeglättete Zellen, Umrisse entlang der Zellränder, für Fachleute). Die Wahl wird auf dem Gerät gespeichert. Kennzahlen beruhen immer auf dem Raster.
-6. **Einsatzvorschläge**: Riegellinien (R1…R3) nur, wenn sie zum Zeitpunkt der Einsatzbereitschaft (Anfahrt 30 min + Aufbau 45 min = 75 min, zuzüglich 30 min Mindest-Wirkzeit, Annahmen) vollständig außerhalb der „möglich“-Zone liegen, quer zur Hauptausbreitungsrichtung und vor der Front; diese Grenze ist als lila gepunktete Linie eingezeichnet. Sonst Meldung „Keine geeignete Riegelstellung gefunden“ mit Grund. Löschfahrzeuge mit Wasser werden nach Linienlänge (300 m je Fahrzeug), Objektschutz an bedrohter Bebauung und Wasserversorgung/Pendelverkehr verteilt; nur echte Reserve, ELW (Führung) und MTF (Personal) stehen im **Bereitstellungsraum** (ein Marker mit Liste). Fahrzeuge ohne Löschwasser (ELW, MTF, DLK, GW-G) nie im Löscheinsatz. Fahrzeuge auf der Karte verschieben (wird geprüft und markiert), Vorschläge sperren oder verwerfen, „Vorschläge neu berechnen“ zeigt den Unterschied.
+6. **Einsatzvorschläge**: Riegellinien (R1…R3) nur, wenn sie zum Zeitpunkt der frühesten Einsatzbereitschaft eines Löschfahrzeugs (siehe „Bereitschaft“ unten) zuzüglich 30 min Mindest-Wirkzeit (Annahme) vollständig außerhalb der „möglich“-Zone liegen, quer zur Hauptausbreitungsrichtung und vor der Front; diese Grenze ist als lila gepunktete Linie eingezeichnet. Sonst Meldung „Keine geeignete Riegelstellung gefunden“ mit Grund. Löschfahrzeuge mit Wasser werden nach Linienlänge (300 m je Fahrzeug), Objektschutz an bedrohter Bebauung und Wasserversorgung/Pendelverkehr verteilt; nur echte Reserve, ELW (Führung) und MTF (Personal) stehen im **Bereitstellungsraum** (ein Marker mit Liste). Fahrzeuge ohne Löschwasser (ELW, MTF, DLK, GW-G) nie im Löscheinsatz. Fahrzeuge auf der Karte verschieben (wird geprüft und markiert), Vorschläge sperren oder verwerfen, „Vorschläge neu berechnen“ zeigt den Unterschied.
+   **Bereitschaft je Fahrzeug (ab 0.4.0)**: Fahrzeuge der FF Neunkirchen-Seelscheid nach **Vorgabe Auftraggeber (22.11.2026)**: Einsatzort im eigenen Gemeindeteil 25 min, im anderen 40 min von Alarm bis löschbereit (inkl. Ausrücken, Anfahrt, Aufbau). Gemeindeteil automatisch aus der ALKIS-Gemarkung (teils Annahme, siehe unten) oder manuell („Einsatzort im Gemeindeteil“). Fahrzeuge anderer Kommunen: Anfahrt **geschätzt** = Luftlinie Wache→Einsatzstelle × 1,4 ÷ 50 km/h (je Klasse) + 7 min Ausrücken, plus 45 min Aufbau (Annahmen, **kein Routing**). Fahrzeuge werden nach Bereitschaft eingeplant; wer für einen Riegelabschnitt zu spät käme, wird als „zu spät für Riegel X“ gekennzeichnet. Ohne Wachenkoordinate: nicht eingeplant (Hinweis). Option „nur Fahrzeuge bis X min Anfahrt einplanen“ (Standard 45 min).
+   **Pflichtfahrzeuge** (Vorgabe Auftraggeber): HLF 20, LF 20 und LF KatS des LZ Seelscheid werden bei jedem Einsatz vorrangig eingebunden (unabhängig von der Anfahrtsgrenze, Sicherheitsregeln gelten weiter); ohne sichere Aufgabe „Pflichtfahrzeug – bereitgestellt“ im Bereitstellungsraum mit Begründung. Häkchen „Pflicht“ je Fahrzeug in der Fahrzeugliste.
+   **Grundschutz** (Vorgabe Auftraggeber): je ein wasserführendes Fahrzeug aus einer Nachbarkommune an den Gerätehäusern Neunkirchen und Seelscheid (bevorzugt HLF/LF, dann TLF/MLF/TSF-W, kürzeste geschätzte Anfahrt zum Gerätehaus; Annahme), manuell tauschbar, auf der Karte („GS“), in Liste, Protokoll und Export.
+   **Geländewind** (Abschnitt 3, Schalter „Geländewind: an/aus“): lokaler Wind und Feuchte je Zelle aus dem DGM, Ebene „Geländewind“ mit Pfeilen (alle 250 m, Farbe = Faktor lokal/synoptisch). Aus = Rechnung wie 0.3.0 (bitgenau, Test).
 7. **Szenario B** (z. B. „Wind aus 270°“) neben A vergleichen.
 8. **Protokoll**: lokale Hash-Kette (SHA-256), Export als JSON und GeoJSON, Drucken/PDF über den Browser.
+
+## Änderungen in Version 0.4.0
+
+- **Geländewind (vereinfacht)**: Windfaktor je Zelle 0,5–1,4 aus Abschattung (Winstral-Sx in Windrichtung, 300 m), Kuppen-/Muldenlage (TPI, 400 m) und Luv-/Leehang; Talkanalisierung (Drehung zur Talachse aus dem Strukturtensor, gewichtet nach Taltiefe, Kohärenz und Winkel); thermischer Hangwind nur bei Wind < 12 km/h (tags 2 m/s hangaufwärts, nachts 1,5 m/s hangabwärts, Sonnenstand nach NOAA-Formeln); Glättung aller Eingangsfelder. `travelTime` nutzt je Kante lokalen Wind und lokale Feuchte; das Ensemble variiert zusätzlich die Stärke der Geländekorrektur (×0,5–1,5). Feinbrennstofffeuchte nach Einstrahlung: Südhänge tagsüber bis 3 %-Pkt. trockener, Nordhänge feuchter (eigene Annahme, keine Korrekturtabelle übernommen). Schalter im UI, Angabe in Ergebnis und Protokoll. Testfälle: im hügeligen Gelände 6-h-„möglich“-Fläche −0,5 bis −5 %, Referenzlauf −10 bis −21 % gegenüber einheitlichem Wind (tests/model.test.mjs, Diagnose).
+- **Anfahrt entfernungsbasiert** statt pauschal 30 min, Bereitschaft je Fahrzeug, „zu spät für Riegel X“, Anfahrt in Liste und Tooltip („geschätzt, kein Routing“).
+- **Bereitschaftsvorgabe eigene Wehr** 25/40 min nach Gemeindeteil (Vorgabe Auftraggeber), Gemeindeteil aus ALKIS-Gemarkungen (`data/gemeindeteile.json`) oder manuell; zweite Prüfgrenze (40 min + Wirkzeit) auf der Karte.
+- **Pflichtfahrzeuge** und **Grundschutz** (siehe Bedienung 6).
+- **Fahrzeugdaten Rhein-Sieg-Kreis**: 150 Fahrzeuge (144 wasserführende aus 19 Kommunen + 6 Nicht-Löschfahrzeuge NKS), 93 Wachen, 88 mit Koordinate. Liste filterbar (Kommune, Typ, verfügbar), sortierbar nach Anfahrt; Wachen-Marker bildschirmbezogen gruppiert (ohne Zusatzbibliothek); Import kompatibel mit dem bisherigen JSON, Synonyme für Feldnamen. Bereitstellungsraum begrenzt (max. 3 Reserve, 2 Führung, 2 Personal; Annahme). Großtanker (TW/LTW/WLF) nur Wasserversorgung, dort bevorzugt.
+- **Veröffentlichung**: Kopfzeile „TESTVERSION – nicht für den Einsatz“ + Version, Cache-Busting `?v=`, E2E-Test unter Unterpfad.
 
 ## Änderungen in Version 0.3.0
 
@@ -67,10 +88,13 @@ Reines HTML/CSS/JavaScript ohne Build-Schritt, Leaflet 1.9.4 lokal unter `vendor
 | `js/dem.js` | Geländemodell laden (`data/dgm25.*`), bilineare Höhenabfrage, Schummerung. |
 | `js/weather.js` | Open-Meteo, Cache, Überschreibungen, Beispieldaten. |
 | `js/osm.js` | Overpass-Abfrage, Brennstoffkarte, Barrieren, Riegelkandidaten, Objekte, Entnahmestellen. |
-| `js/suggest.js` | Riegel- und Fahrzeugvorschläge, Positionsprüfung, Differenz bei Neuberechnung. |
+| `js/terrain.js` | Geländewind: geglättete Geländefelder, Winstral-Sx, TPI, Talachse, Hang-/Talwind, Feuchtekorrektur, Sonnenstand (NOAA). |
+| `js/dispatch.js` | Anfahrtsschätzung, Bereitschaft (Vorgabe eigene Wehr), Gemeindeteil, Import-Normalisierung, Filter/Sortierung, Marker-Gruppierung. |
+| `js/suggest.js` | Riegel- und Fahrzeugvorschläge, Pflichtfahrzeuge, Grundschutz, Positionsprüfung, Differenz bei Neuberechnung. |
 | `js/protocol.js` | Sitzungsprotokoll mit SHA-256-Hash-Kette. |
 | `js/app.js` | UI. |
-| `data/fahrzeuge.json` | Fahrzeug- und Wachendaten, editierbar, Quelle je Eintrag. |
+| `data/fahrzeuge.json` | Fahrzeug- und Wachendaten Rhein-Sieg-Kreis (schema 2), editierbar, Quelle/Quellentyp je Eintrag (ca. 220 KB). |
+| `data/gemeindeteile.json` | Gemarkungen Neunkirchen-Seelscheid (ALKIS) mit Zuordnung zu den Gemeindeteilen (ca. 50 KB). |
 | `data/dgm25.bin`, `data/dgm25.json` | Geländemodell 25 m (Int16, Dezimeter) mit Metadaten (Quelle, Stand, Lizenz, Raster). |
 | `tests/` | Unit-/Szenariotests (`model.test.mjs`), Browser-Test (`e2e.mjs`), synthetische OSM-Testdaten (`synth-osm.mjs`, keine echten Daten). |
 | `tools/build-artifact.mjs` | Erzeugt die Einzeldatei-Vorschau. |
@@ -90,7 +114,11 @@ Reines HTML/CSS/JavaScript ohne Build-Schritt, Leaflet 1.9.4 lokal unter `vendor
 | Wetter (DWD) | DWD Open Data, Waldbrandgefahrenindex | – | **Nicht angebunden** |
 | Brennstoff, Wege, Gewässer, Gebäude, Hydranten | OSM über Overpass API (`overpass-api.de`) | ODbL, Overpass-Nutzungsregeln | Code fertig, im Test mit **synthetischen Testdaten** geprüft (Overpass in der Sandbox blockiert). Für den Betrieb eigene Instanz/Geofabrik-Extrakt **zu prüfen**. |
 | Geokodierung Wachen | Nominatim (manuell per Knopf in „Fahrzeuge“) | ODbL, Nutzungsregeln (max. 1 Anfrage/s) | in der Sandbox blockiert, Koordinaten daher **offen** |
-| Fahrzeuge/Wachen | www.ffnkse.de | Inhalte der Feuerwehr | siehe unten |
+| Fahrzeuge/Wachen NKS | www.ffnkse.de | Inhalte der Feuerwehr | siehe unten |
+| Fahrzeuge/Wachen Rhein-Sieg-Kreis | Feuerwehr-/Kommunalseiten, Brandschutzbedarfspläne, bos-fahrzeuge.info, Presse (je Fahrzeug `quelle`, `quelle_typ`) | Inhalte der jeweiligen Anbieter | **Ungeprüft, aus Websuche** (Suchindex-Zusammenfassungen, Originalseiten gesperrt). 86 % der Tankvolumen Normwerte (gekennzeichnet). Bestand vermutlich unvollständig. |
+| Wachenkoordinaten | GEOBASIS.NRW Gebäudereferenzen (gebref, Stand 01.10.2026) | dl-de/zero-2-0 | 80 exakt, 8 Näherung (gekennzeichnet), 5 ohne Koordinate |
+| Gemarkungen (Gemeindeteile) | ALKIS Grundrissdaten vereinfacht, Rhein-Sieg-Kreis (KatasterBezirk), opengeodata.nrw.de, Stand 09/2026 | dl-de/zero-2-0 | Zuordnung zu Gemeindeteilen teils **Annahme** (siehe docs/assumptions.md) |
+| Bereitschaftszeiten eigene Wehr 25/40 min | Auftraggeber | – | **Vorgabe Auftraggeber, 22.11.2026** |
 | Leaflet 1.9.4 | npm-Paket, lokal | BSD-2-Clause (`vendor/leaflet/LICENSE`) | eingebunden |
 
 ### Fahrzeugdaten (`data/fahrzeuge.json`)
@@ -98,12 +126,15 @@ Reines HTML/CSS/JavaScript ohne Build-Schritt, Leaflet 1.9.4 lokal unter `vendor
 - Die Website `www.ffnkse.de` war in der Erstellungsumgebung **direkt nicht abrufbar** (Netzwerkrichtlinie). Die Angaben stammen aus dem **Suchindex-Auszug** der Seiten `/departments/lz-nk`, `/departments/lz-se` und `/info/car-details?id=se-lfkats`. Sie müssen gegen die Originalseiten geprüft werden.
 - Von der Website: Löschzug Neunkirchen (LZ1, Sankt-Franziskus-Weg 3, 53819): HLF 20, LF 20, GW-G (2016), ELW 1, MTF (+ MTF der Kinderfeuerwehr, nicht aufgenommen). Löschzug Seelscheid (LZ2, Hausener Straße 2, 53819): HLF 20, LF 20, LF KatS (2024, 1.000 l Tank, 2.000 l/min Pumpe), DLK 23-12 (2018), KEF, MTF.
 - **Annahme: Normwert**: Tank und Pumpe von HLF 20 (1.600 l, FPN 10-2000) und LF 20 (2.000 l, FPN 10-2000) als Mindestwerte der Normtypen; Fahrzeuge ohne Löschwasser (GW-G, ELW 1, MTF, DLK) mit 0. KEF: **Offen**.
-- **Offen**: Funkrufnamen, Maße, Gewichte, Geländegängigkeit, Besatzung, Schlauchmaterial. Wachen-Koordinaten: „Offen: Koordinate prüfen“ (Geokodierung nicht möglich; im Browser per Knopf nachholbar, Ergebnis wird als „zu prüfen“ markiert).
+- **Offen**: Funkrufnamen, Maße, Gewichte, Besatzung, Schlauchmaterial. Geländegängigkeit nur teilweise (Feld `gelaendegaengig`).
+- **Ab 0.4.0** zusammengeführt mit der Kreis-Recherche (`tools/merge-fahrzeuge-rsk.py`): wasserführende NKS-Fahrzeuge aus der Recherche (ids unverändert; se-hlf20 jetzt 2.000 l laut Gemeinde-Pressemitteilung 06.06.2019), Nicht-Löschfahrzeuge NKS (ELW, MTF, DLK, GW-G, KEF) aus der bisherigen Datei behalten. Wachenkoordinaten NK/SE aus GEOBASIS.NRW-Gebäudereferenzen (NK: Näherung Hausnummer 2 statt 3, Neubau noch nicht im Kataster). Koordinaten lassen sich in der Ansicht „Fahrzeuge“ manuell eintragen. Waldbrand-TLF Königswinter (Land NRW, erwartet 2027): `verfuegbar: false`, wird nicht eingeplant.
 
 ## Modellgrenzen
 
-- **Nicht modelliert**: Funkenflug/Spotting (Barrieren stoppen das Feuer vollständig, optimistisch), Windsprünge, lokale Windkanalisierung, Hang-/Talwinde, Tag-Nacht-Effekte, Brandbekämpfungswirkung, Kronenfeuer und Übergänge, Rauch.
-- **Hangneigung vereinfacht** (DGM1 NRW, 25 m): je Rasterkante Steigung = Höhendifferenz / Kantenlänge; bergauf Zuschlag R0 · 5,275 · β^−0,3 · tan² (Rothermel 1972) **addiert** zur Wind-Ellipsenrate, Steigung begrenzt auf tan 0,7 (≈ 35°, Annahme); bergab keine Verlangsamung (konservativ). Keine vektorielle Kombination von Wind und Hang (effektiver Windvektor nach Rothermel/Albini: Phase 2), keine Hang-/Talwinde. Das DGM deckt nur Neunkirchen-Seelscheid + 5 km ab; außerhalb wird eben gerechnet (Warnung). Ohne DGM-Datei rechnet die App wie bisher ohne Hang und zeigt „Hangneigung nicht berücksichtigt“.
+- **Nicht modelliert**: Funkenflug/Spotting (Barrieren stoppen das Feuer vollständig, optimistisch), Windsprünge/Böen, Brandbekämpfungswirkung, Kronenfeuer und Übergänge, Rauch.
+- **Geländewind nur vereinfacht** (diagnostische Korrektur, kein Strömungsmodell): **kein massenkonsistentes Windfeld** (WindNinja o. ä. wäre eine Option für Phase 3), **keine Wirbel und Leewalzen**, **keine feuerinduzierten Winde**, **keine Inversionen/Kaltluftseen**, Talwind nicht getrennt von Hangwind, Einstrahlung wolkenlos angenommen. Alle Gewichte und Grenzen sind Annahmen.
+- **Föhn wird nicht modelliert und ist hier nicht relevant**: Echter Föhn (warmer, trockener Fallwind nach Überströmen eines Gebirges) tritt im Bergischen Land / Rhein-Sieg-Kreis nicht in nennenswerter Form auf; föhnartige Effekte am Mittelgebirgsrand sind möglich, aber nicht abgebildet.
+- **Hangneigung vereinfacht** (DGM1 NRW, 25 m): je Rasterkante Steigung = Höhendifferenz / Kantenlänge; bergauf Zuschlag R0 · 5,275 · β^−0,3 · tan² (Rothermel 1972) **addiert** zur Wind-Ellipsenrate, Steigung begrenzt auf tan 0,7 (≈ 35°, Annahme); bergab keine Verlangsamung (konservativ). Keine vektorielle Kombination von Wind und Hang (effektiver Windvektor nach Rothermel/Albini: Phase 2); Hang-/Talwinde nur vereinfacht über den Geländewind (siehe unten). Das DGM deckt nur Neunkirchen-Seelscheid + 5 km ab; außerhalb wird eben gerechnet (Warnung). Ohne DGM-Datei rechnet die App wie bisher ohne Hang und zeigt „Hangneigung nicht berücksichtigt“.
 - **Rothermel vereinfacht**: Gewichtung nur über Oberflächenanteile (keine Größenklassen-Gewichtung nach Albini 1976b), Windbegrenzung nach Rothermel 1972. Gleichungen aus der Literatur übertragen, nicht aus einer geprüften Bibliothek. Plausibilitätsabgleich: Für die Anderson-Modelle 1, 2, 3, 8, 9, 10 liegen die Raten bei 8 % Feuchte und 5 mi/h innerhalb ±10 % der Anderson-Tabellenwerte, FM5 ca. −20 %. Die Referenzwerte selbst sind ebenfalls aus Literaturkenntnis übernommen und gegen die Primärquelle **zu prüfen**.
 - **Brennstoffzuordnung** OSM → Anderson-13 (Nadelwald FM10, Laubwald FM9, Mischwald FM8, Grünland/Acker FM1, Gebüsch/Heide FM5, Siedlung/Wasser nicht brennbar) ist eine **Annahme** und muss mit Forst (z. B. Wald und Holz NRW) abgestimmt werden. Nordamerikanische Modelle sind nur begrenzt übertragbar.
 - **Brennstofffeuchte**: Gleichgewichtsfeuchte nach Simard (1968) + Regenzuschlag (Annahme). Lebendfeuchte fest 90/120 %.
@@ -111,17 +142,21 @@ Reines HTML/CSS/JavaScript ohne Build-Schritt, Leaflet 1.9.4 lokal unter `vendor
 - **Projektion**: lokale äquidistante Näherung statt EPSG:25832 (Fehler im 10-km-Gebiet < 0,1 %).
 - **Raster** 25 m, Gebiet 10 × 10 km um den Brandschwerpunkt. Wege schmaler als eine Zelle werden nicht als Barriere gerechnet (konservativ), Straßen ab „residential“ und Flüsse schon (optimistisch).
 - **Ensemble**: 24 Läufe, Windrichtung ±25°, Windstärke ×0,75–1,35, Tote-Brennstoff-Feuchte ±2 %-Punkte, gleichverteilt; „wahrscheinlich“ ≥ 50 %, „möglich“ ≥ 10 % der Läufe.
-- **Vorschläge**: Riegel nur, wenn zum Prüfzeitpunkt (Anfahrt 30 + Aufbau 45 + Mindest-Wirkzeit 30 = 105 min) vollständig außerhalb der „möglich“-Zone (≥ 50 m Abstand), quer (≥ 45°) und vor der Front; Bewertung heuristisch (Barrieretyp, Vorlauf, Länge, Schutzwirkung, Lage, Abdeckung der Frontbreite). Fahrzeugstandorte: „möglich“-Front frühestens 60 min nach Bereitschaft, kein Lauf vor der Bereitschaft, ≥ 100 m vom 1-h-Bereich. Anfahrt ist eine **pauschale Annahme** (kein Routing), keine Rückzugswege.
+- **Vorschläge**: Riegel nur, wenn zum Prüfzeitpunkt (früheste Bereitschaft eines Löschfahrzeugs + Mindest-Wirkzeit 30 min; bis 0.3.0 pauschal 30 + 45 + 30 = 105 min) vollständig außerhalb der „möglich“-Zone (≥ 50 m Abstand), quer (≥ 45°) und vor der Front; Bewertung heuristisch (Barrieretyp, Vorlauf, Länge, Schutzwirkung, Lage, Abdeckung der Frontbreite). Fahrzeugstandorte: „möglich“-Front frühestens 60 min nach Bereitschaft, kein Lauf vor der Bereitschaft, ≥ 100 m vom 1-h-Bereich. Anfahrt anderer Kommunen ist eine **entfernungsbasierte Schätzung** (kein Routing), keine Rückzugswege.
 - **Darstellung**: Konturen sind eine Glättung des 25-m-Rasters. Flächenabweichung zur Rasterfläche in den Tests ≤ 3 % für Flächen ab 100 Zellen (6,25 ha); bei sehr kleinen Flächen (wenige Zellen) bis ca. 35 %, dann zeigt die Legende einen Hinweis (Rasteransicht prüfen).
 
 Alle Annahmen mit Werten: [docs/assumptions.md](docs/assumptions.md).
 
+## Gemeindeteile Neunkirchen / Seelscheid (Befund)
+
+Die Grenze der früheren Gemeinden Neunkirchen und Seelscheid (Zusammenschluss 1969) ist in den offenen Daten nicht enthalten. Die Gemeinde hat laut ALKIS **5 Gemarkungen: Eischeid, Herkenrath, Seelscheid, Söntgerath, Wolperath** – eine Gemarkung „Neunkirchen“ gibt es nicht. Zuordnung in `data/gemeindeteile.json`: Seelscheid → Seelscheid (Name; Gerätehaus SE liegt darin, belegt), Wolperath → Neunkirchen (Gerätehaus NK liegt darin; abgeleitet, zu prüfen), Eischeid und Herkenrath → Neunkirchen, Söntgerath → Seelscheid (**Annahme**: näheres Gerätehaus). Außerhalb des Gemeindegebiets: beide Löschzüge entfernungsbasiert + Aufbau, mindestens 25 min (Annahme); Gemeindeteil unbekannt: 40 min für beide (Annahme). Manuelle Wahl im UI überschreibt und wird protokolliert.
+
 ## Nicht umgesetzt
 
-- Routing und echte Anfahrtszeiten (OSRM/Valhalla/GraphHopper), fahrzeugtypabhängige Wegeinschränkungen. Pendelverkehr nur grob über Luftlinie × 1,3 und angenommene 25 km/h.
+- Routing und echte Anfahrtszeiten (OSRM/Valhalla/GraphHopper), fahrzeugtypabhängige Wegeinschränkungen. Anfahrt nur entfernungsbasiert geschätzt. Pendelverkehr nur grob über Luftlinie × 1,3 und angenommene 25 km/h.
 - Vollständige Wasserversorgungslogik (Entnahmemengen, Schlauchlängen nach Höhenprofil, Verstärkerpumpen). Umgesetzt sind nur: OSM-Entnahmestellen „nicht verifiziert“, manuelles Hinzufügen/Verifizieren/Löschen, nächstgelegene Stelle je Fahrzeug mit grober Abschätzung.
 - Offline/PWA (Service Worker, Kachel-Cache, vorab gepacktes Datenpaket). Vorbereitet: keine CDN-Abhängigkeit, Rechnung clientseitig, letzte Wetterdaten im lokalen Speicher, Geländemodell und Schummerung als lokale Datei (`data/dgm25.*`).
-- ATKIS/Forstdaten, CORINE. Vektorielle Wind-Hang-Kombination, Exposition als Feuchteeinfluss.
+- ATKIS/Forstdaten, CORINE. Vektorielle Wind-Hang-Kombination. Massenkonsistentes Windfeld (WindNinja, Phase 3).
 - DWD Open Data und DWD-Waldbrandgefahrenindex; automatischer Quellen-Fallback zwischen zwei Wetterquellen.
 - Brandfront als Linie (nur Polygon und Zündpunkt + Radius).
 - Drohnen-/Wärmebildimport, Mehrbenutzer-Synchronisation.
@@ -135,7 +170,7 @@ Alle Annahmen mit Werten: [docs/assumptions.md](docs/assumptions.md).
 1. Rechtliche Freigabe, Haftung und Wortlaut der Warnhinweise (Platzhalter in „Grenzen & Quellen“).
 2. Brennstoffzuordnung: Wer von Forst/Feuerwehr prüft sie (Wald und Holz NRW)? Gibt es Baumarten-/Bestandsdaten?
 3. Fahrzeugliste: Bestätigung der von ffnkse.de übernommenen Daten, echte Tankvolumen/Pumpenleistungen, Funkrufnamen, Maße, Gewichte, Geländegängigkeit, Wachenkoordinaten.
-4. Feuerwehrinterne Sicherheitsabstände und Rückzugsregeln (derzeit Annahmen: Anfahrt 30 min, Aufbau Riegel 45 min, Mindest-Wirkzeit 30 min, Fahrzeugpuffer 60 min, Abstände 50/100 m, 300 m Linienabschnitt je Fahrzeug).
+4. Feuerwehrinterne Sicherheitsabstände und Rückzugsregeln (derzeit Annahmen: Anfahrt fremder Kommunen geschätzt (Umweg 1,4, 50 km/h, 7 min Ausrücken), Aufbau Riegel 45 min, Mindest-Wirkzeit 30 min, Fahrzeugpuffer 60 min, Abstände 50/100 m, 300 m Linienabschnitt je Fahrzeug).
 5. Hydrantenplan/Löschwasserkonzept, Teich-/Zisternenverzeichnis nutzbar?
 6. Nutzungsbedingungen Open-Meteo und Overpass für den Einsatz; Betrieb eigener Instanzen? Geobasis-NRW-Dienste: URLs/Layer sind geprüft; Lizenzbedingungen der DTK (Geobasis-NRW-PDF) und Lizenzangabe des DGM1-Katalogeintrags bestätigen.
 7. Google Maps gewünscht? Wer trägt Key und Kosten?
@@ -143,3 +178,6 @@ Alle Annahmen mit Werten: [docs/assumptions.md](docs/assumptions.md).
 9. Daten historischer Brände zur Validierung.
 10. Aufbewahrung und Zugriffsrechte der Einsatzprotokolle; Datenschutzkonzept; Hosting.
 11. Gebiet nur Gemeinde oder auch Nachbargemeinden/Überlandhilfe?
+12. Zuordnung der Gemarkungen Eischeid, Herkenrath, Söntgerath (und Wolperath) zu den Gemeindeteilen Neunkirchen/Seelscheid für die 25/40-min-Vorgabe bestätigen.
+13. Geländewind: Sind Faktorbereich 0,5–1,4, Hangwindstärken und Feuchtekorrektur fachlich vertretbar? Bedarf an einem Strömungsmodell (WindNinja) in Phase 3?
+14. Kreis-Fahrzeugdaten gegen die Originalquellen bzw. das Leitstellen-Einsatzleitsystem prüfen.

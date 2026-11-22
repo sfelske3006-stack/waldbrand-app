@@ -15,11 +15,18 @@
 | Backend | keines | Wetter-Proxy, Vorverarbeitung | Ziel Betrieb ohne Backend. Für Produktion: Overpass-/Kachel-Vorverarbeitung als Datenpaket. |
 | Protokoll | localStorage, SHA-256-Hash-Kette | IndexedDB, serverseitige revisionssichere Ablage | Einfach, manipulationserkennend; Aufbewahrung offen. |
 
+| Geländewind (0.4.0) | diagnostische Korrektur je Zelle (Sx, TPI, Luvhang, Talachse, Hangwind) auf geglätteten Feldern, lazy je Stunde in `travelTimeTerrain` | WindNinja (massenkonsistent), CFD | offline im Browser, Sekunden statt Minuten; aus = alter Pfad unverändert (bitgenau). Strömungsmodell als Phase-3-Option. |
+| Anfahrt (0.4.0) | Luftlinie × Umwegfaktor ÷ Geschwindigkeit + Ausrückzeit; eigene Wehr nach Vorgabe 25/40 min | Routing (OSRM/Valhalla) | keine Server-/Netzabhängigkeit; Routing für Phase 2. |
+| Auslieferung (0.4.0) | kleiner Loader in `index.html` (`WB_VERSION`, `WB_JS`, `WB_CSS`) mit `?v=<Version>`, nur relative Pfade | Build-Schritt mit Hash-Dateinamen | kein Build nötig; läuft unter GitHub-Pages-Unterpfad. |
+
 ## Schnittstellen (austauschbar)
 
 - **Modell**: `FireModel.runEnsemble({grid, classList, ignition, weatherHours, horizonsH, P, runs, seed}, onProgress)` → `{counts[h], earliest, reference, refInfo, perturbations, tPossible, tLikely, quantileRuns}`. `tPossible[k]`/`tLikely[k]` = Zeit (min), ab der ≥ 10 % bzw. ≥ 50 % der Läufe die Zelle erreicht haben (m-te kleinste Ankunftszeit); exakt konsistent mit `counts`. Ein anderes Modell muss mindestens `counts`, `earliest`, `reference` liefern; ohne `tPossible`/`tLikely` werden grobe Zeitfelder aus den Horizont-Zählern abgeleitet.
 - **Anzeige**: `Contour.displayLayers(nx, ny, result, P, {mode: "kontur"|"raster", ignition})` → je Horizont Ringe (Zelleinheiten) für „wahrscheinlich“, „möglich“, Referenz und Flächenstatistik.
-- **Vorschläge**: `Suggest.compute(...)` → `{lines, vehicles, notes, stageInfo, lineInfo {readyMin, checkMin, found, rejected, reason}, objects, demand}`.
+- **Vorschläge**: `Suggest.compute(g, result, osm, ignition, vehicles, P, mainDir, state, {stations, maxAnfahrtMin, grundschutzOverride, grenzen, teilMode | teil})` → `{lines, vehicles (mit anfahrt, readyMin, lateFor, pflicht), notes, alerts, stageInfo, lineInfo {readyMin, readyText, checkMin, second, teil, found, rejected, reason}, objects, demand, ctx, grundschutz, dispatch}`. `Suggest.grundschutz(vehicles, stations, P, plannedIds, override)` separat nutzbar.
+- **Geländewind**: `TerrainWind.prepare(grid, P)` (statische Felder, gecacht), `makeRunField(prep, weatherHours, P, {strength, dDir, windFactor, wind, moisture, lat, lon})` → `setHour(h)`, `cell(i)` → `{spd, ux, uy, dM, fac, thermal}`; `sampleField(...)` für die Anzeige; `solar()`, `sunTimes()`. Im Modell: `runEnsemble({..., terrain: false | {wind, moisture}})`, Ergebnis `terrainWind`.
+- **Anfahrt/Daten**: `Dispatch.estimate(v, stationMap, lat, lon, P)`, `Dispatch.readiness(v, stationMap, lat, lon, setupMin, P, teil)`, `Dispatch.gemeindeteil(lat, lon, grenzen, mode)`, `Dispatch.normalize(json)` (schema 1/2, Synonyme), `filterSort`, `groupByScreen`.
+- **Fahrzeugdaten** (`data/fahrzeuge.json`, schema 2): Kopf `stand, gebiet, hinweis, quellen, kommunen[], kreisweit[]`; `wachen[] {id, name, kommune, einheit?, adresse, lat, lon, koordinate_status, koordinate_genau, typ (FF/BF), ausrueckzeit_min?}`; `fahrzeuge[] {id, typ, bezeichnung, kommune, einheit, wache, lat?/lon?, tank_l, tank_quelle, pumpe_lpm, loeschfahrzeug, verfuegbar, pflicht?, quelle, quelle_typ, zugriff, annahmen[], gelaendegaengig}`. Import akzeptiert zusätzlich `vehicles/stations`, `fahrzeugtyp`, `gemeinde`, `latitude/longitude` u. a.
 - **Wetter**: Objekt `{source, kind, fetchedAt, rows[{t, tempC, rh, precipMm, windKmh, windDirDeg, gustKmh}]}`. Weitere Quellen (DWD) liefern dieselbe Struktur.
 - **Basiskarte**: Leaflet-Ebenen in `app.js`; Google nur als zusätzliche Anzeige-Ebene bei Key in `config.js`.
 - **Daten**: `Osm.applyOsm(grid, overpassJson, P)` → Brennstoffraster + Objekte + Kandidaten. Ein vorab erzeugtes Datenpaket kann dasselbe Format liefern.
@@ -31,6 +38,8 @@
 Polygon → Rechenraster (10 × 10 km, 25 m) → Höhe je Zelle aus DGM (falls geladen) → Brennstoff (OSM oder Ersatz) → Wetter je Stunde (+ Überschreibungen, Szenario) → Raten je Stunde/Klasse/Richtung (+ R0 und Hangkoeffizient je Klasse) → Hangzuschlag je Kante in der Minimum-Travel-Time → Referenzlauf + Ensemble (Zähler je Horizont, Zeitfelder „möglich“/„wahrscheinlich“) → Kennzahlen, Erreichzeiten → Vorschläge (Prüfzeitpunkt Bereitschaft + Wirkzeit) → Anzeige (Konturen oder Rasterumrisse) → Karte, Protokoll, Export.
 
 ## Laufzeit (gemessen im Test, Chromium in der Sandbox)
+
+0.4.0 mit Geländewind (Node, 24 + 1 Läufe, 400 × 400 Zellen, hügeliges Gelände): 0,5–1,1 s (ohne Geländewind 0,13–0,42 s); Vorbereitung der Geländefelder ca. 70–90 ms je Raster. Im Browser-E2E ca. 0,7–0,8 s je Prognose.
 
 Standardszenario (24 Läufe + Referenz, 400 × 400 Zellen, 6 h): unter 1 s bei langsamer Waldausbreitung. Bei schnellem Grasfeuer mit starkem Wind wächst die Rechenzeit mit der erreichten Fläche; Ziel < 30 s, auf Tablets **zu prüfen**.
 
