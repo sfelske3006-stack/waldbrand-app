@@ -47,6 +47,8 @@ button, select, input, textarea { font: inherit; color: inherit; }
   border-bottom: 3px solid var(--warn-ink);
 }
 .hdr-status { font-weight: 600; }
+.testbadge { background: #b3261e; color: #fff; font-weight: 800; padding: 2px 8px; border-radius: 4px; letter-spacing: .02em; white-space: nowrap; }
+.hdr-version { font-weight: 700; white-space: nowrap; font-variant-numeric: tabular-nums; }
 
 .layout { flex: 1; display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, 440px); min-height: 0; }
 .mapwrap { position: relative; min-height: 0; }
@@ -194,6 +196,29 @@ td.num, th.num { text-align: right; }
 .line-label { background: #6a1b9a; color: #fff; border: 2px solid #fff; border-radius: 4px; padding: 1px 6px; font-weight: 800; white-space: nowrap; }
 .gps-marker { width: 22px; height: 22px; border-radius: 50%; background: #1e88e5; border: 4px solid #fff; box-shadow: 0 0 0 2px #000; }
 
+/* Geländewind */
+.tw-box { border: 1px solid var(--line); border-radius: 6px; padding: 8px 10px; display: grid; gap: 8px; margin: 0; min-width: 0; }
+.tw-box legend { font-weight: 700; padding: 0 4px; }
+.lg-wind { border-top: 1px solid var(--line); padding-top: 4px; display: grid; gap: 3px; }
+.lg-scale { flex-wrap: wrap; gap: 4px 6px; }
+.wa { width: 18px; height: 6px; display: inline-block; border: 1.5px solid #000; border-radius: 2px; }
+.wa1 { background: #2b6fd6; } .wa2 { background: #9cc7ff; } .wa3 { background: #ffffff; } .wa4 { background: #7cf2a0; } .wa5 { background: #10a85a; }
+.leaflet-twind-pane path { pointer-events: none; }
+
+/* Fahrzeugliste: Filter */
+.vehfilter { display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; align-items: end; }
+.vehfilter label { display: grid; gap: 4px; font-size: 14px; font-weight: 600; }
+.vehfilter label.check { display: flex; }
+.anf { white-space: nowrap; }
+.flag.late { color: var(--alert); }
+.st-coord { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+.st-coord input { width: 120px; min-height: 44px; }
+.badge.gsb { background: #8a4b00; color: #fff; }
+.sug.gsbox { border-color: #8a4b00; }
+.gs-marker { display: inline-block; margin-left: 4px; background: #ffd84d; color: #1a1400; border: 2px solid #1a1400; border-radius: 4px; padding: 2px 6px; font-weight: 800; font-size: 12px; white-space: nowrap; }
+.alert-msg { font-size: 15px; }
+.st-group { background: #7a0a0a; color: #fff; border: 3px solid #fff; box-shadow: 0 0 0 2px #000; border-radius: 14px; padding: 3px 9px; font-weight: 800; font-size: 13px; white-space: nowrap; }
+
 @media print {
   .maptools, .tabs, .btnrow, #sec-szenario, .legend { display: none !important; }
   .layout { display: block; }
@@ -207,3 +232,4 @@ td.num, th.num { text-align: right; }
   .legend { font-size: 11px; padding: 6px; bottom: 22px; right: 8px; }
   .layout { grid-template-rows: 64vh auto; }
 }
+.ready-label.r2 { border-style: dotted; opacity: .9; font-size: 11px; }

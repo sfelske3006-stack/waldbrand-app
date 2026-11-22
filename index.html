@@ -4,12 +4,23 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Waldbrand-Lagebild NKS</title>
-<!--LEAFLET-CSS--><link rel="stylesheet" href="vendor/leaflet/leaflet.css">
-<link rel="stylesheet" href="css/app.css">
+<!--WB-LOADER-->
+<script>
+  // Zentrale Version und Dateiliste (Cache-Busting). Alle Pfade RELATIV (läuft auch unter einem Unterpfad,
+  // z. B. GitHub Pages /waldbrand-app/). WB_VERSION muss PARAMS.version entsprechen (Test prüft das).
+  window.WB_VERSION = "0.4.0-prototyp";
+  window.WB_ASSET = function (p) { return p + (p.indexOf("?") < 0 ? "?" : "&") + "v=" + encodeURIComponent(window.WB_VERSION); };
+  window.WB_CSS = ["vendor/leaflet/leaflet.css", "css/app.css"];
+  window.WB_JS = ["vendor/leaflet/leaflet.js", "config.js", "js/params.js", "js/grid.js", "js/dem.js", "js/terrain.js", "js/model.js", "js/contour.js", "js/weather.js", "js/osm.js", "js/dispatch.js", "js/suggest.js", "js/protocol.js", "js/app.js"];
+  for (var i = 0; i < window.WB_CSS.length; i++) document.write('<link rel="stylesheet" href="' + window.WB_ASSET(window.WB_CSS[i]) + '">');
+</script>
+<!--/WB-LOADER-->
 </head>
 <body>
 <div id="app">
   <header class="warnbar" role="note" aria-label="Pflichthinweis">
+    <span class="testbadge" id="hdr-test">TESTVERSION – nicht für den Einsatz</span>
+    <span class="hdr-version" id="hdr-version">Version <script>document.write(window.WB_VERSION)</script></span>
     <strong>Modellprognose, unvalidiert. Keine Handlungsanweisung. Entscheidung und Verantwortung liegen bei der Einsatzleitung.</strong>
     <span id="hdr-status" class="hdr-status"></span>
   </header>
@@ -39,6 +50,12 @@
         <div class="lg-row"><span class="sw sw-ready"></span><span>„möglich“ bei Einsatzbereitschaft + Wirkzeit (Grenze für Riegel)</span></div>
         <div class="lg-row lg-h"><span class="hz hz1">1 h</span><span class="hz hz2">2 h</span><span class="hz hz4">4 h</span><span class="hz hz6">6 h</span></div>
         <div class="lg-note" id="lg-note">Konturen: geglättete Darstellung des 25-m-Rasters.</div>
+        <div class="lg-wind" id="lg-wind" hidden>
+          <div class="lg-title">Geländewind <span id="lg-wind-hour"></span></div>
+          <div class="lg-row lg-scale"><span class="wa wa1"></span>&lt; 0,75<span class="wa wa2"></span>0,75–0,95<span class="wa wa3"></span>0,95–1,05</div>
+          <div class="lg-row lg-scale"><span class="wa wa4"></span>1,05–1,2<span class="wa wa5"></span>&gt; 1,2</div>
+          <div class="lg-note">Pfeil = lokale Windrichtung, Farbe = Faktor lokal/synoptisch (10 m), vereinfachte Geländekorrektur, kein Strömungsmodell.</div>
+        </div>
       </div>
     </section>
 
@@ -99,6 +116,17 @@
           <p class="muted small">Brennstoffzuordnung: Annahme, nicht mit Forst abgestimmt.</p>
           <label class="check"><input type="checkbox" id="chk-fuelmap"> Brennstoffkarte anzeigen</label>
           <label class="check"><input type="checkbox" id="chk-shade" disabled> Geländeschummerung anzeigen (DGM, offline)</label>
+          <fieldset class="tw-box" id="tw-box">
+            <legend>Geländewind (vereinfacht, Annahme)</legend>
+            <label class="check"><input type="checkbox" id="chk-twind" checked> Geländewind: an/aus (Windfeld aus DGM: Exposition, Täler, Hang-/Talwind)</label>
+            <label class="check"><input type="checkbox" id="chk-tmoist" checked> Feuchte nach Exposition (Südhang trockener, Nordhang feuchter)</label>
+            <div class="row">
+              <label class="check"><input type="checkbox" id="chk-twlayer"> Ebene „Geländewind“ anzeigen</label>
+              <label for="sel-twhour" class="small">Stunde</label>
+              <select id="sel-twhour" aria-label="Stunde der Windanzeige"><option value="0">+0 h</option><option value="1">+1 h</option><option value="2">+2 h</option><option value="3">+3 h</option><option value="4">+4 h</option><option value="5">+5 h</option><option value="6">+6 h</option></select>
+            </div>
+            <p class="muted small" id="tw-status">Wirkt nur mit Geländemodell. Aus = Rechnung wie Version 0.3.0. Kein massenkonsistentes Windfeld, kein Föhn (siehe Grenzen).</p>
+          </fieldset>
         </section>
 
         <section class="card" id="sec-prognose">
@@ -125,6 +153,11 @@
         <section class="card" id="sec-vorschlaege">
           <h2><span class="step">5</span> Einsatzvorschläge</h2>
           <p class="muted small">Vorschläge sind keine Anordnung. Jedes Element lässt sich auf der Karte verschieben, sperren oder verwerfen. Danach „Vorschläge neu berechnen“.</p>
+          <div class="row">
+            <label for="sel-teil">Einsatzort im Gemeindeteil</label>
+            <select id="sel-teil"><option value="auto">automatisch (Gemarkung)</option><option value="Neunkirchen">Neunkirchen</option><option value="Seelscheid">Seelscheid</option></select>
+          </div>
+          <p id="teil-status" class="muted small">Bereitschaft der eigenen Löschzüge (Vorgabe Auftraggeber): gleicher Gemeindeteil 25 min, anderer 40 min nach Alarm.</p>
           <button id="btn-resuggest" class="btn" type="button" disabled>Vorschläge neu berechnen</button>
           <div id="sug-diff" class="status"></div>
           <div id="suggestions"></div>
@@ -141,8 +174,24 @@
             <button id="btn-veh-reset" class="btn" type="button">Mitgelieferte Liste laden</button>
           </div>
           <div id="veh-errors" class="status"></div>
+          <div class="vehfilter" role="group" aria-label="Fahrzeugliste filtern und sortieren">
+            <label>Kommune<select id="vf-kommune"><option value="">alle</option></select></label>
+            <label>Typ<select id="vf-typ"><option value="">alle</option></select></label>
+            <label>Sortierung<select id="vf-sort"><option value="anfahrt">Anfahrtszeit</option><option value="kommune">Kommune / Wache</option><option value="typ">Typ</option><option value="liste">Listenreihenfolge</option></select></label>
+            <label class="check"><input type="checkbox" id="vf-avail"> nur verfügbare</label>
+          </div>
+          <div class="row">
+            <label for="inp-maxanf">Nur Fahrzeuge bis</label>
+            <input id="inp-maxanf" type="number" inputmode="numeric" min="5" max="240" step="5" style="width:90px">
+            <span>min Anfahrt einplanen (geschätzt, kein Routing)</span>
+          </div>
+          <p id="veh-count" class="muted small"></p>
           <div class="tablewrap"><table id="veh-table" class="data"></table></div>
           <p class="muted small">Admin-Schutz für die Stammdatenpflege ist im Prototyp nicht umgesetzt (offen). Änderungen bleiben nur auf diesem Gerät.</p>
+        </section>
+        <section class="card">
+          <h2>Grundschutz Gerätehäuser</h2>
+          <div id="gs-panel"></div>
         </section>
         <section class="card">
           <h2>Wachen / Gerätehäuser</h2>
@@ -209,17 +258,8 @@
   </div>
 </div>
 
-<!--LEAFLET-JS--><script src="vendor/leaflet/leaflet.js"></script>
-<script src="config.js"></script>
-<script src="js/params.js"></script>
-<script src="js/grid.js"></script>
-<script src="js/dem.js"></script>
-<script src="js/model.js"></script>
-<script src="js/contour.js"></script>
-<script src="js/weather.js"></script>
-<script src="js/osm.js"></script>
-<script src="js/suggest.js"></script>
-<script src="js/protocol.js"></script>
-<script src="js/app.js"></script>
+<!--WB-SCRIPTS-->
+<script>for (var k = 0; k < window.WB_JS.length; k++) document.write('<script src="' + window.WB_ASSET(window.WB_JS[k]) + '"><\/script>');</script>
+<noscript><p style="padding:16px">Diese Anwendung benötigt JavaScript.</p></noscript>
 </body>
 </html>

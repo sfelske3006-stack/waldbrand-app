@@ -11,6 +11,8 @@
   const CLASS_LIST = Object.keys(P.fuelClasses);
   const HZ_COLORS = [[122, 10, 10], [192, 40, 28], [227, 116, 27], [232, 185, 35]];
   const CENTER = [50.858, 7.335]; // Annahme: grober Mittelpunkt Neunkirchen-Seelscheid (nur Kartenstart)
+  // Cache-Busting: eigene Datendateien mit ?v=<Version> laden (index.html definiert WB_ASSET); Pfade relativ
+  const asset = (p) => (typeof window.WB_ASSET === "function" ? window.WB_ASSET(p) : p);
 
   const store = {
     get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch { return d; } },
@@ -34,19 +36,26 @@
     manualWater: store.get("wb_water_manual", []), waterEdits: store.get("wb_water_edits", {}),
     tileErrors: 0,
     dem: null, demError: null, demPromise: null, shadeBuilt: false,
+    tw: Object.assign({ wind: P.terrain.wind.enabled, moisture: P.terrain.moisture.enabled }, store.get("wb_tw", {})),
+    twLayer: store.get("wb_twlayer", false), twHour: 0,
+    maxAnf: store.get("wb_maxanf", P.anfahrt.maxAnfahrtMin),
+    gsOverride: store.get("wb_gs_override", {}),
+    teilMode: store.get("wb_teil", "auto"), grenzen: null,
+    vf: Object.assign({ kommune: "", typ: "", sort: "anfahrt", onlyAvail: false }, store.get("wb_vf", {})),
   };
 
   // ---------------------------------------------------------------- Texte
   const LIMITS_HTML = `<ul>
     <li><b>Kein Funkenflug (Spotting)</b>: Sprünge über Wege, Straßen und Gewässer werden nicht berechnet. Barrieren stoppen das Feuer im Modell vollständig. Das ist optimistisch.</li>
-    <li><b>Keine Windsprünge, keine lokale Windkanalisierung</b> im Gelände, keine Hang- und Talwinde, keine Tag-Nacht-Effekte.</li>
+    <li><b>Geländewind nur vereinfacht</b> (Schalter „Geländewind“): Windstärke je Zelle mit Faktor 0,5–1,4 aus Abschattung (Winstral-Sx), Kuppen-/Muldenlage (TPI) und Luv-/Leehang; in ausgeprägten Tälern teilweise Drehung zur Talachse; schwacher thermischer Hangwind (tags hangaufwärts, nachts hangabwärts) nur bei schwachem Wind; Südhänge tagsüber etwas trockener, Nordhänge feuchter. Das ist <b>kein Strömungsmodell</b>: kein massenkonsistentes Windfeld (WindNinja o. ä. wäre eine Option für Phase 3), keine Wirbel und Leewalzen, keine feuerinduzierten Winde, keine Inversionen und Kaltluftseen, keine Windsprünge/Böen.</li>
+    <li><b>Föhn wird nicht modelliert.</b> Echter Föhn (Fallwind nach Überströmen eines Gebirges mit Erwärmung und Austrocknung) ist im Bergischen Land/Rhein-Sieg-Kreis nicht relevant; föhnartige Effekte am Mittelgebirgsrand sind möglich, aber nicht abgebildet.</li>
     <li><b>Keine Brandbekämpfungswirkung</b>: Löschmaßnahmen verändern die Prognose nicht.</li>
     <li><b>Kein Kronenfeuer, keine Übergänge Boden-/Kronenfeuer</b>, kein Rauch.</li>
-    <li><b>Hangneigung nur vereinfacht</b>: Mit geladenem Geländemodell (DGM1 NRW, auf 25 m gemittelt) erhält die Ausbreitung bergauf einen Zuschlag nach Rothermel; Wind und Hang werden nur addiert, nicht als Vektoren kombiniert; bergab keine Verlangsamung; keine Hang- und Talwinde. Ohne DGM wird die Hangneigung nicht berücksichtigt (Warnung im Ergebnis).</li>
+    <li><b>Hangneigung nur vereinfacht</b>: Mit geladenem Geländemodell (DGM1 NRW, auf 25 m gemittelt) erhält die Ausbreitung bergauf einen Zuschlag nach Rothermel; Wind und Hang werden nur addiert, nicht als Vektoren kombiniert; bergab keine Verlangsamung; Hang- und Talwinde nur über den vereinfachten Geländewind. Ohne DGM wird die Hangneigung nicht berücksichtigt (Warnung im Ergebnis).</li>
     <li><b>Brennstoffkarte</b> aus OpenStreetMap kann veraltet, unvollständig oder falsch sein. Die Zuordnung zu nordamerikanischen Brennstoffmodellen (Anderson 13) ist eine Annahme und nicht mit Forst/Feuerwehr abgestimmt.</li>
     <li><b>Wetterdaten</b> sind Modell- oder Stationswerte, keine Messung am Brandort.</li>
     <li><b>Vereinfachtes Rothermel-Modell</b> (ohne Größenklassen-Gewichtung), Ellipsenform nach Anderson (1983), Rasterrechnung (25 m). Tote-Brennstoff-Feuchte aus einem einfachen Ansatz (Gleichgewichtsfeuchte + Regenzuschlag). Das Modell ist unvalidiert.</li>
-    <li><b>Vorschläge</b> berücksichtigen keine echten Fahrzeiten (Anfahrt pauschal angenommen), keine Rückzugswege und keine feuerwehrinternen Sicherheitsregeln. Riegel werden nur vorgeschlagen, wenn sie bei Einsatzbereitschaft außerhalb der „möglich“-Zone liegen; sonst erscheint „Keine geeignete Riegelstellung gefunden“.</li>
+    <li><b>Vorschläge</b> berücksichtigen keine echten Fahrzeiten: Die Anfahrt wird aus der Luftlinie Wache–Einsatzstelle × Umwegfaktor ÷ Durchschnittsgeschwindigkeit + Ausrückzeit <b>geschätzt (kein Routing)</b>; Fahrzeuge ohne Wachenkoordinate werden nicht eingeplant. Keine Rückzugswege und keine feuerwehrinternen Sicherheitsregeln. Riegel werden nur vorgeschlagen, wenn sie bei Einsatzbereitschaft außerhalb der „möglich“-Zone liegen; sonst erscheint „Keine geeignete Riegelstellung gefunden“.</li>
   </ul>`;
   const SOURCES_HTML = `<ul>
     <li><b>Luftbild</b>: Geobasis NRW, WMS <code>wms_nw_dop</code>, Layer <code>nw_dop_rgb</code>; Lizenz laut GetCapabilities: Datenlizenz Deutschland – Zero 2.0 (geprüft 21.11.2026).</li>
@@ -54,9 +63,11 @@
     <li><b>Geländemodell</b>: DGM1 NRW (Rasterweite 1 m) von opengeodata.nrw.de, mit <code>tools/build-dgm.py</code> auf ca. 25 m gemittelt (Datei <code>data/dgm25.bin</code>, offline). Geobasis NRW, dl-de/zero-2-0 (Lizenzangabe aus Katalog-Metadaten und WMS-GetCapabilities; im Download-Verzeichnis keine Lizenzdatei). Schummerung online: WMS <code>wms_nw_dgm-schummerung</code>, Layer <code>nw_dgm-schummerung_pan</code>.</li>
     <li><b>OpenStreetMap</b> (Karte, Brennstoff, Wege, Gewässer, Hydranten): © OpenStreetMap-Mitwirkende, ODbL 1.0. Abruf über Overpass API; im Betrieb eigene Instanz verwenden (zu prüfen).</li>
     <li><b>Wetter</b>: Open-Meteo (Modellwerte, Quelle u. a. DWD ICON), Attribution CC BY 4.0; Nutzungsbedingungen für den Einsatz zu prüfen. DWD Open Data: nicht angebunden.</li>
-    <li><b>Fahrzeuge/Wachen</b>: Website der Freiwilligen Feuerwehr Neunkirchen-Seelscheid (ffnkse.de), übernommen aus dem Suchindex; Normwerte als Annahme gekennzeichnet.</li>
+    <li><b>Fahrzeuge/Wachen</b>: Neunkirchen-Seelscheid aus ffnkse.de; übrige Kommunen des Rhein-Sieg-Kreises aus Websuche (Feuerwehr-/Kommunalseiten, bos-fahrzeuge.info, Presse). <b>Ungeprüft, aus Websuche</b> (Originalseiten in der Erstellungsumgebung nicht abrufbar); Quellentyp je Fahrzeug in der Liste; Tankvolumen überwiegend Normwerte (gekennzeichnet). Wachenkoordinaten aus GEOBASIS.NRW-Gebäudereferenzen (dl-de/zero-2-0).</li>
+    <li><b>Gemeindeteile</b>: Gemarkungen aus ALKIS (Geobasis NRW, dl-de/zero-2-0). Eine Gemarkung „Neunkirchen“ gibt es nicht; die Zuordnung der Gemarkungen Eischeid, Herkenrath, Söntgerath zu den Gemeindeteilen ist eine Annahme (näheres Gerätehaus), Wolperath abgeleitet (Gerätehaus Neunkirchen liegt darin). Bereitschaftszeiten 25/40 min: Vorgabe Auftraggeber (22.11.2026).</li>
     <li><b>Google Maps</b>: nur Anzeige, wenn ein API-Key in config.js eingetragen ist. Keine Auswertung der Google-Bilder.</li>
     <li><b>Modell</b>: Rothermel (1972) INT-115; Albini (1976) INT-30; Anderson (1982) INT-122; Anderson (1983) INT-305. Gleichungen aus der Literatur übertragen, Abgleich mit Primärquelle offen.</li>
+    <li><b>Geländewind</b>: Abschattungsmaß Sx nach Winstral, Elder &amp; Davis (2002); Luv-/Leehang angelehnt an MicroMet (Liston &amp; Elder 2006); Sonnenstand nach den NOAA-Formeln „General Solar Position Calculations“. Gewichte, Grenzen, Hangwind- und Feuchtewerte sind eigene Annahmen (zu prüfen).</li>
   </ul>`;
 
   // ---------------------------------------------------------------- Karte
@@ -118,6 +129,13 @@
   layerCtl.addOverlay(sugLayer, "Vorschläge");
   layerCtl.addOverlay(waterLayer, "Wasserentnahmestellen");
   layerCtl.addOverlay(fuelLayer, "Brennstoffkarte");
+  layerCtl.addOverlay(stationLayer, "Wachen");
+  // Geländewind-Pfeile in eigener Ebene über der Prognose
+  map.createPane("twind");
+  map.getPane("twind").style.zIndex = 450;
+  map.getPane("twind").classList.add("leaflet-twind-pane");
+  const twindLayer = L.layerGroup();
+  layerCtl.addOverlay(twindLayer, "Geländewind");
 
   // Schummerung: eigene Ebene unter den Prognose-Overlays
   map.createPane("hillshade");
@@ -360,7 +378,7 @@
       afterDem();
       return;
     }
-    S.demPromise = Dem.load(P.dem.url).then(({ dem, error }) => { S.dem = dem; S.demError = error; afterDem(); });
+    S.demPromise = Dem.load(asset(P.dem.url)).then(({ dem, error }) => { S.dem = dem; S.demError = error; afterDem(); });
   }
   function afterDem() {
     const d = Dem.describe(S.dem);
@@ -448,7 +466,13 @@
       terrain = { hang: true, ...Dem.describe(S.dem), max_tan_hang: P.dem.maxTanSlope, rechengebiet: { hoehe_min_m: +(ts.elevMin ?? 0).toFixed(1), hoehe_max_m: +(ts.elevMax ?? 0).toFixed(1), neigung_mittel_pct: +(100 * (ts.meanTan ?? 0)).toFixed(1), neigung_max_pct: +(100 * (ts.maxTan ?? 0)).toFixed(1), zellen_ohne_hoehe: grid.elevMissing } };
     }
     const ignition = Grid.polygonCells(grid, S.poly);
-    return { grid, ignition, hours, warnings, osmApplied, startTime: now, prep, terrain };
+    // Geländewind (Schalter im UI): nur mit Höhenraster
+    const tw = { wind: !!S.tw.wind, moisture: !!S.tw.moisture };
+    let terrainWind;
+    if (!grid.elev) terrainWind = { aktiv: false, grund: "kein Geländemodell", option: false };
+    else if (!tw.wind && !tw.moisture) terrainWind = { aktiv: false, grund: "ausgeschaltet", option: false };
+    else terrainWind = { aktiv: true, wind: tw.wind, feuchte: tw.moisture, option: tw };
+    return { grid, ignition, hours, warnings, osmApplied, startTime: now, prep, terrain, terrainWind };
   }
 
   async function runForecast(scenario) {
@@ -464,7 +488,7 @@
     setP(0, P.ensemble.runs);
     await new Promise((r) => setTimeout(r, 30));
     const result = await FireModel.runEnsemble({
-      grid: inp.grid, classList: CLASS_LIST, ignition: inp.ignition, weatherHours: inp.hours, P,
+      grid: inp.grid, classList: CLASS_LIST, ignition: inp.ignition, weatherHours: inp.hours, P, terrain: inp.terrainWind.option,
     }, async (d, t) => { setP(d, t); await new Promise((r) => setTimeout(r, 0)); });
     prog.hidden = true;
     const metrics = FireModel.metrics(result, inp.grid, inp.ignition, P);
@@ -482,13 +506,28 @@
       eingang_stunden: inp.hours.map((h) => ({ t: new Date(h.t).toISOString(), wind: h.windKmh, dir: h.windDirDeg, temp: h.tempC, rh: h.rh, rain24: h.rain24 })),
       brennstoff: S.osm ? `OSM (${S.osm.timestamp || "Stand unbekannt"})` : `einheitlich ${selFuel.value}`,
       gelaende: inp.terrain,
-      parameter: { grid: P.grid, ensemble: P.ensemble, waf: P.waf, moisture: P.moisture, dem: { maxTanSlope: P.dem.maxTanSlope } },
+      gelaendewind: twProto(result.terrainWind),
+      parameter: { grid: P.grid, ensemble: P.ensemble, waf: P.waf, moisture: P.moisture, dem: { maxTanSlope: P.dem.maxTanSlope }, terrain: result.terrainWind?.active ? P.terrain : null },
       polygon: S.poly, warnungen: inp.warnings,
       ergebnis: { flaechen: metrics.perH, hauptrichtung: metrics.mainDirDeg, spitzenrate_m_min: metrics.peakRosMMin, erreichbarkeit: reach },
       rechenzeit_ms: result.durationMs,
     });
     refreshProtocol();
     return run;
+  }
+
+  function twProto(t) {
+    if (!t || !t.active) return { aktiv: false, grund: t ? t.reason : "unbekannt" };
+    return { aktiv: true, wind: t.wind, feuchte_exposition: t.moisture, staerke_ensemble: t.strengthRange, stunden_mit_hangwind: t.thermalHours, tageszeit_bekannt: t.timeKnown, stunden: t.hours };
+  }
+  function twText(run) {
+    const t = run.result.terrainWind;
+    if (!t || !t.active) return `<b>aus</b>${t && t.reason ? ` (${esc(t.reason)})` : ""} – einheitlicher Wind wie Version 0.3.0`;
+    const parts = [];
+    if (t.wind) parts.push("Windfeld aus DGM (Exposition/Abschattung, Talkanalisierung" + (t.thermalHours ? `, Hangwind in ${t.thermalHours} von ${t.hours.length} h` : ", kein Hangwind: Wind zu stark") + ")");
+    if (t.moisture) parts.push("Feuchte nach Exposition");
+    const sun = run.grid && run.hours[0] && Number.isFinite(run.hours[0].t) ? TerrainWind.sunTimes(run.hours[0].t, run.grid.proj.lat0, run.grid.proj.lon0) : null;
+    return `<b>aktiv</b> – ${parts.join(", ")}; Stärke im Ensemble ×${t.strengthRange.map((v) => fmtNum(v, 1)).join("–")}${sun ? `; Sonnenaufgang/-untergang (berechnet) ${fmtHour(sun.sunrise)} / ${fmtHour(sun.sunset)}` : ""}. Vereinfachte Annahme, kein Strömungsmodell, kein Föhn.`;
   }
 
   $("btn-run").onclick = async () => {
@@ -501,6 +540,8 @@
       renderOverlay(run); renderResults(run);
       computeSuggestions(false);
       renderFuel();
+      renderTwind();
+      renderVehicles();
     } catch (e) {
       $("run-errors").innerHTML = msg("err", `Fehler bei der Berechnung: ${esc(e.message)}`);
       console.error(e);
@@ -656,6 +697,7 @@
       <div>Modell: <b>${esc(P.modelName)}</b>, Version ${esc(P.version)}, ${run.result.runs} Ensemble-Läufe + Referenzlauf, Raster ${P.grid.cellM} m, ${fmtNum(run.result.durationMs / 1000, 1)} s</div>
       <div>Wetter: <b>${esc(wx ? wx.source : "nur manuelle Eingabe")}</b>${wx ? `, abgerufen ${fmtTime(wx.fetchedAt)}, Alter bei Rechnung ${fmtNum(Weather.ageHours(wx, run.startTime) * 60, 0)} min` : ""}${ov.length ? `; manuell überschrieben: ${ov.map(labelOf).join(", ")}` : ""}</div>
       <div>Brennstoff: <b>${S.osm ? `OSM, Datenstand ${esc(S.osm.timestamp || "unbekannt")}` : `einheitlich ${esc(P.fuelClasses[selFuel.value].label)}`}</b> (Zuordnung: Annahme)</div>
+      <div>Geländewind: ${twText(run)}</div>
       <div>Gelände: ${run.terrain && run.terrain.hang ? `<b>DGM1 NRW</b> (${esc(run.terrain.attribution)}), Stand ${esc(run.terrain.stand)}, auf ca. 25 m gemittelt; Hangzuschlag bergauf nach Rothermel, vereinfacht (max. Neigung ${fmtNum(P.dem.maxTanSlope * 100, 0)} %)` : `<b>kein Geländemodell</b> – Hangneigung nicht berücksichtigt`}</div>
       ${run.scenario ? `<div>Szenario B: ${esc(scenarioText(run.scenario))}</div>` : ""}
       ${run.display ? `<div>Kartendarstellung: <b>${run.display.mode === "raster" ? "Raster 25 m (ungeglättet)" : "Konturen"}</b>${run.display.mode === "raster" ? "" : ` – Glättung des 25-m-Rasters (Marching Squares + Chaikin), Flächenabweichung zur Rasterfläche max. ${fmtNum(run.display.maxAreaDevPct, 1)} %; Kennzahlen unten beruhen immer auf dem Raster`}. Umschalten in der Legende.</div>` : ""}
@@ -717,8 +759,8 @@
       <tr><td>Hauptrichtung</td><td class="num">${A.metrics.mainDirDeg === null ? "–" : Math.round(A.metrics.mainDirDeg) + "° " + compass(A.metrics.mainDirDeg)}</td><td class="num">${B.metrics.mainDirDeg === null ? "–" : Math.round(B.metrics.mainDirDeg) + "° " + compass(B.metrics.mainDirDeg)}</td></tr>
       ${reachCmp("wohnbebauung", "Bebauung")}</tbody></table></div>
       <div class="btnrow"><button class="btn${S.mapShows === "A" ? " primary" : ""}" id="btn-show-a" type="button">Karte: A zeigen</button><button class="btn${S.mapShows === "B" ? " primary" : ""}" id="btn-show-b" type="button">Karte: B zeigen</button></div>`;
-    $("btn-show-a").onclick = () => { S.mapShows = "A"; renderOverlay(S.run); renderScenario(); updateHeader(); };
-    $("btn-show-b").onclick = () => { S.mapShows = "B"; renderOverlay(S.runB); renderScenario(); updateHeader(); };
+    $("btn-show-a").onclick = () => { S.mapShows = "A"; renderOverlay(S.run); renderScenario(); renderTwind(); updateHeader(); };
+    $("btn-show-b").onclick = () => { S.mapShows = "B"; renderOverlay(S.runB); renderScenario(); renderTwind(); updateHeader(); };
   }
 
   // ---------------------------------------------------------------- Vorschläge
@@ -733,21 +775,25 @@
     const osm = run.osmApplied ? { ...run.osmApplied, waterPoints: allWaterPoints() } : (allWaterPoints().length ? { waterPoints: allWaterPoints(), candidates: [], drivable: null, objects: null, _waterOnly: true } : null);
     const useOsm = osm && !osm._waterOnly ? osm : null;
     const old = S.sug;
-    const res = Suggest.compute(run.grid, run.result, useOsm, run.ignition, S.vehicles, P, run.metrics.mainDirDeg, S.sugState);
+    const res = Suggest.compute(run.grid, run.result, useOsm, run.ignition, S.vehicles, P, run.metrics.mainDirDeg, S.sugState, { stations: S.stations, maxAnfahrtMin: S.maxAnf, grundschutzOverride: S.gsOverride, grenzen: S.grenzen, teilMode: S.teilMode });
+    updateTeilStatus(res.lineInfo.teil);
     if (!useOsm && osm) {
       // nur manuelle Entnahmestellen vorhanden: Wasserinfo trotzdem ergänzen
       for (const v of res.vehicles) if (!v.water?.length) v.water = [];
     }
-    S.sugCtx = Suggest.context(run.grid, run.result, run.ignition, P);
+    S.sugCtx = res.ctx;
     S.sug = res;
     $("btn-resuggest").disabled = false;
     const d = isRecompute ? Suggest.diff(old, res) : null;
     $("sug-diff").innerHTML = d ? msg("", `Neu berechnet: ${d.added.length} neu, ${d.removed.length} entfallen, ${d.changed.length} geändert. Gesperrte/verschobene Elemente bleiben erhalten.${d.removed.length ? `<br>Entfallen: ${d.removed.map(esc).join(", ")}` : ""}`) : "";
     Protocol.add(isRecompute ? "vorschlaege_neu" : "vorschlaege", {
       linien: res.lines.map((l) => ({ id: l.id, laenge_m: Math.round(l.lengthM), frueheste_ankunft_moeglich_min: Math.round(l.minArrivalMin), vorlauf_nach_bereitschaft_min: l.leadMin !== undefined ? Math.round(l.leadMin) : null, begruendung: l.reason, gesperrt: !!l.locked })),
-      fahrzeuge: res.vehicles.map((v) => ({ id: v.id, aufgabe: v.task, lat: +v.lat.toFixed(6), lon: +v.lon.toFixed(6), begruendung: v.reason, gesperrt: !!v.locked, verschoben: !!v.moved })),
-      hinweise: res.notes, differenz: d,
-      riegel_pruefung: { bereitschaft_min: res.lineInfo.readyMin, anfahrt_min: res.lineInfo.anfahrtMin, aufbau_min: res.lineInfo.setupMin, gefunden: res.lineInfo.found, verworfen: res.lineInfo.rejected, begruendung: res.lineInfo.reason },
+      fahrzeuge: res.vehicles.map((v) => ({ id: v.id, aufgabe: v.task, lat: +v.lat.toFixed(6), lon: +v.lon.toFixed(6), begruendung: v.reason, gesperrt: !!v.locked, verschoben: !!v.moved, pflicht: !!v.pflicht, anfahrt_min_geschaetzt: v.anfahrt && v.anfahrt.ok ? Math.round(v.anfahrt.min) : null, zu_spaet_fuer: v.lateFor || null })),
+      hinweise: res.notes, warnungen: res.alerts, differenz: d,
+      gemeindeteil: res.lineInfo.teil ? { teil: res.lineInfo.teil.teil, innerhalb: res.lineInfo.teil.innerhalb, quelle: res.lineInfo.teil.quelle, annahme: res.lineInfo.teil.annahme, modus: S.teilMode } : null,
+      riegel_pruefung: { bereitschaft_min: res.lineInfo.readyMin, bereitschaft_text: res.lineInfo.readyText, zweite_pruefgrenze: res.lineInfo.second, anfahrt_min: res.lineInfo.anfahrtMin, anfahrt_quelle: res.lineInfo.anfahrtSource, anfahrt_text: res.lineInfo.anfahrtText, aufbau_min: res.lineInfo.setupMin, gefunden: res.lineInfo.found, verworfen: res.lineInfo.rejected, begruendung: res.lineInfo.reason },
+      anfahrt: { methode: "Luftlinie × Umwegfaktor ÷ Geschwindigkeit + Ausrückzeit (geschätzt, kein Routing)", umwegfaktor: P.anfahrt.umwegfaktor, max_anfahrt_min: res.dispatch.maxAnfahrtMin, ohne_koordinate: res.dispatch.noCoord, zu_weit: res.dispatch.tooFar, zu_spaet: res.dispatch.late, pflichtfahrzeuge: res.dispatch.pflicht },
+      grundschutz: gsProto(res.grundschutz),
       bereitstellungsraum: res.stageInfo ? { lat: +res.stageInfo.lat.toFixed(6), lon: +res.stageInfo.lon.toFixed(6), fahrzeuge: res.stageInfo.vehicleIds } : null,
     });
     refreshProtocol();
@@ -755,15 +801,49 @@
   }
   $("btn-resuggest").onclick = () => computeSuggestions(true);
 
-  function vehShort(v) {
-    const w = v.wache === "lz-nk" ? "NK" : v.wache === "lz-se" ? "SE" : (v.wache || "");
-    return `${v.typ}${w ? " " + w : ""}`;
+  // Gemeindeteil (Bereitschaftsvorgabe eigene Wehr): Grenzdatei laden, Auswahl automatisch/manuell
+  async function loadGrenzen() {
+    try {
+      if (window.__INLINE_GEMEINDETEILE) { S.grenzen = window.__INLINE_GEMEINDETEILE; return; }
+      const r = await fetch(asset(P.bereitschaftEigeneWehr.grenzenUrl), { cache: "no-cache" });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      S.grenzen = await r.json();
+    } catch (e) { S.grenzen = null; $("teil-status").textContent = `Gemeindeteil-Grenzen nicht geladen (${e.message}); automatisch: 40 min für beide Löschzüge (Annahme). Manuelle Wahl möglich.`; }
   }
+  function updateTeilStatus(t) {
+    const B = P.bereitschaftEigeneWehr;
+    if (!t && S.poly) t = Dispatch.gemeindeteil(...centroid(S.poly), S.grenzen, S.teilMode);
+    const head = `Bereitschaft der eigenen Löschzüge (${B.quelle}): gleicher Gemeindeteil ${B.gleicherTeil} min, anderer ${B.andererTeil} min nach Alarm (inkl. Ausrücken, Anfahrt, Aufbau).`;
+    $("teil-status").textContent = !t ? head : `${head} Einsatzort: ${t.teil ? `Gemeindeteil ${t.teil}` : t.innerhalb === false ? "außerhalb des Gemeindegebiets (beide Löschzüge: Anfahrt geschätzt + Aufbau, mind. " + B.ausserhalbMinMin + " min; Annahme)" : "Gemeindeteil unbekannt (beide " + B.unbekanntMin + " min; Annahme)"} – ${t.quelle}${t.annahme ? " (ANNAHME, zu prüfen)" : ""}.`;
+  }
+  $("sel-teil").value = S.teilMode;
+  $("sel-teil").onchange = () => {
+    S.teilMode = $("sel-teil").value; store.set("wb_teil", S.teilMode);
+    Protocol.add("gemeindeteil_wahl", { modus: S.teilMode, hinweis: S.teilMode === "auto" ? "automatisch aus Gemarkung" : "manuelle Wahl überschreibt die automatische Bestimmung" });
+    if (S.run) computeSuggestions(true); else { updateTeilStatus(); refreshProtocol(); }
+  };
+
+  function gsProto(list) {
+    return (list || []).map((a) => ({ geraetehaus: a.wache ? a.wache.name : a.wacheId, fahrzeug: a.vehicle ? a.vehicle.id : null, bezeichnung: a.vehicle ? a.vehicle.bezeichnung || a.vehicle.typ : null, kommune: a.kommune || null, anfahrt_min_geschaetzt: a.anfahrt && a.anfahrt.ok ? Math.round(a.anfahrt.min) : null, anfahrt: a.anfahrt ? (a.anfahrt.ok ? a.anfahrt.text : `unbekannt (${a.anfahrt.reason})`) : null, manuell: !!a.manual, status: a.vehicle ? "Grundschutz" : "nicht sichergestellt" }));
+  }
+  /** Grundschutz: aus der letzten Vorschlagsrechnung, sonst Vorschau ohne Einsatz. */
+  function currentGrundschutz() {
+    if (S.sug && S.sug.grundschutz) return { list: S.sug.grundschutz, preview: false };
+    const gs = Suggest.grundschutz(S.vehicles, S.stations, P, new Set(), S.gsOverride);
+    return { list: gs.assignments, preview: true, alerts: gs.alerts, notes: gs.notes };
+  }
+
+  function vehShort(v) {
+    const w = v.wache === "lz-nk" ? "NK" : v.wache === "lz-se" ? "SE" : (v.kurz || v.wache || "");
+    return `${v.typ}${w ? " " + String(w).slice(0, 14) : ""}`;
+  }
+  const anfLabel = (a) => (!a ? "–" : a.ok ? `${a.short}${a.fallback ? "" : " (geschätzt, kein Routing)"}` : `unbekannt (${a.reason})`);
 
   function vehCard(v, sub) {
     const tank = v.vehicle.tank_l === null || v.vehicle.tank_l === undefined ? "Tank offen" : `${v.vehicle.tank_l} l`;
     return `<div class="${sub ? "sug-sub" : "sug"}${v.locked ? " locked" : ""}${v.moved ? " moved" : ""}" data-id="${esc(v.id)}">
-        <h3><span class="badge v">${esc(vehShort(v.vehicle))}</span> ${esc(v.task)} ${v.moved ? '<span class="flag a">manuell verschoben</span>' : ""}${v.locked && !v.moved ? '<span class="flag w">gesperrt</span>' : ""}</h3>
+        <h3><span class="badge v">${esc(vehShort(v.vehicle))}</span> ${esc(v.task)} ${v.pflicht ? '<span class="flag w">Pflichtfahrzeug</span>' : ""}${(v.lateFor || []).map((l) => `<span class="flag late">zu spät für Riegel ${esc(l)}</span>`).join("")}${v.moved ? '<span class="flag a">manuell verschoben</span>' : ""}${v.locked && !v.moved ? '<span class="flag w">gesperrt</span>' : ""}</h3>
+        <p class="small anf"><b>Anfahrt:</b> ${esc(anfLabel(v.anfahrt))}</p>
         <p>${esc(sub ? v.reason.replace(S.sug.stageInfo?.reason || "\u0000", "").trim() : v.reason)}</p>
         ${v.check ? `<p class="${v.check.ok ? "" : "ov"}"><b>Prüfung nach Verschieben:</b> ${esc(v.check.text)}</p>` : ""}
         ${v.waterInfo ? `<p><b>Wasser:</b> ${esc(v.waterInfo)}</p>` : ""}
@@ -796,14 +876,14 @@
       if (gr.items.length === 1) {
         const v = gr.items[0];
         icon = L.divIcon({ className: "", html: `<span class="veh-marker${v.locked ? " locked" : ""}">${esc(vehShort(v.vehicle))}</span>`, iconSize: null, iconAnchor: [30, 14] });
-        tip = `${esc(v.vehicle.bezeichnung || v.vehicle.typ)}: ${esc(v.task)}`;
+        tip = `${esc(v.vehicle.bezeichnung || v.vehicle.typ)}: ${esc(v.task)}<br>Anfahrt ${esc(anfLabel(v.anfahrt))}${(v.lateFor || []).length ? `<br>zu spät für Riegel ${esc(v.lateFor.join(", "))}` : ""}`;
       } else if (isStage) {
         icon = L.divIcon({ className: "", html: `<div class="veh-group stage"><b>Bereitstellungsraum</b> <span class="cnt">${gr.items.length}</span><ul>${gr.items.map((v) => `<li>${esc(vehShort(v.vehicle))} – ${esc(v.role || v.task)}</li>`).join("")}</ul></div>`, iconSize: null, iconAnchor: [14, 14] });
-        tip = `Bereitstellungsraum: ${gr.items.map((v) => esc(vehShort(v.vehicle))).join(", ")}`;
+        tip = `Bereitstellungsraum:<br>${gr.items.map((v) => `${esc(vehShort(v.vehicle))} – ${esc(v.role || "")}, Anfahrt ${esc(anfLabel(v.anfahrt))}`).join("<br>")}`;
       } else {
         // dicht beieinander (Bildschirm): kompakter Sammelmarker, Liste im Tooltip; hineinzoomen trennt
         icon = L.divIcon({ className: "", html: `<span class="veh-marker multi">${gr.items.length} Fz</span>`, iconSize: null, iconAnchor: [18, 14] });
-        tip = gr.items.map((v) => `${esc(vehShort(v.vehicle))}: ${esc(v.task)}`).join("<br>");
+        tip = gr.items.map((v) => `${esc(vehShort(v.vehicle))}: ${esc(v.task)}, Anfahrt ${esc(anfLabel(v.anfahrt))}`).join("<br>");
       }
       const mk = L.marker([gr.lat, gr.lon], { icon, draggable: true, keyboard: false }).addTo(vehLayer);
       mk.bindTooltip(tip);
@@ -817,7 +897,11 @@
 
   function moveVehicle(v, lat, lon) {
     v.lat = lat; v.lon = lon; v.moved = true; v.locked = true;
-    const chk = Suggest.checkPosition(S.run.grid, S.run.result, S.sugCtx, P, v.lat, v.lon);
+    const st = Dispatch.stationMap(S.stations);
+    const e = Dispatch.estimate(v.vehicle, st, lat, lon, P);
+    const setup = v.taskKind === "Objektschutz" ? P.suggestions.objectSetupMin : P.suggestions.setupMin;
+    const chk = Suggest.checkPosition(S.run.grid, S.run.result, S.sugCtx, P, v.lat, v.lon, e.ok ? e.min + setup : undefined);
+    if (e.ok) v.anfahrt = e;
     v.check = chk;
     S.sugState.locked.set(v.id, v);
     Protocol.add("vorschlag_verschoben", { id: v.id, lat: +v.lat.toFixed(6), lon: +v.lon.toFixed(6), pruefung: chk.text });
@@ -830,7 +914,8 @@
     if (!res) { $("suggestions").innerHTML = ""; return; }
     const html = [];
     const li = res.lineInfo;
-    if (li) html.push(msg("", `Einsatzbereitschaft an einer Linie: ${li.anfahrtMin} min Anfahrt + ${li.setupMin} min Aufbau = <b>${li.readyMin} min</b> nach Prognosebeginn (Annahmen, ohne Routing). Vorgeschlagen werden nur Linien, die zu diesem Zeitpunkt zuzüglich ${li.leadMinRequired} min Mindest-Wirkzeit (also bei ${li.checkMin} min, lila gepunktete Linie auf der Karte) vollständig außerhalb der „möglich“-Zone liegen, quer zur Hauptausbreitungsrichtung und vor der Front.`));
+    if (res.alerts && res.alerts.length) html.push(res.alerts.map((a) => `<div class="msg err alert-msg">${esc(a)}</div>`).join(""));
+    if (li) html.push(msg(li.anfahrtSource === "pauschal" ? "warn" : "", `Früheste Einsatzbereitschaft eines Löschfahrzeugs: <b>${li.readyMin} min</b> nach Prognosebeginn – ${esc(li.readyText)}.${li.second ? ` Weitere Fahrzeuge später, z. B. ${esc(li.second.text)} (zweite, fein gepunktete Prüfgrenze bei ${li.second.checkMin} min).` : ""} Je Riegelabschnitt wird geprüft, ob das zugeordnete Fahrzeug rechtzeitig bereit ist. Vorgeschlagen werden nur Linien, die zu diesem Zeitpunkt zuzüglich ${li.leadMinRequired} min Mindest-Wirkzeit (also bei ${li.checkMin} min, lila gepunktete Linie auf der Karte) vollständig außerhalb der „möglich“-Zone liegen, quer zur Hauptausbreitungsrichtung und vor der Front.`));
     if (li && !res.lines.length) html.push(`<div class="msg err" id="no-line">${esc(li.reason)}</div>`);
     // Prüfgrenze der Riegel: "möglich"-Zone zum Prüfzeitpunkt (Bereitschaft + Mindest-Wirkzeit) als Linie
     if (li && S.run) {
@@ -843,6 +928,17 @@
         const dir = (S.run.metrics.mainDirDeg ?? 0) * Math.PI / 180;
         const top = ring.reduce((a, b) => (b[0] * Math.sin(dir) + b[1] * Math.cos(dir) > a[0] * Math.sin(dir) + a[1] * Math.cos(dir) ? b : a));
         L.marker(toLL([top])[0], { icon: L.divIcon({ className: "", html: `<span class="ready-label">„möglich“ bei ${li.checkMin} min</span>`, iconSize: null, iconAnchor: [-6, 24] }), interactive: false, keyboard: false }).addTo(sugLayer);
+      }
+      // zweite Prüfgrenze (z. B. Löschzug aus dem anderen Gemeindeteil, 40 min + Wirkzeit)
+      if (li.second) {
+        const c2 = Contour.contourPolygons(tP, g.nx, g.ny, li.second.checkMin, { smooth: P.display.contour.chaikinIterations, simplify: P.display.contour.simplifyCells, maxValid: Math.max(...S.run.result.horizons) * 60, source: (() => { const m = new Uint8Array(g.nx * g.ny); for (const k of S.run.ignition) m[k] = 1; return m; })() });
+        if (c2.rings.length) {
+          L.polygon(c2.rings.map(toLL), { fill: false, color: "#6a1b9a", weight: 1.8, opacity: 0.8, dashArray: "1 9", lineCap: "round", interactive: false, className: "wb-ready2" }).addTo(sugLayer);
+          const ring2 = c2.rings.reduce((a, b) => (b.length > a.length ? b : a));
+          const d2 = (S.run.metrics.mainDirDeg ?? 0) * Math.PI / 180;
+          const top2 = ring2.reduce((a, b) => (b[0] * Math.sin(d2) + b[1] * Math.cos(d2) > a[0] * Math.sin(d2) + a[1] * Math.cos(d2) ? b : a));
+          L.marker(toLL([top2])[0], { icon: L.divIcon({ className: "", html: `<span class="ready-label r2">„möglich“ bei ${li.second.checkMin} min</span>`, iconSize: null, iconAnchor: [-6, 24] }), interactive: false, keyboard: false }).addTo(sugLayer);
+        }
       }
     }
     if (res.notes.length) html.push(res.notes.map((n) => msg("warn", esc(n))).join(""));
@@ -872,9 +968,38 @@
       </div>`);
     }
     if (!res.lines.length && !res.vehicles.length) html.push(msg("warn", "Keine Vorschläge möglich (z. B. keine Ausbreitung im Horizont oder keine sicheren Standorte)."));
+    html.push(gsHtml(res.grundschutz, false));
     $("suggestions").innerHTML = html.join("");
     renderWater();
+    renderStations();
+    renderVehicles();
   }
+
+  function gsHtml(list, preview) {
+    if (!list || !list.length) return "";
+    const rows = list.map((a) => {
+      const name = a.wache ? a.wache.name : a.wacheId;
+      const v = a.vehicle;
+      const opts = [`<option value="">automatisch</option>`, ...a.candidates.map((id) => { const c = S.vehicles.find((x) => x.id === id); return `<option value="${esc(id)}"${S.gsOverride[a.wacheId] === id ? " selected" : ""}>${esc(c ? `${c.bezeichnung || c.typ} (${c.kommune || "?"})` : id)}</option>`; })];
+      return `<div class="sug-sub gs" data-gs="${esc(a.wacheId)}">
+        <h3><span class="badge gsb">GS</span> Grundschutz ${esc(name)} ${v ? `<span class="flag w">${a.manual ? "manuell" : "automatisch"}</span>` : '<span class="flag o">nicht sichergestellt</span>'}</h3>
+        ${v ? `<p><b>${esc(v.bezeichnung || v.typ)}</b> (${esc(a.kommune || "")}) – Anfahrt zum Gerätehaus: ${esc(a.anfahrt && a.anfahrt.ok ? a.anfahrt.text : `unbekannt (${a.anfahrt ? a.anfahrt.reason : "–"})`)}</p>` : `<p class="ov">Kein Fahrzeug aus Nachbarkommune verfügbar – Grundschutz nicht sichergestellt.</p>`}
+        ${a.wache && !Dispatch.hasCoord(a.wache) ? '<p class="small muted">Gerätehaus ohne Koordinate: Auswahl nur nach Typ/Listenreihenfolge, Anfahrtszeit unbekannt.</p>' : ""}
+        ${a.candidates.length ? `<label class="small">Fahrzeug tauschen <select data-gs-sel="${esc(a.wacheId)}">${opts.join("")}</select></label>` : ""}
+      </div>`;
+    }).join("");
+    return `<div class="sug gsbox" id="gs-box"><h3><span class="badge gsb">GS</span> Grundschutz Gerätehäuser (Fahrzeuge aus Nachbarkommunen)${preview ? " – Vorschau ohne Einsatz" : ""}</h3>
+      <p class="small muted">Annahme: je Gerätehaus ein wasserführendes Fahrzeug einer anderen Kommune, bevorzugt HLF/LF, dann TLF/MLF/TSF-W, kürzeste geschätzte Anfahrt; nicht im Einsatz eingeplant, nicht doppelt.</p>${rows}</div>`;
+  }
+  document.addEventListener("change", (e) => {
+    const sel = e.target.closest && e.target.closest("select[data-gs-sel]");
+    if (!sel) return;
+    const id = sel.dataset.gsSel;
+    if (sel.value) S.gsOverride[id] = sel.value; else delete S.gsOverride[id];
+    store.set("wb_gs_override", S.gsOverride);
+    Protocol.add("grundschutz_manuell", { geraetehaus: id, fahrzeug: sel.value || "automatisch" });
+    if (S.run) computeSuggestions(true); else { renderVehicles(); renderStations(); refreshProtocol(); }
+  });
 
   $("suggestions").addEventListener("click", (e) => {
     const btn = e.target.closest("button[data-act]");
@@ -936,7 +1061,7 @@
     try {
       let data = window.__INLINE_FAHRZEUGE;
       if (!data) {
-        const r = await fetch("data/fahrzeuge.json", { cache: "no-cache" });
+        const r = await fetch(asset("data/fahrzeuge.json"), { cache: "no-cache" });
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         data = await r.json();
       }
@@ -947,10 +1072,12 @@
     }
   }
   function applyVehicleData(data, label) {
-    S.vehMeta = data;
-    S.vehicles = (data.fahrzeuge || []).map((v) => ({ ...v }));
-    S.stations = (data.wachen || []).map((w) => ({ ...w }));
+    const nd = Dispatch.normalize(data);
+    S.vehMeta = { ...nd.meta };
+    S.vehicles = nd.fahrzeuge.map((v) => ({ ...v }));
+    S.stations = nd.wachen.map((w) => ({ ...w }));
     $("veh-source").innerHTML = `Quelle: ${esc(label)}. ${esc(data.hinweis || "")}`;
+    fillVehFilters();
     renderVehicles(); renderStations();
   }
   function saveVehicles() {
@@ -961,35 +1088,131 @@
     if (/^Annahme/i.test(q)) return '<span class="flag a" title="' + esc(q) + '">Annahme: Normwert</span>';
     if (/^Offen/i.test(q)) return '<span class="flag o" title="' + esc(q) + '">Offen</span>';
     if (/^Website/i.test(q)) return '<span class="flag w" title="' + esc(q) + '">Website</span>';
-    return '<span class="flag" title="' + esc(q) + '">?</span>';
+    return '<span class="flag w" title="' + esc(q) + '">belegt (Quelle)</span>';
+  }
+  const isPflicht = (v) => v.pflicht === true || (v.pflicht === undefined && (P.pflichtFahrzeuge || []).includes(v.id));
+  function fillVehFilters() {
+    const uniq = (a) => [...new Set(a.filter(Boolean).map(String))].sort((x, y) => x.localeCompare(y, "de"));
+    const fill = (id, vals, cur) => { const el = $(id); el.innerHTML = `<option value="">alle</option>` + vals.map((v) => `<option${v === cur ? " selected" : ""}>${esc(v)}</option>`).join(""); };
+    fill("vf-kommune", uniq(S.vehicles.map((v) => v.kommune)), S.vf.kommune);
+    fill("vf-typ", uniq(S.vehicles.map((v) => v.typ)), S.vf.typ);
+    $("vf-sort").value = S.vf.sort; $("vf-avail").checked = !!S.vf.onlyAvail;
+    $("inp-maxanf").value = S.maxAnf;
+  }
+  for (const [id, key, prop] of [["vf-kommune", "kommune", "value"], ["vf-typ", "typ", "value"], ["vf-sort", "sort", "value"], ["vf-avail", "onlyAvail", "checked"]]) {
+    $(id).addEventListener("change", () => { S.vf[key] = $(id)[prop]; store.set("wb_vf", S.vf); renderVehicles(); });
+  }
+  $("inp-maxanf").addEventListener("change", () => {
+    const v = Number($("inp-maxanf").value);
+    if (!(v > 0)) { $("inp-maxanf").value = S.maxAnf; return; }
+    S.maxAnf = v; store.set("wb_maxanf", v);
+    Protocol.add("anfahrt_grenze", { max_anfahrt_min: v }); refreshProtocol();
+    renderVehicles();
+  });
+  /** Status eines Fahrzeugs aus der letzten Vorschlagsrechnung bzw. Grundschutz. */
+  function vehStatus(v) {
+    const parts = [];
+    if (isPflicht(v)) parts.push('<span class="flag w">Pflicht</span>');
+    const gs = currentGrundschutz().list.find((a) => a.vehicle && a.vehicle.id === v.id);
+    if (gs) parts.push(`<span class="flag a">Grundschutz ${esc(gs.wache ? gs.wache.name : gs.wacheId)}</span>`);
+    const sv = S.sug ? S.sug.vehicles.find((x) => x.vehicleId === v.id) : null;
+    if (sv) parts.push(`<span class="small">${esc(sv.task)}</span>`);
+    if (sv && sv.lateFor) parts.push(sv.lateFor.map((l) => `<span class="flag late">zu spät für Riegel ${esc(l)}</span>`).join(""));
+    else if (S.sug && S.sug.dispatch.late[v.id]) parts.push(S.sug.dispatch.late[v.id].map((l) => `<span class="flag late">zu spät für Riegel ${esc(l)}</span>`).join(""));
+    return parts.join(" ");
+  }
+  function vehEstimates() {
+    const est = new Map();
+    if (!S.poly) return est;
+    const [la, lo] = centroid(S.poly);
+    const st = Dispatch.stationMap(S.stations);
+    for (const v of S.vehicles) est.set(v.id, Dispatch.estimate(v, st, la, lo, P));
+    return est;
   }
   function renderVehicles() {
     const t = $("veh-table");
-    t.innerHTML = `<thead><tr><th>Verfügbar</th><th>Fahrzeug</th><th>Wache</th><th class="num">Tank l</th><th class="num">Pumpe l/min</th></tr></thead><tbody>` +
-      S.vehicles.map((v, k) => `<tr>
-        <td><input type="checkbox" class="veh-av" data-k="${k}" ${v.verfuegbar !== false ? "checked" : ""} aria-label="${esc(v.bezeichnung)} verfügbar" style="width:28px;height:28px"></td>
-        <td><b>${esc(v.typ)}</b><br><span class="small muted">${esc(v.bezeichnung || "")}${v.loeschfahrzeug ? "" : " · kein Löschfahrzeug"}</span><br><a class="small" href="${esc(v.quelle)}" target="_blank" rel="noopener">Quelle</a></td>
-        <td>${esc(S.stations.find((s) => s.id === v.wache)?.name || v.wache || "")}</td>
+    const est = vehEstimates();
+    const list = S.vf.sort === "liste" ? Dispatch.filterSort(S.vehicles, { ...S.vf, sort: null }, est) : Dispatch.filterSort(S.vehicles, S.vf, est);
+    const stName = (id) => S.stations.find((s) => s.id === id)?.name || id || "";
+    $("veh-count").textContent = `${list.length} von ${S.vehicles.length} Fahrzeugen angezeigt. Anfahrt zur Brandfläche: ${S.poly ? "geschätzt aus Luftlinie × " + fmtNum(P.anfahrt.umwegfaktor, 1) + " ÷ Geschwindigkeit + Ausrückzeit, kein Routing" : "erst nach Einzeichnen der Brandfläche"}. Einplanung bis ${S.maxAnf} min (Pflichtfahrzeuge immer).`;
+    t.innerHTML = `<thead><tr><th>Verf.</th><th>Pflicht</th><th>Fahrzeug</th><th>Kommune / Wache</th><th class="num">Anfahrt</th><th class="num">Tank l</th><th class="num">Pumpe l/min</th><th>Status</th></tr></thead><tbody>` +
+      list.map((v) => {
+        const k = S.vehicles.indexOf(v);
+        const e = est.get(v.id);
+        const anf = !S.poly ? "–" : e && e.ok ? `<span class="anf${e.min > S.maxAnf ? " ov" : ""}" title="${esc(e.text)}">${esc(e.short)}</span><br><span class="small muted">geschätzt</span>` : `<span class="flag o" title="${esc(e ? e.reason : "")}">unbekannt</span>`;
+        return `<tr data-vid="${esc(v.id)}">
+        <td><input type="checkbox" class="veh-av" data-k="${k}" ${v.verfuegbar !== false ? "checked" : ""} aria-label="${esc(v.bezeichnung || v.id)} verfügbar" style="width:28px;height:28px"></td>
+        <td><input type="checkbox" class="veh-pf" data-k="${k}" ${isPflicht(v) ? "checked" : ""} aria-label="${esc(v.bezeichnung || v.id)} Pflichtfahrzeug" style="width:28px;height:28px"></td>
+        <td><b>${esc(v.typ)}</b><br><span class="small muted">${esc(v.bezeichnung || "")}${v.einheit ? " · " + esc(v.einheit) : ""}${v.loeschfahrzeug === false ? " · kein Löschfahrzeug" : ""}</span>${v.quelle ? `<br><a class="small" href="${esc(v.quelle)}" target="_blank" rel="noopener">Quelle</a>` : ""}${v.quellentyp ? ` <span class="small muted">(${esc(v.quellentyp)})</span>` : ""}${/suchindex|websuche/i.test(String(v.zugriff || "")) ? ' <span class="flag a" title="Angaben aus Suchindex-Zusammenfassungen, Originalseiten nicht abrufbar">ungeprüft, aus Websuche</span>' : ""}</td>
+        <td>${esc(v.kommune || "–")}<br><span class="small muted">${esc(stName(v.wache))}</span></td>
+        <td class="num">${anf}</td>
         <td class="num">${v.tank_l ?? "–"}<br>${flag(v.tank_quelle)}</td>
-        <td class="num">${v.pumpe_lpm ?? "–"}<br>${flag(v.pumpe_quelle)}</td></tr>`).join("") + "</tbody>";
+        <td class="num">${v.pumpe_lpm ?? "–"}<br>${flag(v.pumpe_quelle)}</td>
+        <td>${vehStatus(v)}</td></tr>`;
+      }).join("") + "</tbody>";
     t.querySelectorAll(".veh-av").forEach((cb) => cb.addEventListener("change", () => {
       const v = S.vehicles[Number(cb.dataset.k)];
       v.verfuegbar = cb.checked;
       saveVehicles();
-      Protocol.add("fahrzeug_verfuegbarkeit", { id: v.id, verfuegbar: v.verfuegbar }); refreshProtocol();
+      Protocol.add("fahrzeug_verfuegbarkeit", { id: v.id, verfuegbar: v.verfuegbar, pflicht: isPflicht(v) }); refreshProtocol();
+      if (!cb.checked && isPflicht(v)) $("veh-errors").innerHTML = msg("err", `ACHTUNG: Pflichtfahrzeug ${esc(v.bezeichnung || v.id)} ist nicht verfügbar und wird nicht eingeplant.`);
     }));
+    t.querySelectorAll(".veh-pf").forEach((cb) => cb.addEventListener("change", () => {
+      const v = S.vehicles[Number(cb.dataset.k)];
+      v.pflicht = cb.checked;
+      saveVehicles();
+      Protocol.add("pflichtfahrzeug", { id: v.id, pflicht: v.pflicht }); refreshProtocol();
+    }));
+    renderGsPanel();
   }
-  function renderStations() {
+  function renderGsPanel() {
+    const el = $("gs-panel");
+    if (!el) return;
+    const g = currentGrundschutz();
+    el.innerHTML = gsHtml(g.list, g.preview) + (g.preview && g.alerts ? g.alerts.map((a) => msg("err", esc(a))).join("") : "") + (g.preview && g.notes ? g.notes.map((a) => msg("warn", esc(a))).join("") : "");
+  }
+
+  // Wachen-Marker: bildschirmbezogen gruppiert (ohne Zusatzbibliothek), neu bei Zoom/Verschieben
+  function renderStationMarkers() {
     stationLayer.clearLayers();
-    $("stations").innerHTML = S.stations.map((s, k) => {
-      if (s.lat !== null && s.lat !== undefined) {
-        L.marker([s.lat, s.lon], { icon: L.divIcon({ className: "", html: `<span class="veh-marker" style="background:#7a0a0a">${esc(s.id.toUpperCase())}</span>`, iconSize: null }) }).addTo(stationLayer).bindTooltip(esc(s.name));
+    const gsList = currentGrundschutz().list;
+    const pts = S.stations.filter((s) => Dispatch.hasCoord(s));
+    for (const gr of Dispatch.groupByScreen(pts, (s) => map.latLngToLayerPoint([s.lat, s.lon]), 46)) {
+      const gsHere = gr.items.map((s) => gsList.find((a) => a.wacheId === s.id && a.vehicle)).filter(Boolean);
+      let icon, tip;
+      if (gr.items.length === 1) {
+        const s = gr.items[0];
+        icon = L.divIcon({ className: "", html: `<span class="veh-marker st-marker" style="background:#7a0a0a">${esc((s.kurz || s.id).toUpperCase().slice(0, 10))}</span>${gsHere.length ? `<span class="gs-marker">GS ${esc(vehShort(gsHere[0].vehicle))}</span>` : ""}`, iconSize: null });
+        tip = `${esc(s.name)}${s.kommune ? ` (${esc(s.kommune)})` : ""}${gsHere.length ? `<br>Grundschutz: ${esc(gsHere[0].vehicle.bezeichnung || gsHere[0].vehicle.typ)}, Anfahrt ${esc(anfLabel(gsHere[0].anfahrt))}` : ""}`;
+      } else {
+        icon = L.divIcon({ className: "", html: `<span class="st-group">${gr.items.length} Wachen${gsHere.length ? " · GS" : ""}</span>`, iconSize: null });
+        tip = gr.items.map((s) => esc(s.name)).slice(0, 15).join("<br>") + (gr.items.length > 15 ? `<br>… (${gr.items.length - 15} weitere)` : "");
       }
-      return `<div class="sug"><h3>${esc(s.name)}</h3><p>${esc(s.adresse)}</p>
-        <p class="small">${s.lat !== null && s.lat !== undefined ? `Koordinate: ${s.lat.toFixed(5)}, ${s.lon.toFixed(5)} <span class="flag a">${esc(s.koordinate_status || "")}</span>` : `<span class="flag o">${esc(s.koordinate_status || "Offen: Koordinate prüfen")}</span>`}</p>
-        <p class="muted small">Quelle: ${esc(s.adresse_quelle || "")}</p>
+      const avg = [gr.items.reduce((a, s) => a + s.lat, 0) / gr.items.length, gr.items.reduce((a, s) => a + s.lon, 0) / gr.items.length];
+      const mk = L.marker(avg, { icon, keyboard: false }).addTo(stationLayer).bindTooltip(tip);
+      if (gr.items.length > 1) mk.on("click", () => map.fitBounds(L.latLngBounds(gr.items.map((s) => [s.lat, s.lon])).pad(0.3)));
+    }
+  }
+  map.on("zoomend", renderStationMarkers);
+
+  function renderStations() {
+    renderStationMarkers();
+    const kf = S.vf.kommune;
+    const list = S.stations.map((s, k) => ({ s, k })).filter(({ s }) => !kf || (s.kommune || "") === kf);
+    $("stations").innerHTML = (kf ? `<p class="small muted">Gefiltert nach Kommune „${esc(kf)}“ (${list.length} von ${S.stations.length}).</p>` : "") + list.map(({ s, k }) => {
+      const has = Dispatch.hasCoord(s);
+      return `<div class="sug"><h3>${esc(s.name)}${s.kommune ? ` <span class="small muted">${esc(s.kommune)}</span>` : ""}</h3><p>${esc(s.adresse || "")}</p>
+        <p class="small">${has ? `Koordinate: ${Number(s.lat).toFixed(5)}, ${Number(s.lon).toFixed(5)} <span class="flag a">${esc(s.koordinate_status || "")}</span>` : `<span class="flag o">${esc(s.koordinate_status || "Offen: Koordinate prüfen")}</span> Fahrzeuge dieser Wache werden ohne Koordinate nicht eingeplant (Pflichtfahrzeuge mit pauschaler Anfahrt).`}</p>
+        <p class="muted small">Quelle: ${esc(s.adresse_quelle || s.quelle || "")}${s.quellentyp ? ` (${esc(s.quellentyp)})` : ""}</p>
+        <div class="st-coord"><input type="text" inputmode="decimal" placeholder="Breite, z. B. 50.85" data-lat="${k}" aria-label="Breite ${esc(s.name)}"><input type="text" inputmode="decimal" placeholder="Länge, z. B. 7.33" data-lon="${k}" aria-label="Länge ${esc(s.name)}"><button class="btn small" data-setc="${k}" type="button">Koordinate übernehmen</button></div>
         <div class="btnrow"><button class="btn small" data-geo="${k}" type="button">Koordinate aus Adresse suchen (Nominatim)</button></div></div>`;
     }).join("");
+    $("stations").querySelectorAll("button[data-setc]").forEach((b) => b.addEventListener("click", () => {
+      const k = Number(b.dataset.setc), s = S.stations[k];
+      const la = Number(String($("stations").querySelector(`[data-lat="${k}"]`).value).replace(",", ".")), lo = Number(String($("stations").querySelector(`[data-lon="${k}"]`).value).replace(",", "."));
+      if (!(Math.abs(la) <= 90 && Math.abs(lo) <= 180) || !la || !lo) { $("veh-errors").innerHTML = msg("err", `Ungültige Koordinate für ${esc(s.name)}.`); return; }
+      setStationCoord(s, la, lo, `Manuell eingegeben (${new Date().toLocaleDateString("de-DE")}), zu prüfen`);
+    }));
     $("stations").querySelectorAll("button[data-geo]").forEach((b) => b.addEventListener("click", async () => {
       const s = S.stations[Number(b.dataset.geo)];
       b.disabled = true; b.textContent = "Suche …";
@@ -998,16 +1221,20 @@
         if (!r.ok) throw new Error(`HTTP ${r.status}`);
         const j = await r.json();
         if (!j.length) throw new Error("Adresse nicht gefunden");
-        s.lat = Number(j[0].lat); s.lon = Number(j[0].lon);
-        s.koordinate_status = `Geokodiert aus Website-Adresse (Nominatim/OSM, ${new Date().toLocaleDateString("de-DE")}), zu prüfen`;
-        saveVehicles();
-        Protocol.add("wache_geokodiert", { id: s.id, lat: s.lat, lon: s.lon });
-        refreshProtocol();
+        setStationCoord(s, Number(j[0].lat), Number(j[0].lon), `Geokodiert aus Website-Adresse (Nominatim/OSM, ${new Date().toLocaleDateString("de-DE")}), zu prüfen`);
+        return;
       } catch (e) {
         $("veh-errors").innerHTML = msg("err", `Geokodierung für ${esc(s.name)} nicht möglich (${esc(e.message)}). Koordinate bleibt offen.`);
       }
       renderStations();
     }));
+  }
+  function setStationCoord(s, lat, lon, status) {
+    s.lat = lat; s.lon = lon; s.koordinate_status = status;
+    saveVehicles();
+    Protocol.add("wache_koordinate", { id: s.id, lat, lon, status });
+    refreshProtocol();
+    renderStations(); renderVehicles();
   }
 
   // Import mit Validierung
@@ -1040,6 +1267,8 @@
         ...v, tank_l: num("tank_l"), pumpe_lpm: num("pumpe_lpm"),
         loeschfahrzeug: bool(v.loeschfahrzeug, P.suggestions.suppressionTypes.includes(v.typ)),
         verfuegbar: bool(v.verfuegbar, true),
+        pflicht: v.pflicht === undefined || v.pflicht === "" ? undefined : bool(v.pflicht, false),
+        lat: v.lat === undefined || v.lat === null || v.lat === "" ? undefined : num("lat"), lon: v.lon === undefined || v.lon === null || v.lon === "" ? undefined : num("lon"),
         tank_quelle: v.tank_quelle || "Import (Quelle nicht angegeben)", pumpe_quelle: v.pumpe_quelle || "Import (Quelle nicht angegeben)",
         quelle: v.quelle || "Import",
       });
@@ -1051,16 +1280,19 @@
     if (!f) return;
     try {
       const text = await f.text();
-      let list, wachen = S.stations;
-      if (/\.csv$/i.test(f.name) || f.type === "text/csv") list = parseCsv(text);
-      else { const j = JSON.parse(text); list = Array.isArray(j) ? j : j.fahrzeuge; if (j.wachen) wachen = j.wachen; }
-      if (!Array.isArray(list)) throw new Error("Keine Fahrzeugliste gefunden (erwartet: Array oder Objekt mit „fahrzeuge“).");
-      const { errors, out } = validateVehicles(list);
+      let raw;
+      if (/\.csv$/i.test(f.name) || f.type === "text/csv") raw = parseCsv(text);
+      else raw = JSON.parse(text);
+      const nd = Dispatch.normalize(raw); // kompatibel mit schema_version 1 und Synonymen (siehe js/dispatch.js)
+      const wachen = nd.wachen.length ? nd.wachen : S.stations;
+      const { errors, out } = validateVehicles(nd.fahrzeuge);
       if (errors.length) { $("veh-errors").innerHTML = msg("err", `Import abgelehnt:<br>${errors.map(esc).join("<br>")}`); return; }
       S.vehicles = out; S.stations = wachen;
-      saveVehicles(); renderVehicles(); renderStations();
-      $("veh-errors").innerHTML = msg("ok", `${out.length} Fahrzeuge importiert aus ${esc(f.name)}.`);
-      Protocol.add("fahrzeugliste_import", { datei: f.name, anzahl: out.length }); refreshProtocol();
+      if (!Array.isArray(raw)) S.vehMeta = { ...(S.vehMeta || {}), ...nd.meta };
+      saveVehicles(); fillVehFilters(); renderVehicles(); renderStations();
+      const noC = out.filter((v) => !Dispatch.estimate(v, Dispatch.stationMap(wachen), 50.85, 7.33, P).ok).length;
+      $("veh-errors").innerHTML = msg("ok", `${out.length} Fahrzeuge, ${wachen.length} Wachen importiert aus ${esc(f.name)}.${noC ? ` ${noC} Fahrzeuge ohne Koordinate (werden nicht eingeplant).` : ""}`) + nd.warnings.slice(0, 10).map((w) => msg("warn", esc(w))).join("") + (nd.warnings.length > 10 ? msg("warn", `… ${nd.warnings.length - 10} weitere Hinweise`) : "");
+      Protocol.add("fahrzeugliste_import", { datei: f.name, anzahl: out.length, wachen: wachen.length, hinweise: nd.warnings.length }); refreshProtocol();
     } catch (err) {
       $("veh-errors").innerHTML = msg("err", `Import fehlgeschlagen: ${esc(err.message)}`);
     } finally { e.target.value = ""; }
@@ -1094,7 +1326,7 @@
     setTimeout(() => { $("btn-exp-copy").textContent = "Kopieren"; }, 2500);
   };
   $("btn-exp-close").onclick = () => { $("modal-export").hidden = true; };
-  $("btn-proto-json").onclick = () => openExport(`protokoll_${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.json`, JSON.stringify({ app: "Waldbrand-Lagebild NKS", version: P.version, export: new Date().toISOString(), pruefung: Protocol.verify(), eintraege: Protocol.all() }, null, 2));
+  $("btn-proto-json").onclick = () => openExport(`protokoll_${new Date().toISOString().slice(0, 16).replace(/[:T]/g, "-")}.json`, JSON.stringify({ app: "Waldbrand-Lagebild NKS", version: P.version, hinweis: "TESTVERSION – nicht für den Einsatz", grundschutz: gsProto(currentGrundschutz().list), export: new Date().toISOString(), pruefung: Protocol.verify(), eintraege: Protocol.all() }, null, 2));
   $("btn-proto-clear").onclick = () => {
     const b = $("btn-proto-clear");
     if (b.dataset.confirm !== "1") { b.dataset.confirm = "1"; b.textContent = "Wirklich leeren? Erneut tippen"; setTimeout(() => { b.dataset.confirm = ""; b.textContent = "Protokoll leeren"; }, 4000); return; }
@@ -1121,25 +1353,84 @@
   }
   $("btn-geojson").onclick = () => {
     const feats = [];
-    const meta = { modell: P.modelName, version: P.version, hinweis: "Modellprognose, unvalidiert. Keine Handlungsanweisung." };
+    const meta = { modell: P.modelName, version: P.version, hinweis: "TESTVERSION – nicht für den Einsatz. Modellprognose, unvalidiert. Keine Handlungsanweisung." };
     if (S.poly) feats.push({ type: "Feature", properties: { typ: "brandflaeche", ...meta }, geometry: { type: "Polygon", coordinates: [[...S.poly, S.poly[0]].map(([a, b]) => [b, a])] } });
     const run = S.run;
     if (run) {
       const g = run.grid, r = run.result;
       r.horizons.forEach((H, h) => {
         for (const [name, thr] of [["wahrscheinlich", P.ensemble.likely], ["moeglich", P.ensemble.possible]]) {
-          feats.push({ type: "Feature", properties: { typ: "prognose", horizont_h: H, klasse: name, schwelle: thr, berechnet: new Date(run.finishedAt).toISOString(), wetter: S.wx?.source || "manuell", gelaende: run.terrain?.hang ? `DGM1 NRW (${run.terrain.attribution}), Stand ${run.terrain.stand}` : "ohne Hangneigung", ...meta }, geometry: cellsToMultiPolygon(g, (k) => r.counts[h][k] / r.runs >= thr) });
+          feats.push({ type: "Feature", properties: { typ: "prognose", horizont_h: H, klasse: name, schwelle: thr, berechnet: new Date(run.finishedAt).toISOString(), wetter: S.wx?.source || "manuell", gelaende: run.terrain?.hang ? `DGM1 NRW (${run.terrain.attribution}), Stand ${run.terrain.stand}` : "ohne Hangneigung", gelaendewind: run.result.terrainWind?.active ? "aktiv (vereinfacht)" : "aus", ...meta }, geometry: cellsToMultiPolygon(g, (k) => r.counts[h][k] / r.runs >= thr) });
         }
       });
     }
     if (S.sug) {
       S.sug.lines.forEach((l) => feats.push({ type: "Feature", properties: { typ: "abwehrlinie_vorschlag", id: l.id, begruendung: l.reason, gesperrt: !!l.locked }, geometry: { type: "LineString", coordinates: l.latlngs.map(([a, b]) => [b, a]) } }));
-      S.sug.vehicles.forEach((v) => feats.push({ type: "Feature", properties: { typ: "fahrzeug_vorschlag", fahrzeug: v.vehicle.bezeichnung, aufgabe: v.task, begruendung: v.reason, verschoben: !!v.moved, gesperrt: !!v.locked }, geometry: { type: "Point", coordinates: [v.lon, v.lat] } }));
+      S.sug.vehicles.forEach((v) => feats.push({ type: "Feature", properties: { typ: "fahrzeug_vorschlag", fahrzeug: v.vehicle.bezeichnung, aufgabe: v.task, begruendung: v.reason, verschoben: !!v.moved, gesperrt: !!v.locked, pflicht: !!v.pflicht, anfahrt: v.anfahrt ? (v.anfahrt.ok ? v.anfahrt.text : v.anfahrt.reason) : null, zu_spaet_fuer: v.lateFor || null }, geometry: { type: "Point", coordinates: [v.lon, v.lat] } }));
+    }
+    for (const a of gsProto(currentGrundschutz().list)) {
+      const st = S.stations.find((x) => x.name === a.geraetehaus || x.id === a.geraetehaus);
+      feats.push({ type: "Feature", properties: { typ: "grundschutz", ...a }, geometry: st && Dispatch.hasCoord(st) ? { type: "Point", coordinates: [Number(st.lon), Number(st.lat)] } : null });
     }
     allWaterPoints().forEach((w) => feats.push({ type: "Feature", properties: { typ: "entnahmestelle", art: w.kind, quelle: w.source, verifiziert: !!w.verified }, geometry: { type: "Point", coordinates: [w.lon, w.lat] } }));
     Protocol.add("export", { format: "GeoJSON", features: feats.length }); refreshProtocol();
     openExport("lage.geojson", JSON.stringify({ type: "FeatureCollection", features: feats }));
   };
+
+  // ---------------------------------------------------------------- Geländewind: Schalter und Ebene
+  const TW_COLORS = [["#2b6fd6", 0.75], ["#9cc7ff", 0.95], ["#ffffff", 1.05], ["#7cf2a0", 1.2], ["#10a85a", Infinity]];
+  function syncTwControls() {
+    $("chk-twind").checked = !!S.tw.wind; $("chk-tmoist").checked = !!S.tw.moisture;
+    $("chk-twlayer").checked = !!S.twLayer; $("sel-twhour").value = String(S.twHour);
+    $("tw-status").textContent = !S.dem ? "Kein Geländemodell: Geländewind wirkt nicht." : (S.tw.wind || S.tw.moisture) ? "Geländewind aktiv für die nächste Rechnung (vereinfachte Annahme, kein Strömungsmodell, kein Föhn)." : "Aus: Rechnung wie Version 0.3.0 (einheitlicher Wind).";
+  }
+  $("chk-twind").onchange = () => { S.tw.wind = $("chk-twind").checked; store.set("wb_tw", S.tw); Protocol.add("gelaendewind_schalter", { wind: S.tw.wind, feuchte: S.tw.moisture }); refreshProtocol(); syncTwControls(); };
+  $("chk-tmoist").onchange = () => { S.tw.moisture = $("chk-tmoist").checked; store.set("wb_tw", S.tw); Protocol.add("gelaendewind_schalter", { wind: S.tw.wind, feuchte: S.tw.moisture }); refreshProtocol(); syncTwControls(); };
+  $("chk-twlayer").onchange = () => { S.twLayer = $("chk-twlayer").checked; store.set("wb_twlayer", S.twLayer); renderTwind(); };
+  $("sel-twhour").onchange = () => { S.twHour = Number($("sel-twhour").value); renderTwind(); };
+  map.on("overlayadd", (e) => { if (e.layer === twindLayer && !S.twLayer) { S.twLayer = true; store.set("wb_twlayer", true); syncTwControls(); renderTwind(); } });
+  map.on("overlayremove", (e) => { if (e.layer === twindLayer && S.twLayer) { S.twLayer = false; store.set("wb_twlayer", false); syncTwControls(); renderTwind(); } });
+
+  /** Pfeile des Geländewindes (Referenzstärke, ausgedünnt) für die angezeigte Prognose. */
+  function renderTwind() {
+    twindLayer.clearLayers();
+    const run = S.mapShows === "B" && S.runB ? S.runB : S.run;
+    const lg = $("lg-wind");
+    if (!S.twLayer || !run || !run.grid.elev) {
+      lg.hidden = true;
+      if (map.hasLayer(twindLayer)) map.removeLayer(twindLayer);
+      if (S.twLayer && run && !run.grid.elev) $("tw-status").textContent = "Ebene „Geländewind“: kein Geländemodell im Rechengebiet.";
+      return;
+    }
+    const g = run.grid, T = P.terrain.wind;
+    const step = Math.max(1, Math.round(T.displaySpacingM / g.cell));
+    const cells = [];
+    for (let j = Math.floor(step / 2); j < g.ny; j += step) for (let i = Math.floor(step / 2); i < g.nx; i += step) { const k = j * g.nx + i; if (!Number.isNaN(g.elev[k])) cells.push(k); }
+    const h = Math.min(S.twHour, run.hours.length - 1);
+    const f = TerrainWind.sampleField(g, run.hours, P, h, cells, { wind: true, moisture: false });
+    const halo = [], byCol = TW_COLORS.map(() => []);
+    for (const pnt of f.points) {
+      const [x, y] = Grid.cellCenter(g, pnt.i);
+      const len = T.displayArrowM * Math.max(0.45, Math.min(1.8, pnt.ratio));
+      const hx = pnt.ux * len / 2, hy = pnt.uy * len / 2;
+      const tip = [x + hx, y + hy], tail = [x - hx, y - hy];
+      const a = 0.38 * len, ca = Math.cos(2.6), sa = Math.sin(2.6);
+      const w1 = [tip[0] + a * (pnt.ux * ca - pnt.uy * sa), tip[1] + a * (pnt.ux * sa + pnt.uy * ca)];
+      const w2 = [tip[0] + a * (pnt.ux * ca + pnt.uy * sa), tip[1] + a * (-pnt.ux * sa + pnt.uy * ca)];
+      const ll = (q) => g.proj.toLatLng(q[0], q[1]);
+      const shapes = [[ll(tail), ll(tip)], [ll(w1), ll(tip), ll(w2)]];
+      halo.push(...shapes);
+      const c = TW_COLORS.findIndex(([, lim]) => pnt.ratio < lim);
+      byCol[c < 0 ? TW_COLORS.length - 1 : c].push(...shapes);
+    }
+    L.polyline(halo, { pane: "twind", color: "#000", weight: 4.5, opacity: 0.85, interactive: false, className: "wb-twind-halo" }).addTo(twindLayer);
+    byCol.forEach((sh, c) => { if (sh.length) L.polyline(sh, { pane: "twind", color: TW_COLORS[c][0], weight: 2.2, opacity: 1, interactive: false, className: "wb-twind" }).addTo(twindLayer); });
+    if (!map.hasLayer(twindLayer)) twindLayer.addTo(map);
+    lg.hidden = false;
+    const t0 = run.hours[h] && Number.isFinite(run.hours[h].t) ? fmtHour(run.hours[h].t) : `+${h} h`;
+    $("lg-wind-hour").textContent = `(${t0}, synoptisch ${fmtNum(f.synKmh, 0)} km/h aus ${Math.round(f.hour.dirFrom)}°${f.hour.thermal ? `, Hangwind ${f.hour.thermal}` : ""})`;
+    run.twDisplay = { hour: h, arrows: f.points.length, ratioMin: Math.min(...f.points.map((q) => q.ratio)), ratioMax: Math.max(...f.points.map((q) => q.ratio)) };
+  }
 
   // ---------------------------------------------------------------- Kopfzeile, Tabs, Theme
   function updateHeader() {
@@ -1167,7 +1458,10 @@
 
   // ---------------------------------------------------------------- Start
   $("limits-text").innerHTML = LIMITS_HTML;
-  $("ack-text").innerHTML = `<p>Diese App ist ein <b>unvalidierter Prototyp</b>. Sie zeigt eine Modellprognose mit Unsicherheitsband und einfache Vorschläge. Sie ersetzt weder Einsatzleitung noch Lageerkundung vor Ort.</p>${LIMITS_HTML}`;
+  $("hdr-version").textContent = `Version ${P.version}`;
+  if (window.WB_VERSION && window.WB_VERSION !== P.version) $("hdr-status").textContent = `Versionskonflikt: Seite ${window.WB_VERSION}, Parameter ${P.version} – Seite neu laden.`;
+  syncTwControls();
+  $("ack-text").innerHTML = `<p><b>TESTVERSION – nicht für den Einsatz</b> (Version ${esc(P.version)}).</p><p>Diese App ist ein <b>unvalidierter Prototyp</b>. Sie zeigt eine Modellprognose mit Unsicherheitsband und einfache Vorschläge. Sie ersetzt weder Einsatzleitung noch Lageerkundung vor Ort.</p>${LIMITS_HTML}`;
   $("sources-text").innerHTML = SOURCES_HTML;
   document.querySelectorAll(".p-likely").forEach((e) => { e.textContent = Math.round(P.ensemble.likely * 100); });
   document.querySelectorAll(".p-possible").forEach((e) => { e.textContent = Math.round(P.ensemble.possible * 100); });
@@ -1185,7 +1479,9 @@
 
   setDisplay(S.display, false);
   drawPoly(); renderWx(); refreshProtocol(); loadVehicles(false); renderWater(); updateHeader();
+  loadGrenzen().then(() => updateTeilStatus());
   initDem();
+  S.demPromise.then(syncTwControls);
   if (store.get("wb_shade", false)) S.demPromise.then(() => setShade(true));
 
   // Vorschau-Modus (Artifact): externe Dienste sind dort blockiert -> Demo mit Beispieldaten
@@ -1212,6 +1508,12 @@
     demReady() { return S.demPromise; },
     setShade,
     setDisplay,
+    setTerrain(o) { Object.assign(S.tw, o); store.set("wb_tw", S.tw); syncTwControls(); },
+    setTwLayer(on, hour) { S.twLayer = !!on; if (hour !== undefined) S.twHour = hour; syncTwControls(); renderTwind(); },
+    setStationCoords(m, status) { for (const s of S.stations) if (m[s.id]) { s.lat = m[s.id][0]; s.lon = m[s.id][1]; s.koordinate_status = status || "Testkoordinate (synthetisch)"; } saveVehicles(); renderStations(); renderVehicles(); },
+    setTeil(m) { $("sel-teil").value = m; $("sel-teil").onchange(); },
+    grenzenReady() { return S.grenzen; },
+    setVehicles(data) { applyVehicleData(data, "Testdaten (synthetisch)"); saveVehicles(); },
     map,
     state: S,
   };

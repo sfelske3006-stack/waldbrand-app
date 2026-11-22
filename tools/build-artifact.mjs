@@ -15,10 +15,14 @@ let leafletCss = rd("vendor/leaflet/leaflet.css").replace(/url\(images\/([\w-]+\
   return `url(data:image/png;base64,${b64})`;
 });
 const appCss = rd("css/app.css");
-const body = html.slice(html.indexOf("<body>") + 6, html.indexOf("<!--LEAFLET-JS-->"));
-const scripts = ["config.js", "js/params.js", "js/grid.js", "js/dem.js", "js/model.js", "js/contour.js", "js/weather.js", "js/osm.js", "js/suggest.js", "js/protocol.js", "js/app.js"]
+const body = html.slice(html.indexOf("<body>") + 6, html.indexOf("<!--WB-SCRIPTS-->"));
+// Dateiliste und Version zentral aus dem Loader in index.html
+const version = html.match(/window\.WB_VERSION = "([^"]+)"/)[1];
+const jsList = JSON.parse(html.match(/window\.WB_JS = (\[[^\]]+\])/)[1]).filter((f) => !f.startsWith("vendor/"));
+const scripts = jsList
   .map((f) => `<script>/* ${f} */\n${rd(f).replace(/<\/script/gi, "<\\/script")}\n</script>`).join("\n");
 const vehicles = JSON.parse(rd("data/fahrzeuge.json"));
+const grenzen = fs.existsSync(path.join(root, "data/gemeindeteile.json")) ? rd("data/gemeindeteile.json").trim() : "null";
 const withDgm = process.argv.includes("--dgm") && fs.existsSync(path.join(root, "data/dgm25.bin"));
 const dgmInline = withDgm
   ? `window.__INLINE_DGM = { meta: ${rd("data/dgm25.json").trim()}, b64: "${fs.readFileSync(path.join(root, "data/dgm25.bin")).toString("base64")}" };\n`
@@ -29,11 +33,13 @@ const out = `<title>Waldbrand-Lagebild NKS</title>
 ${leafletCss}
 ${appCss}
 </style>
+<script>window.WB_VERSION = ${JSON.stringify(version)}; window.WB_ASSET = function (p) { return p; };</script>
 ${body}
 <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.js"></script>
 <script>
 window.__ARTIFACT_MODE = true;
 window.__INLINE_FAHRZEUGE = ${JSON.stringify(vehicles)};
+window.__INLINE_GEMEINDETEILE = ${grenzen};
 ${dgmInline}</script>
 ${scripts}
 `;
