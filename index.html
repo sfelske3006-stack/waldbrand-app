@@ -8,7 +8,7 @@
 <script>
   // Zentrale Version und Dateiliste (Cache-Busting). Alle Pfade RELATIV (läuft auch unter einem Unterpfad,
   // z. B. GitHub Pages /waldbrand-app/). WB_VERSION muss PARAMS.version entsprechen (Test prüft das).
-  window.WB_VERSION = "0.4.0-prototyp";
+  window.WB_VERSION = "0.4.1-prototyp";
   window.WB_ASSET = function (p) { return p + (p.indexOf("?") < 0 ? "?" : "&") + "v=" + encodeURIComponent(window.WB_VERSION); };
   window.WB_CSS = ["vendor/leaflet/leaflet.css", "css/app.css"];
   window.WB_JS = ["vendor/leaflet/leaflet.js", "config.js", "js/params.js", "js/grid.js", "js/dem.js", "js/terrain.js", "js/model.js", "js/contour.js", "js/weather.js", "js/osm.js", "js/dispatch.js", "js/suggest.js", "js/protocol.js", "js/app.js"];

@@ -9,10 +9,12 @@ https://www.opengeodata.nrw.de/produkte/geobasis/lk/akt/gru_vereinfacht_gpkg/ , 
 
 BEFUND (22.11.2026): Die Gemeinde hat 5 Gemarkungen: Eischeid, Herkenrath, Seelscheid, Söntgerath, Wolperath.
 Eine Gemarkung "Neunkirchen" gibt es nicht; die frühere Gemeindegrenze (Zusammenschluss 1969) ist in den
-offenen Daten nicht enthalten. Zuordnung daher:
-  - Seelscheid -> Seelscheid (Name; Gerätehaus LZ Seelscheid liegt darin)        = belegt durch Daten
-  - Wolperath  -> Neunkirchen (Gerätehaus LZ Neunkirchen liegt darin)            = Ableitung, zu prüfen
-  - übrige     -> Teil des näheren Gerätehauses (Luftlinie zum Schwerpunkt)      = ANNAHME, zu prüfen
+offenen Daten nicht enthalten. Die Zuordnung erfolgt daher über Gemarkungen (Herleitung) und ist vom
+Auftraggeber (Feuerwehr Neunkirchen-Seelscheid) am 22.11.2026 BESTÄTIGT:
+  - Seelscheid -> Seelscheid (Name; Gerätehaus LZ Seelscheid liegt darin)
+  - Söntgerath -> Seelscheid (näheres Gerätehaus, Luftlinie zum Schwerpunkt)
+  - Wolperath  -> Neunkirchen (Gerätehaus LZ Neunkirchen liegt darin)
+  - Eischeid, Herkenrath -> Neunkirchen (näheres Gerätehaus, Luftlinie zum Schwerpunkt)
 Gerätehaus-Koordinaten aus data/fahrzeuge.json (GEOBASIS.NRW Gebäudereferenzen).
 
 Aufruf:  python3 tools/build-gemeindeteile.py --gpkg /pfad/gru_vereinf_05382000_Rhein-Sieg-Kreis_EPSG25832.gpkg
@@ -23,6 +25,7 @@ import argparse, json, math, os, subprocess, tempfile, datetime
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 GMD = "05382040"
+BESTAETIGT = "bestätigt vom Auftraggeber (Feuerwehr Neunkirchen-Seelscheid), 22.11.2026"
 
 
 def ogr(gpkg, sql, out):
@@ -77,22 +80,22 @@ def main():
         p, g = f["properties"], f["geometry"]
         teil, how = None, None
         if p["name"] == "Seelscheid":
-            teil, how = "Seelscheid", "belegt: Name der Gemarkung; Gerätehaus LZ Seelscheid liegt in der Gemarkung"
+            teil, how = "Seelscheid", f"{BESTAETIGT}; Herleitung: Name der Gemarkung; Gerätehaus LZ Seelscheid liegt in der Gemarkung"
         for t, w in gh.items():
             if w.get("lat") is not None and contains(g, w["lat"], w["lon"]) and not teil:
-                teil, how = t, f"abgeleitet: Gerätehaus LZ {t} liegt in der Gemarkung (zu prüfen)"
+                teil, how = t, f"{BESTAETIGT}; Herleitung: Gerätehaus LZ {t} liegt in der Gemarkung"
         if not teil:
             c = centroid(g)
             d = {t: dist(c, (w["lat"], w["lon"])) for t, w in gh.items() if w.get("lat") is not None}
             teil = min(d, key=d.get)
-            how = "ANNAHME: Teil des näheren Gerätehauses (Luftlinie zum Schwerpunkt: " + ", ".join(f"{t} {v / 1000:.1f} km" for t, v in d.items()) + "); historische Zugehörigkeit nicht belegt, zu prüfen"
+            how = BESTAETIGT + "; Herleitung: näheres Gerätehaus (Luftlinie zum Schwerpunkt: " + ", ".join(f"{t} {v / 1000:.1f} km" for t, v in d.items()) + ")"
         out.append({"name": p["name"], "schluessel": p["schluessel"], "stand": p["aktualit"], "teil": teil, "zuordnung": how, "polygone": polys(g)})
     res = {
         "beschreibung": "Gemarkungen Neunkirchen-Seelscheid mit Zuordnung zu den Gemeindeteilen (für Bereitschaft 25/40 min, Vorgabe Auftraggeber 22.11.2026)",
         "quelle": "ALKIS Grundrissdaten vereinfacht (KatasterBezirk/VerwaltungsEinheit), Geobasis NRW, opengeodata.nrw.de",
         "lizenz": "dl-de/zero-2-0", "attribution": "Geobasis NRW, dl-de/zero-2-0",
         "erzeugt": datetime.date.today().isoformat(), "crs": "EPSG:4326 (Koordinaten [lon, lat]), vereinfacht 5 m",
-        "befund": "Keine Gemarkung 'Neunkirchen'; die Grenze der früheren Gemeinden (Zusammenschluss 1969) ist in den offenen Daten nicht enthalten. Zuordnung je Gemarkung siehe 'zuordnung' (teils ANNAHME).",
+        "befund": "Keine Gemarkung 'Neunkirchen'; die Grenze der früheren Gemeinden (Zusammenschluss 1969) ist in den offenen Daten nicht enthalten. Zuordnung je Gemarkung siehe 'zuordnung' (Herleitung über Gemarkungen, vom Auftraggeber bestätigt, 22.11.2026).",
         "gemeinde": {"name": gde["features"][0]["properties"]["name"], "ags": GMD, "polygone": polys(gde["features"][0]["geometry"])},
         "gemarkungen": out,
     }

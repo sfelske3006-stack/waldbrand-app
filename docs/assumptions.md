@@ -1,6 +1,6 @@
 # Annahmen und Parameter
 
-Alle Werte stehen versioniert in `js/params.js` (Version `0.4.0-prototyp`). Jede Zeile ist eine **Annahme**, bis sie fachlich bestätigt ist.
+Alle Werte stehen versioniert in `js/params.js` (Version `0.4.1-prototyp`). Jede Zeile ist eine **Annahme**, bis sie fachlich bestätigt ist.
 
 | Bereich | Parameter | Wert | Status |
 |---|---|---|---|
@@ -83,7 +83,7 @@ Alle Werte stehen versioniert in `js/params.js` (Version `0.4.0-prototyp`). Jede
 | `bereitschaftEigeneWehr.gleicherTeil` | 25 min von Alarm bis löschbereit (inkl. Ausrücken, Anfahrt, Aufbau), Einsatzort im Gemeindeteil des Löschzugs | **Vorgabe Auftraggeber, 22.11.2026** |
 | `bereitschaftEigeneWehr.andererTeil` | 40 min, Einsatzort im anderen Gemeindeteil | **Vorgabe Auftraggeber, 22.11.2026** |
 | Zuordnung Löschzug → Gemeindeteil | lz-nk → Neunkirchen, lz-se → Seelscheid | Vorgabe |
-| Gemeindeteil des Einsatzorts | Gemarkung (ALKIS) → Teil: Seelscheid → Seelscheid (belegt: Name, Gerätehaus SE); Wolperath → Neunkirchen (Gerätehaus NK liegt darin, abgeleitet); Eischeid, Herkenrath → Neunkirchen, Söntgerath → Seelscheid | **Annahme** (näheres Gerätehaus), zu prüfen |
+| Gemeindeteil des Einsatzorts | Gemarkung (ALKIS) → Teil: Seelscheid → Seelscheid (Name, Gerätehaus SE); Wolperath → Neunkirchen (Gerätehaus NK liegt darin); Eischeid, Herkenrath → Neunkirchen, Söntgerath → Seelscheid (näheres Gerätehaus); historische Gemeindegrenze nicht in den offenen Daten, Herleitung über Gemarkungen | **bestätigt vom Auftraggeber (Feuerwehr Neunkirchen-Seelscheid), 22.11.2026** |
 | Gemeindeteil unbekannt (`unbekanntMin`) | 40 min für beide Löschzüge | Annahme (konservativ) |
 | Einsatzort außerhalb des Gemeindegebiets | eigene Fahrzeuge: Anfahrt geschätzt + Aufbau, mindestens 25 min (`ausserhalbMinMin`); ohne Koordinate 40 min | Annahme |
 | Manuelle Wahl „Einsatzort im Gemeindeteil“ | überschreibt die automatische Bestimmung, wird protokolliert | Vorgabe |

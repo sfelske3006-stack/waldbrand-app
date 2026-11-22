@@ -212,14 +212,14 @@
 
   /**
    * Gemeindeteil am Einsatzort. mode: "auto" | "Neunkirchen" | "Seelscheid" (manuelle Wahl überschreibt).
-   * grenzen: data/gemeindeteile.json (Gemarkungen mit Zuordnung, teils ANNAHME).
+   * grenzen: data/gemeindeteile.json (Gemarkungen mit Zuordnung, vom Auftraggeber bestätigt, 22.11.2026).
    * @returns {teil: "Neunkirchen"|"Seelscheid"|null, innerhalb: true|false|null, quelle, gemarkung?, annahme}
    */
   function gemeindeteil(lat, lon, grenzen, mode) {
     if (mode === "Neunkirchen" || mode === "Seelscheid") return { teil: mode, innerhalb: true, quelle: "manuelle Wahl", annahme: false, manuell: true };
     if (!grenzen || !grenzen.gemarkungen) return { teil: null, innerhalb: null, quelle: "keine Grenzdaten (data/gemeindeteile.json nicht geladen)", annahme: true };
     for (const g of grenzen.gemarkungen) {
-      if (inPolys(lon, lat, g.polygone)) return { teil: g.teil, innerhalb: true, gemarkung: g.name, quelle: `Gemarkung ${g.name} (ALKIS) → ${g.teil}: ${g.zuordnung}`, annahme: !/^belegt/.test(g.zuordnung) };
+      if (inPolys(lon, lat, g.polygone)) return { teil: g.teil, innerhalb: true, gemarkung: g.name, quelle: `Gemarkung ${g.name} (ALKIS) → ${g.teil}: ${g.zuordnung}`, annahme: !/^(belegt|bestätigt)/.test(g.zuordnung) };
     }
     const inG = grenzen.gemeinde ? inPolys(lon, lat, grenzen.gemeinde.polygone) : false;
     return inG ? { teil: null, innerhalb: true, quelle: "im Gemeindegebiet, keine Gemarkung zugeordnet", annahme: true } : { teil: null, innerhalb: false, quelle: "außerhalb des Gemeindegebiets (ALKIS)", annahme: false };

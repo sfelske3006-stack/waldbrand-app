@@ -1,4 +1,4 @@
-# Waldbrand-Lagebild Neunkirchen-Seelscheid (Prototyp, Version 0.4.0-prototyp)
+# Waldbrand-Lagebild Neunkirchen-Seelscheid (Prototyp, Version 0.4.1-prototyp)
 
 > **TESTVERSION – nicht für den Einsatz.** **Modellprognose, unvalidiert. Keine Handlungsanweisung. Entscheidung und Verantwortung liegen bei der Einsatzleitung.**
 
@@ -117,7 +117,7 @@ Reines HTML/CSS/JavaScript ohne Build-Schritt, Leaflet 1.9.4 lokal unter `vendor
 | Fahrzeuge/Wachen NKS | www.ffnkse.de | Inhalte der Feuerwehr | siehe unten |
 | Fahrzeuge/Wachen Rhein-Sieg-Kreis | Feuerwehr-/Kommunalseiten, Brandschutzbedarfspläne, bos-fahrzeuge.info, Presse (je Fahrzeug `quelle`, `quelle_typ`) | Inhalte der jeweiligen Anbieter | **Ungeprüft, aus Websuche** (Suchindex-Zusammenfassungen, Originalseiten gesperrt). 86 % der Tankvolumen Normwerte (gekennzeichnet). Bestand vermutlich unvollständig. |
 | Wachenkoordinaten | GEOBASIS.NRW Gebäudereferenzen (gebref, Stand 01.10.2026) | dl-de/zero-2-0 | 80 exakt, 8 Näherung (gekennzeichnet), 5 ohne Koordinate |
-| Gemarkungen (Gemeindeteile) | ALKIS Grundrissdaten vereinfacht, Rhein-Sieg-Kreis (KatasterBezirk), opengeodata.nrw.de, Stand 09/2026 | dl-de/zero-2-0 | Zuordnung zu Gemeindeteilen teils **Annahme** (siehe docs/assumptions.md) |
+| Gemarkungen (Gemeindeteile) | ALKIS Grundrissdaten vereinfacht, Rhein-Sieg-Kreis (KatasterBezirk), opengeodata.nrw.de, Stand 09/2026 | dl-de/zero-2-0 | Zuordnung zu Gemeindeteilen über Gemarkungen hergeleitet, **bestätigt vom Auftraggeber** (22.11.2026; siehe docs/assumptions.md) |
 | Bereitschaftszeiten eigene Wehr 25/40 min | Auftraggeber | – | **Vorgabe Auftraggeber, 22.11.2026** |
 | Leaflet 1.9.4 | npm-Paket, lokal | BSD-2-Clause (`vendor/leaflet/LICENSE`) | eingebunden |
 
@@ -149,7 +149,7 @@ Alle Annahmen mit Werten: [docs/assumptions.md](docs/assumptions.md).
 
 ## Gemeindeteile Neunkirchen / Seelscheid (Befund)
 
-Die Grenze der früheren Gemeinden Neunkirchen und Seelscheid (Zusammenschluss 1969) ist in den offenen Daten nicht enthalten. Die Gemeinde hat laut ALKIS **5 Gemarkungen: Eischeid, Herkenrath, Seelscheid, Söntgerath, Wolperath** – eine Gemarkung „Neunkirchen“ gibt es nicht. Zuordnung in `data/gemeindeteile.json`: Seelscheid → Seelscheid (Name; Gerätehaus SE liegt darin, belegt), Wolperath → Neunkirchen (Gerätehaus NK liegt darin; abgeleitet, zu prüfen), Eischeid und Herkenrath → Neunkirchen, Söntgerath → Seelscheid (**Annahme**: näheres Gerätehaus). Außerhalb des Gemeindegebiets: beide Löschzüge entfernungsbasiert + Aufbau, mindestens 25 min (Annahme); Gemeindeteil unbekannt: 40 min für beide (Annahme). Manuelle Wahl im UI überschreibt und wird protokolliert.
+Die Grenze der früheren Gemeinden Neunkirchen und Seelscheid (Zusammenschluss 1969) ist in den offenen Daten nicht enthalten. Die Gemeinde hat laut ALKIS **5 Gemarkungen: Eischeid, Herkenrath, Seelscheid, Söntgerath, Wolperath** – eine Gemarkung „Neunkirchen“ gibt es nicht. Zuordnung in `data/gemeindeteile.json`: Seelscheid → Seelscheid (Name; Gerätehaus SE liegt darin), Wolperath → Neunkirchen (Gerätehaus NK liegt darin), Eischeid und Herkenrath → Neunkirchen, Söntgerath → Seelscheid (näheres Gerätehaus). Diese Zuordnung ist eine Herleitung über Gemarkungen, aber **bestätigt vom Auftraggeber (Feuerwehr Neunkirchen-Seelscheid), 22.11.2026**. Außerhalb des Gemeindegebiets: beide Löschzüge entfernungsbasiert + Aufbau, mindestens 25 min (Annahme); Gemeindeteil unbekannt: 40 min für beide (Annahme). Manuelle Wahl im UI überschreibt und wird protokolliert.
 
 ## Nicht umgesetzt
 
