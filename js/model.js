@@ -19,7 +19,11 @@
  *     R(theta) = R_head * (1 - e) / (1 - e * cos(theta)).
  *  3. Raster-Umsetzung als Minimum-Travel-Time (Dijkstra) auf 16er-Nachbarschaft,
  *     zeitabhängiges Wetter stündlich (Wetter zum Ankunftszeitpunkt der Quellzelle).
- *  4. Ensemble mit Variation von Windrichtung, Windgeschwindigkeit, Tote-Brennstoff-Feuchte.
+ *  4. Ensemble mit Variation von Windrichtung, Windgeschwindigkeit, Tote-Brennstoff-Feuchte
+ *     (mit Geländewind zusätzlich Stärke der Geländekorrektur).
+ *  5. Geländewind (ab 0.4.0, js/terrain.js): lokaler Wind (Richtung/Stärke) und Feuchtekorrektur je Zelle
+ *     und Stunde; travelTimeTerrain() nutzt sie je Kante. Ausgeschaltet: unveränderter Pfad travelTime()
+ *     (Ergebnis bitgenau wie 0.3.0).
  *
  * Koordinaten: lokale, winkeltreue Näherung (äquidistante Projektion um den Brandschwerpunkt)
  * in Metern. ABWEICHUNG von der Spezifikation (EPSG:25832): Für ein Gebiet von 10 x 10 km ist der
@@ -57,7 +61,7 @@
       { live: true, w: fm.w[3] * tpa, s: fm.savLH, m: M.lh },
       { live: true, w: fm.w[4] * tpa, s: fm.savLW, m: M.lw },
     ].filter((p) => p.w > 0);
-    const zero = { R: 0, R0: 0, IR: 0, phiW: 0, phiS: 0, effWindFtMin: 0, beta: 0, slopeK: 0 };
+    const zero = { R: 0, R0: 0, IR: 0, phiW: 0, phiS: 0, effWindFtMin: 0, beta: 0, slopeK: 0, C: 0, B: 0, E: 0, ratio: 1 };
     if (!parts.length) return zero;
     const depth = fm.depth;
     const mxDead = fm.mx / 100;
@@ -128,7 +132,7 @@
     const phiS = slopeK * (tanSlope || 0) * (tanSlope || 0);
     const R0 = (IR * xi) / heatSink;
     const R = R0 * (1 + phiW + phiS);
-    return { R, R0, IR, phiW, phiS, effWindFtMin: U, beta, slopeK };
+    return { R, R0, IR, phiW, phiS, effWindFtMin: U, beta, slopeK, C, B, E, ratio };
   }
 
   /** Längen-Breiten-Verhältnis nach Anderson (1983), Wind in Flammenhöhe in mi/h. */
@@ -343,6 +347,181 @@
     return arrival;
   }
 
+  // Kompassrichtungen der 16 Nachbarn als Einheitsvektoren (x Ost, y Nord)
+  const OFF_BX = OFFSETS.map(([a, b]) => a / Math.hypot(a, b));
+  const OFF_BY = OFFSETS.map(([a, b]) => b / Math.hypot(a, b));
+
+  /**
+   * Minimum-Travel-Time mit lokalem Wind und lokaler Feuchte je Zelle (Geländewind).
+   * field: TerrainWind.makeRunField(...); weatherHours, P, pert wie precomputeRates.
+   * Rate von Zelle i in Richtung k: Kopfrate(lokaler Wind, lokale Feuchte) * (1-e)/(1-e*cos(Winkel)),
+   * Kopfrate = R0 * (1 + phiW(U)), phiW = C U^B ratio^-E (Rothermel 1972, Windbegrenzung U <= 0,9 I_R),
+   * e aus dem lokalen Wind in Flammenhöhe (Anderson 1983). Hangzuschlag wie travelTime() (R0 der Zelle).
+   * Da Dijkstra die Zellen in nicht fallender Zeit abarbeitet, wächst die Stunde monoton: lokale Werte
+   * werden je Stunde lazy berechnet und beim Stundenwechsel verworfen.
+   */
+  function travelTimeTerrain(grid, classList, weatherHours, P, pert, field, ignition, tMaxMin, slopeOpt) {
+    const { nx, ny, cell, fuel } = grid;
+    const n = nx * ny;
+    const nc = classList.length;
+    const elev = slopeOpt && grid.elev ? grid.elev : null;
+    const maxTan = elev ? (slopeOpt.maxTan ?? Infinity) : 0;
+    const MP = P.terrain.moisture;
+    const bin = MP.binPct || 0.25;
+    const nb = Math.ceil((MP.maxDry * 2 + MP.maxWet * 2) / bin) + 3; // Stärke bis 2 abgedeckt
+    const off = Math.ceil((MP.maxDry * 2) / bin) + 1;
+    const ap = MP.apply || { d1: 1, d10: 1, d100: 0 };
+    const cls = classList.map((k) => P.fuelClasses[k]);
+    const fms = cls.map((c) => (c && c.model ? P.fuelModels[c.model] : null));
+    const wafs = cls.map((c) => (c ? P.waf[c.waf] ?? 0.4 : 0.4));
+    const hours = weatherHours.length;
+    const dms = weatherHours.map((w) => deadMoisture(w, P.moisture));
+    const moistOf = (h, dM) => {
+      const dm = dms[h];
+      return {
+        d1: Math.max(1, dm.d1 + pert.dMoist + dM * ap.d1) / 100,
+        d10: Math.max(1, dm.d10 + pert.dMoist + dM * ap.d10) / 100,
+        d100: Math.max(1, dm.d100 + pert.dMoist + dM * ap.d100) / 100,
+        lh: P.moisture.liveHerb / 100,
+        lw: P.moisture.liveWoody / 100,
+      };
+    };
+    // brennbar wie travelTime(): Klasse mit Rate > 0 in Stunde 0 (ohne Geländekorrektur)
+    const burnable = new Uint8Array(nc);
+    const slopeK = new Float32Array(nc);
+    for (let c = 0; c < nc; c++) {
+      if (!fms[c]) continue;
+      const r = rothermel(fms[c], moistOf(0, 0), 0, 0, P.tonPerAcreToLbFt2);
+      burnable[c] = r.R0 > 0 ? 1 : 0;
+      slopeK[c] = r.slopeK;
+    }
+    // Tabelle je Stunde: [c * nb + bin] -> R0 (ft/min), IR, C, B, E, ratio (lazy)
+    const tR0 = new Float64Array(nc * nb), tIR = new Float64Array(nc * nb), tK = new Float64Array(nc * nb), tB = new Float64Array(nc * nb);
+    const tStamp = new Int32Array(nc * nb).fill(-1);
+    // lokale Werte je Zelle für die aktuelle Stunde
+    const cHead = new Float32Array(n), cEcc = new Float32Array(n), cUx = new Float32Array(n), cUy = new Float32Array(n), cR0 = new Float32Array(n);
+    const stamp = new Int32Array(n).fill(-1);
+    let curH = -1;
+    function ensure(i) {
+      if (stamp[i] === curH) return;
+      stamp[i] = curH;
+      const c = fuel[i];
+      if (!burnable[c]) { cHead[i] = 0; cR0[i] = 0; cEcc[i] = 0; cUx[i] = 0; cUy[i] = 1; return; }
+      const o = field.cell(i);
+      let b = Math.round(o.dM / bin) + off;
+      if (b < 0) b = 0; else if (b >= nb) b = nb - 1;
+      const key = c * nb + b;
+      if (tStamp[key] !== curH) {
+        const r = rothermel(fms[c], moistOf(curH, (b - off) * bin), 0, 0, P.tonPerAcreToLbFt2);
+        tR0[key] = r.R0; tIR[key] = r.IR; tK[key] = r.C * Math.pow(r.ratio, -r.E); tB[key] = r.B; tStamp[key] = curH;
+      }
+      const uMidKmh = o.spd * wafs[c];
+      const U = Math.min(Math.max(0, uMidKmh * FTMIN_PER_KMH), 0.9 * tIR[key]);
+      const phiW = U > 0 ? tK[key] * Math.pow(U, tB[key]) : 0;
+      cR0[i] = tR0[key] * M_PER_FT;
+      cHead[i] = tR0[key] * (1 + phiW) * M_PER_FT;
+      cEcc[i] = eccentricity(lengthToWidth(uMidKmh / 1.609344));
+      cUx[i] = o.ux; cUy[i] = o.uy;
+    }
+    const rateAt = (i, k) => {
+      const hd = cHead[i];
+      if (hd <= 0) return 0;
+      const e = cEcc[i];
+      return (hd * (1 - e)) / (1 - e * (OFF_BX[k] * cUx[i] + OFF_BY[k] * cUy[i]));
+    };
+    const arrival = new Float64Array(n).fill(Infinity);
+    const dist = OFFSETS.map(([a, b]) => Math.hypot(a, b) * cell);
+    let hIdx = new Int32Array(1024), hKey = new Float64Array(1024), size = 0;
+    function push(i, k) {
+      if (size >= hIdx.length) {
+        const ni = new Int32Array(hIdx.length * 2); ni.set(hIdx); hIdx = ni;
+        const nk = new Float64Array(hKey.length * 2); nk.set(hKey); hKey = nk;
+      }
+      let p = size++;
+      while (p > 0) {
+        const q = (p - 1) >> 1;
+        if (hKey[q] <= k) break;
+        hIdx[p] = hIdx[q]; hKey[p] = hKey[q]; p = q;
+      }
+      hIdx[p] = i; hKey[p] = k;
+    }
+    function pop() {
+      const top = hIdx[0];
+      const last = --size;
+      const li = hIdx[last], lk = hKey[last];
+      let p = 0;
+      while (true) {
+        let c = 2 * p + 1;
+        if (c >= last) break;
+        if (c + 1 < last && hKey[c + 1] < hKey[c]) c++;
+        if (hKey[c] >= lk) break;
+        hIdx[p] = hIdx[c]; hKey[p] = hKey[c]; p = c;
+      }
+      hIdx[p] = li; hKey[p] = lk;
+      return top;
+    }
+    for (const i of ignition) { arrival[i] = 0; push(i, 0); }
+    while (size > 0) {
+      const t0 = hKey[0];
+      const i = pop();
+      if (t0 > arrival[i]) continue;
+      if (t0 > tMaxMin) break;
+      const h = Math.min(hours - 1, Math.floor(t0 / 60));
+      if (h !== curH) { curH = h; field.setHour(h); }
+      const ci = i % nx, cj = (i - ci) / nx;
+      const fs = fuel[i];
+      const srcBurn = burnable[fs];
+      if (srcBurn) ensure(i);
+      for (let k = 0; k < 16; k++) {
+        const ni = ci + OFFSETS[k][0], nj = cj + OFFSETS[k][1];
+        if (ni < 0 || nj < 0 || ni >= nx || nj >= ny) continue;
+        const nIdx = nj * nx + ni;
+        const fd = fuel[nIdx];
+        if (!burnable[fd]) continue;
+        if (k >= 8) {
+          const di = OFFSETS[k][0], dj = OFFSETS[k][1];
+          let a, b;
+          if (Math.abs(di) === 1) { a = (cj + Math.sign(dj)) * nx + ci; b = (cj + Math.sign(dj)) * nx + ni; }
+          else { a = cj * nx + ci + Math.sign(di); b = nj * nx + ci + Math.sign(di); }
+          if (!burnable[fuel[a]] || !burnable[fuel[b]]) continue;
+        } else if (k >= 4) {
+          const a = cj * nx + ni, b = nj * nx + ci;
+          if (!burnable[fuel[a]] && !burnable[fuel[b]]) continue;
+        }
+        ensure(nIdx);
+        let rd = rateAt(nIdx, k);
+        let rs = srcBurn ? rateAt(i, k) : rd;
+        if (rd <= 0 || rs <= 0) continue;
+        if (elev) {
+          const dz = elev[nIdx] - elev[i];
+          if (dz > 0) {
+            let tn = dz / dist[k];
+            if (tn > maxTan) tn = maxTan;
+            const t2 = tn * tn;
+            const addD = cR0[nIdx] * slopeK[fd] * t2;
+            rd += addD;
+            rs += srcBurn ? cR0[i] * slopeK[fs] * t2 : addD;
+          }
+        }
+        const dt = dist[k] * 0.5 / rs + dist[k] * 0.5 / rd;
+        const tn = t0 + dt;
+        if (tn < arrival[nIdx]) { arrival[nIdx] = tn; push(nIdx, tn); }
+      }
+    }
+    return arrival;
+  }
+
+  /** Geländewind-Optionen für runEnsemble (input.terrain: undefined = PARAMS, false = aus, {wind, moisture}). */
+  function terrainOptions(input, P) {
+    const T = P.terrain;
+    if (!T || !input.grid.elev || input.terrain === false || !root.TerrainWind) return null;
+    const o = input.terrain && typeof input.terrain === "object" ? input.terrain : {};
+    const wind = !!(o.wind ?? T.wind.enabled);
+    const moisture = !!(o.moisture ?? T.moisture.enabled);
+    if (!wind && !moisture) return null;
+    return { wind, moisture };
+  }
+
   /**
    * Ensemble-Rechnung. Schnittstelle des Modells.
    * input: {grid, classList, ignition, weatherHours[{windKmh, windDirDeg, tempC, rh, rain24, rain72}],
@@ -372,9 +551,25 @@
     const maxTan = P.dem && P.dem.maxTanSlope !== undefined ? P.dem.maxTanSlope : Infinity;
     const slopeOf = (pre) => (useSlope ? { r0: pre.r0, slopeK: pre.slopeK, maxTan } : null);
 
+    // Geländewind (lokaler Wind + Feuchte je Zelle). Aus: unveränderter Pfad (bitgenau wie 0.3.0).
+    const tOpt = terrainOptions(input, P);
+    const TW = root.TerrainWind;
+    const prep = tOpt ? TW.prepare(grid, P) : null;
+    const tStr = tOpt ? P.terrain.wind.ensembleStrength : null;
+    let terrainHours = null;
+    const runOne = (pert, pre) => {
+      if (!tOpt) return travelTime(grid, classList, pre.rates, ignition, tMax, slopeOf(pre));
+      const field = TW.makeRunField(prep, weatherHours, P, { strength: pert.terrainStrength, dDir: pert.dDir, windFactor: pert.windFactor, wind: tOpt.wind, moisture: tOpt.moisture, lat: grid.proj ? grid.proj.lat0 : NaN, lon: grid.proj ? grid.proj.lon0 : NaN });
+      const arr = travelTimeTerrain(grid, classList, weatherHours, P, pert, field, ignition, tMax, useSlope ? { maxTan } : null);
+      if (!terrainHours) terrainHours = field.hourInfo.filter(Boolean);
+      return arr;
+    };
+
     // Referenzlauf (unveränderte Eingangswerte)
-    const refPre = precomputeRates(weatherHours, classList, P, { dDir: 0, windFactor: 1, dMoist: 0 });
-    const reference = travelTime(grid, classList, refPre.rates, ignition, tMax, slopeOf(refPre));
+    const refPert = { dDir: 0, windFactor: 1, dMoist: 0 };
+    if (tOpt) refPert.terrainStrength = 1;
+    const refPre = precomputeRates(weatherHours, classList, P, refPert);
+    const reference = runOne(refPert, refPre);
     const perturbations = [];
     for (let r = 0; r < runs; r++) {
       const pert = {
@@ -382,9 +577,11 @@
         windFactor: E.windSpeedFactor[0] + rand() * (E.windSpeedFactor[1] - E.windSpeedFactor[0]),
         dMoist: (rand() * 2 - 1) * E.deadMoistureAbs,
       };
+      // Stärke der Geländekorrektur nur ziehen, wenn aktiv (sonst bleibt die Zufallsfolge wie 0.3.0)
+      if (tOpt) pert.terrainStrength = tStr[0] + rand() * (tStr[1] - tStr[0]);
       perturbations.push(pert);
       const pre = precomputeRates(weatherHours, classList, P, pert);
-      const arr = travelTime(grid, classList, pre.rates, ignition, tMax, slopeOf(pre));
+      const arr = runOne(pert, pre);
       for (let i = 0; i < n; i++) {
         const a = arr[i];
         if (a === Infinity) continue;
@@ -404,6 +601,11 @@
     return {
       horizons, runs, counts, earliest, reference, perturbations, tPossible, tLikely, quantileRuns: { possible: mP, likely: mL },
       refInfo: refPre.info, durationMs: Date.now() - t0, slopeUsed: useSlope, maxTanSlope: useSlope ? maxTan : null,
+      terrainWind: tOpt ? {
+        active: true, wind: tOpt.wind, moisture: tOpt.moisture, strengthRange: tStr.slice(), prepMs: prep.prepMs,
+        hours: terrainHours, thermalHours: (terrainHours || []).filter((x) => x.thermal).length,
+        timeKnown: weatherHours.every((w) => Number.isFinite(w.t)),
+      } : { active: false, reason: !grid.elev ? "kein Geländemodell" : input.terrain === false ? "ausgeschaltet" : "ausgeschaltet (Parameter)" },
     };
   }
 
@@ -465,7 +667,7 @@
 
   const FireModel = {
     rothermel, lengthToWidth, eccentricity, equilibriumMoisture, deadMoisture,
-    precomputeRates, travelTime, runEnsemble, metrics, reachTime, rng, OFFSETS,
+    precomputeRates, travelTime, travelTimeTerrain, terrainOptions, runEnsemble, metrics, reachTime, rng, OFFSETS,
   };
   root.FireModel = FireModel;
   if (typeof module !== "undefined" && module.exports) module.exports = FireModel;

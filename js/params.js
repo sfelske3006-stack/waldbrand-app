@@ -8,7 +8,7 @@
   const TPA = 0.0459137; // 1 ton/acre (US short ton) in lb/ft²
 
   const PARAMS = {
-    version: "0.3.0-prototyp",
+    version: "0.4.0-prototyp",
     modelName: "Rothermel-1972-Raster-MTT (vereinfachte Eigenimplementierung)",
 
     // Prognosehorizonte in Stunden (Spezifikation 2.3)
@@ -43,6 +43,112 @@
       maxTanSlope: 0.7,
       // Darstellung der Offline-Schummerung (nur Anzeige)
       hillshade: { azimuthDeg: 315, altitudeDeg: 45, zFactor: 1.5 },
+    },
+
+    // ------------------------------------------------------------------ Geländeeinfluss (neu in 0.4.0)
+    // VEREINFACHTE, DIAGNOSTISCHE Korrektur des Windes und der Feinbrennstofffeuchte aus dem DGM.
+    // KEIN massenkonsistentes Windfeld (WindNinja o. ä.: Phase-3-Option), keine Wirbel/Leewalzen,
+    // keine feuerinduzierten Winde, keine Inversionen, kein Föhn. Alle Zahlen sind ANNAHMEN.
+    terrain: {
+      wind: {
+        enabled: true, // Schalter "Geländewind" (UI überschreibt je Rechnung); aus = Rechnung wie 0.3.0 (bitgenau)
+        // Glättung der Eingangsfelder (Box-Filter, Radius in Zellen, Durchläufe) gegen Rasterartefakte
+        smoothRadiusCells: 2, smoothPasses: 3,
+        // Abschattung/Exposition: Winstral-Sx (Winstral, Elder & Davis 2002) = max. Horizontwinkel in
+        // Luv-Richtung bis sxMaxDistM; > 0 = abgeschattet (Lee), < 0 = exponiert. Normierung sxScaleDeg.
+        sxMaxDistM: 300, sxSectors: 16, sxScaleDeg: 15, sxWeight: 0.25,
+        // Topographic Position Index: Höhe minus mittlere Höhe im Quadrat ±tpiRadiusM; > 0 Kuppe, < 0 Mulde/Tal
+        tpiRadiusM: 400, tpiScaleM: 40, tpiWeight: 0.15,
+        // Luv-/Leehang: Hangneigung in Windrichtung (tan), angelehnt an MicroMet (Liston & Elder 2006),
+        // Gewichte eigene Annahme. Normierung slopeScaleTan.
+        slopeScaleTan: 0.3, slopeWeight: 0.15,
+        // Faktor auf die Windgeschwindigkeit, begrenzt (Annahme laut Auftrag 0,5–1,4)
+        factorMin: 0.5, factorMax: 1.4,
+        // Talkanalisierung: Tal = TPI < -valleyDepthM[0] (voll ab -valleyDepthM[1]); Talachse aus dem
+        // Strukturtensor der Hangneigung (Fenster ±valleyWindowM); Kohärenz als Maß für ein ausgeprägtes Tal.
+        valleyDepthM: [5, 30], valleyWindowM: 150, valleyCoherence: [0.3, 0.7],
+        // maximaler Anteil, um den die Windrichtung zur Talachse gedreht wird (bei Taltiefe/Kohärenz voll);
+        // zusätzlich gewichtet mit cos(Winkel Wind–Talachse): quer zum Tal keine eindeutige Drehung
+        valleyMaxTurn: 0.7,
+        // Dämpfung der Windgeschwindigkeit quer zur Talachse (Anteil bei voller Taltiefe, Wind quer)
+        valleyCrossDamping: 0.3,
+        // Hang-/Talwind (thermisch): nur bei schwachem synoptischem Wind (10 m) unter thermalMaxSynKmh,
+        // linear abnehmend bis zur Schwelle; tagsüber hangaufwärts, nachts hangabwärts (Annahme).
+        thermalMaxSynKmh: 12,
+        thermalUpKmh: 7.2, // 2 m/s (Annahme, Größenordnung 1–3 m/s)
+        thermalDownKmh: 5.4, // 1,5 m/s (Annahme)
+        thermalFullTan: 0.3, // volle Stärke ab Hangneigung tan 0,3 (ca. 17°), darunter linear
+        thermalSunFullDeg: 20, // tags volle Stärke ab Sonnenhöhe 20° (darunter linear ab 0°)
+        thermalNightFullDeg: 6, // nachts volle Stärke, wenn die Sonne mehr als 6° unter dem Horizont steht
+        // Ensemble: Stärke aller Geländekorrekturen (Wind und Feuchte) je Lauf gleichverteilt in diesem Bereich
+        ensembleStrength: [0.5, 1.5],
+        // Anzeige "Geländewind": Pfeilabstand (m) und Pfeillänge bei Faktor 1 (m)
+        displaySpacingM: 250, displayArrowM: 170,
+      },
+      moisture: {
+        enabled: true, // Feinbrennstofffeuchte nach Exposition/Einstrahlung (nur mit DGM und Geländewind-Schalter)
+        // EIGENE, EINFACHE ANNAHME (keine Fosberg/Rothermel-Korrekturtabelle übernommen, Werte nicht sicher bekannt):
+        // dM = -kPerUnit * (cos(Einfallswinkel Hang) - cos(Zenit)) tagsüber (wolkenlos angenommen), nachts 0.
+        // Südhänge (Sonne steht im Süden) daher trockener, Nordhänge feuchter; Größenordnung bis ca. 3 %-Pkt.
+        kPerUnit: 8, maxDry: 3, maxWet: 3,
+        // auf welche Totholz-Klassen die Korrektur wirkt (Anteil): 1 h und 10 h voll, 100 h nicht
+        apply: { d1: 1, d10: 1, d100: 0 },
+        binPct: 0.25, // Quantisierung für die Ratentabelle (%-Punkte)
+      },
+    },
+
+    // Anfahrt (neu in 0.4.0): entfernungsbasierte SCHÄTZUNG, KEIN Routing.
+    // Anfahrt = Ausrückzeit + Luftlinie Wache->Einsatzstelle x Umwegfaktor / Geschwindigkeit.
+    anfahrt: {
+      umwegfaktor: 1.4, // Annahme (Straßennetz im Bergischen Land), zu prüfen
+      // mittlere Geschwindigkeit je Fahrzeugklasse (km/h, Annahme); Präfixvergleich mit dem Fahrzeugtyp
+      kmh: { ELW: 60, KdoW: 60, MTF: 60, MTW: 60, MLF: 50, "HLF": 50, "LF": 50, "TLF": 45, "TSF": 50, "GW": 50, "DLK": 45, "SW": 45, default: 50 },
+      // Ausrückzeit (Alarm bis Abfahrt) in min, Annahme; Wache kann "ausrueckzeit_min" angeben.
+      ausrueckMin: { FF: 7, BF: 1.5, default: 7 }, // Freiwillige Feuerwehr 5–8 min -> 7 (Annahme)
+      maxAnfahrtMin: 45, // Option "nur Fahrzeuge bis X min Anfahrt einplanen" (Default, Annahme)
+      // Riegel gilt als einsatzbereit, wenn das n-t nächste geeignete Löschfahrzeug angekommen ist (Annahme)
+      // Seit 0.4.0 (Vorgabe: Bereitschaft je Fahrzeug): Prüfgrenze für Riegel = früheste Bereitschaft (Rang 1);
+      // je Abschnitt wird geprüft, ob das zugeordnete Fahrzeug rechtzeitig mit Wirkzeit-Reserve bereit ist.
+      lineReadyVehicleRank: 1,
+      // Begrenzung des Bereitstellungsraums bei vielen Fahrzeugen (Annahme): nächstgelegene zuerst,
+      // weitere geeignete Fahrzeuge werden als "nicht benötigt" gemeldet (nicht eingeplant).
+      maxReserve: 3, maxStageLead: 2, maxStageCrew: 2,
+    },
+
+    // Bereitschaft der eigenen Wehr (VORGABE AUFTRAGGEBER, 22.11.2026 – keine Annahme): Zeit von Alarm bis
+    // "vor Ort und löschbereit" (Gesamtzeit inkl. Ausrücken, Anfahrt und Aufbau) für die Fahrzeuge der Feuerwehr
+    // Neunkirchen-Seelscheid. Ersetzt für diese Fahrzeuge Anfahrt + Aufbau. Mindest-Wirkzeit bleibt separat
+    // (suggestions.lineMinLeadMin). Fahrzeuge anderer Kommunen: entfernungsbasierte Schätzung + Aufbau (Annahme).
+    bereitschaftEigeneWehr: {
+      quelle: "Vorgabe Auftraggeber, 22.11.2026",
+      gleicherTeil: 25, // Einsatzort im eigenen Gemeindeteil des Löschzugs
+      andererTeil: 40, // Einsatzort im anderen Gemeindeteil
+      kommune: "Neunkirchen-Seelscheid",
+      wachenTeil: { "lz-nk": "Neunkirchen", "lz-se": "Seelscheid" },
+      // ANNAHME: Gemeindeteil unbekannt (keine Grenzdaten, keine Wahl) -> 40 min für beide Löschzüge (konservativ)
+      unbekanntMin: 40,
+      // ANNAHME: Einsatzort außerhalb des Gemeindegebiets -> entfernungsbasierte Schätzung + Aufbau, aber nicht
+      // schneller als gleicherTeil (25 min); ohne Wachenkoordinate andererTeil (40 min)
+      ausserhalbMinMin: 25,
+      // Grenzdatei der Gemeindeteile (abgeleitet aus ALKIS-Gemarkungen, siehe tools/build-gemeindeteile.py)
+      grenzenUrl: "data/gemeindeteile.json",
+    },
+
+    // Pflichtfahrzeuge (Vorgabe Auftraggeber, 0.4.0): werden bei JEDEM Einsatz eingebunden, vorrangig vor allen
+    // anderen Fahrzeugen und unabhängig vom Anfahrts-Limit. Sicherheitsregeln gelten weiter; ohne sichere
+    // Aufgabe: "Pflichtfahrzeug – bereitgestellt" im Bereitstellungsraum nahe der Einsatzstelle.
+    // Ids aus data/fahrzeuge.json (Löschzug Seelscheid). Im UI je Fahrzeug änderbar (Häkchen "Pflicht").
+    // Ohne Wachenkoordinate wird für sie der pauschale Ersatzwert suggestions.anfahrtMin angenommen (gekennzeichnet).
+    pflichtFahrzeuge: ["se-hlf20", "se-lfkats", "se-lf20"],
+
+    // Grundschutz (Vorgabe Auftraggeber, 0.4.0): je ein wasserführendes Fahrzeug aus einer NACHBARKOMMUNE an den
+    // Gerätehäusern der eigenen Kommune. Auswahl: Typstufe (Annahme: zuerst HLF/LF, dann TLF/MLF/TSF-W, dann
+    // sonstige wasserführende), innerhalb der Stufe kürzeste geschätzte Anfahrt zum Gerätehaus; nicht im Einsatz
+    // eingeplant, nicht doppelt. Manuell änderbar.
+    grundschutz: {
+      kommune: "Neunkirchen-Seelscheid",
+      wachen: ["lz-nk", "lz-se"],
+      typStufen: [["HLF", "LF"], ["TLF", "MLF", "TSF-W"]],
     },
 
     weather: {
@@ -118,6 +224,8 @@
       // --- Zeitbezug: Einsatzbereitschaft an einer Linie = Prognosebeginn + Anfahrt + Aufbau ---
       // Annahme: Alarmierung + Anfahrt bis zur Linie (min). Kein Routing; Gemeindegebiet ca. 10 x 10 km,
       // letzte Strecke auf Wald-/Feldwegen. MUSS mit der Feuerwehr abgestimmt werden (offen).
+      // SEIT 0.4.0 NUR NOCH ERSATZWERT: Die Bereitschaft wird aus der geschätzten Anfahrt der Fahrzeuge
+      // (PARAMS.anfahrt) berechnet. 30 min gelten nur, wenn kein Fahrzeug eine Wachenkoordinate hat.
       anfahrtMin: 30,
       // Annahme: Aufbau einer Riegelstellung (Schlauchleitungen, Stellung beziehen) (min), offen
       setupMin: 45,
@@ -171,6 +279,8 @@
       suppressionTypes: ["HLF 20", "LF 20", "LF KatS", "LF 10", "TLF 3000", "TLF 4000", "MLF"],
       // Fahrzeugtypen ohne Löschwasser: nie Riegel/Objektschutz/Pendel (Präfix-Vergleich)
       noWaterTypes: ["ELW", "KdoW", "MTF", "MTW", "DLK", "DL", "GW", "RW"],
+      // Großtanker/Wassertransport: nur Wasserversorgung/Pendelverkehr, dort bevorzugt (Annahme; Präfixvergleich)
+      waterSupplyOnlyTypes: ["TW ", "LTW", "WLF"],
     },
   };
 

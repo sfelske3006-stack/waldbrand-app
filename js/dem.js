@@ -58,7 +58,10 @@
       const r = await f(url, { cache: "no-cache" });
       if (!r.ok) throw new Error(`${url}: HTTP ${r.status}`);
       const meta = await r.json();
-      const binUrl = url.replace(/[^/]*$/, "") + (meta.file || "dgm25.bin");
+      // Abfrageteil (Cache-Busting ?v=...) auf die Binärdatei übertragen; Pfad bleibt relativ
+      const qi = url.indexOf("?");
+      const base = qi < 0 ? url : url.slice(0, qi), query = qi < 0 ? "" : url.slice(qi);
+      const binUrl = base.replace(/[^/]*$/, "") + (meta.file || "dgm25.bin") + query;
       const rb = await f(binUrl, { cache: "no-cache" });
       if (!rb.ok) throw new Error(`${binUrl}: HTTP ${rb.status}`);
       return { dem: fromBuffer(meta, await rb.arrayBuffer()), error: null };
