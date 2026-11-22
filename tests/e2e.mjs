@@ -361,6 +361,78 @@ try {
   check("Testablauf Screenshots Konturen/Raster", false, e.message);
 }
 
+// Fahrzeugeinsatz (0.4.2, deviceScaleFactor 2): Lage in der Gemarkung Seelscheid OHNE OSM-Daten (wie beim
+// Nutzer: Overpass nicht erreichbar) -> geometrische Riegellinie R1 (Bereitschaft 25 min) und Auffanglinie R2
+// (40 min), Flankensicherung, Grundschutz am Gerätehaus, Bereitstellungsraum nur mit begründeten Fahrzeugen.
+try {
+  const c2 = await browser.newContext({ viewport: { width: 1400, height: 900 }, deviceScaleFactor: 2 });
+  const pg = await c2.newPage();
+  pg.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text()); });
+  pg.on("pageerror", (e) => consoleErrors.push("PAGEERROR " + e.message));
+  await pg.route("**/*", (route) => { const u = new URL(route.request().url()); if (u.hostname === "localhost") return route.continue(); blocked.add(u.hostname); return route.abort("blockedbyclient"); });
+  await ack(pg);
+  await pg.evaluate(() => window.__wb.demReady());
+  await pg.waitForFunction(() => !!window.__wb.grenzenReady(), null, { timeout: 15000 });
+  const lat0 = 50.8705, lon0 = 7.3120, r = 60;
+  const pts = Array.from({ length: 12 }, (_, k) => [lat0 + (r / 111195) * Math.cos((k / 12) * 2 * Math.PI), lon0 + (r / (111195 * Math.cos((lat0 * Math.PI) / 180))) * Math.sin((k / 12) * 2 * Math.PI)]);
+  await pg.evaluate((p) => window.__wb.setPolygon(p), pts);
+  await pg.click("#btn-wx-sample");
+  await pg.click("#wx-override summary");
+  for (const [k, v] of [["windKmh", "12"], ["windDirDeg", "225"], ["tempC", "27"], ["rh", "30"]]) { await pg.fill(`#ov-${k}`, v); await pg.locator(`#ov-${k}`).dispatchEvent("change"); }
+  await pg.selectOption("#sel-fuel", "mischwald");
+  await pg.check("#chk-shade");
+  await pg.click("#btn-run");
+  await pg.waitForFunction(() => document.querySelector("#suggestions")?.innerText.length > 0, null, { timeout: 60000 });
+  const d = await pg.evaluate(() => {
+    const s = window.__wb.state.sug;
+    return {
+      lines: s.lines.map((l) => ({ id: l.id, len: Math.round(l.lengthM), second: !!l.secondStage })),
+      gs: s.grundschutz.filter((a) => a.vehicle).map((a) => a.vehicle.id),
+      veh: s.vehicles.map((v) => ({ id: v.vehicleId, kind: v.taskKind, role: v.role || null, stage: !!v.stage, reason: v.reason })),
+      late: Object.keys(s.dispatch.late).length, second: !!s.lineInfo.second,
+      notes: s.notes.filter((n) => /zweite Riegelstellung/.test(n)),
+    };
+  });
+  check("0.4.2: Grundschutzfahrzeug steht am Gerätehaus, nicht im Bereitstellungsraum", d.gs.length === 2 && !d.veh.some((v) => d.gs.includes(v.id)), `GS ${d.gs.join(", ")}`);
+  // Zweite Riegelstellung wird nur erzeugt, wenn Fahrzeuge für die vorderste Linie zu spät bereit sind;
+  // sonst muss die App begründen, warum keine gefunden wurde.
+  check("0.4.2: Auffanglinie für die spätere Bereitschaftsstufe (oder begründet keine)",
+    !(d.second && d.late) || d.lines.some((l) => l.second) || d.notes.length === 1,
+    `${d.lines.length} Linie(n), zu spät: ${d.late}, Hinweise: ${d.notes.length}`);
+  check("0.4.2: wasserführende Fahrzeuge der zweiten Stufe im Einsatz statt als Reserve", ["nk-hlf20", "nk-lf20"].every((id) => d.veh.some((v) => v.id === id && !v.stage)), d.veh.filter((v) => /^nk-/.test(v.id)).map((v) => `${v.id}:${v.kind}`).join(", "));
+  check("0.4.2: jedes Fahrzeug im Bereitstellungsraum mit Rolle und Begründung", d.veh.filter((v) => v.stage).every((v) => v.role && /Bereitschaft:/.test(v.reason) && v.reason.length > 60), d.veh.filter((v) => v.stage).map((v) => v.role).join(", "));
+  await pg.waitForTimeout(1500);
+  // Ausschnitt: Brandfläche, Riegellinie(n) und alle Fahrzeugstandorte
+  await pg.evaluate(() => {
+    const s = window.__wb.state, pts = [...s.poly];
+    for (const l of s.sug.lines) pts.push(...l.latlngs);
+    for (const v of s.sug.vehicles) pts.push([v.lat, v.lon]);
+    window.__wb.map.fitBounds(L.latLngBounds(pts).pad(0.3), { animate: false });
+  });
+  await pg.waitForTimeout(900);
+  // Entzerrung: Kartenbeschriftungen dürfen sich nicht mehr überdecken
+  const ov = await pg.evaluate(() => {
+    const els = [...document.querySelectorAll("#map .veh-marker,#map .veh-group,#map .line-label,#map .ready-label,#map .hz-label")];
+    const rs = els.map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0);
+    let n = 0;
+    for (let i = 0; i < rs.length; i++) for (let j = i + 1; j < rs.length; j++) {
+      const a = rs[i], b = rs[j];
+      const w = Math.min(a.right, b.right) - Math.max(a.left, b.left), h = Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top);
+      if (w > 2 && h > 2) n++;
+    }
+    return { labels: rs.length, overlaps: n };
+  });
+  check("0.4.2: Kartenbeschriftungen überdecken sich nicht", ov.overlaps === 0, `${ov.labels} Label, ${ov.overlaps} Überdeckungen`);
+  // Legende für diesen Screenshot ausblenden: sonst verdeckt sie den Bereitstellungsraum
+  await pg.evaluate(() => { document.querySelector("#legend").style.visibility = "hidden"; });
+  await pg.evaluate(() => document.querySelector("#sec-vorschlaege").scrollIntoView());
+  await pg.screenshot({ path: path.join(OUT, "screenshot-fahrzeuge.png") });
+  check("Screenshot Fahrzeuge (deviceScaleFactor 2) erstellt", fs.existsSync(path.join(OUT, "screenshot-fahrzeuge.png")));
+  await c2.close();
+} catch (e) {
+  check("Testablauf Screenshot Fahrzeuge", false, e.message);
+}
+
 // Gemeindeteil: automatisch aus Gemarkung, manuelle Wahl überschreibt (Bereitschaft 25/40 min, Vorgabe Auftraggeber)
 try {
   const pg = await newPage();

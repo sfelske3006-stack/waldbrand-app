@@ -562,6 +562,10 @@
       if (v.verfuegbar === false) alerts.push(`ACHTUNG: Pflichtfahrzeug ${v.bezeichnung || v.id} ist als „nicht verfügbar“ markiert und wird nicht eingeplant.`);
       else if (excluded.has(v.id)) alerts.push(`ACHTUNG: Pflichtfahrzeug ${v.bezeichnung || v.id} wurde verworfen und wird nicht eingeplant.`);
       else if (rdy.get(v.id).fallback) notes.push(`Pflichtfahrzeug ${v.bezeichnung || v.id}: ${rdy.get(v.id).text}.`);
+      // 0.4.2: Pflichtfahrzeuge sind laut Vorgabe Fahrzeuge der EIGENEN Wehr. Ein angehaktes Fahrzeug einer
+      // Nachbarkommune ist fast immer ein Versehen (es fehlt dann für den Grundschutz am Gerätehaus).
+      const kv = v.kommune || (v.wache && stMap.get(String(v.wache)) ? stMap.get(String(v.wache)).kommune : null);
+      if (kv && P.grundschutz && normK(kv) !== normK(P.grundschutz.kommune)) notes.push(`Pflichtfahrzeug ${v.bezeichnung || v.id} gehört zur Kommune ${kv}, nicht zu ${P.grundschutz.kommune}. Pflichtfahrzeuge sind laut Vorgabe Fahrzeuge der eigenen Wehr; ein Fahrzeug der Nachbarkommune steht dann nicht mehr für den Grundschutz zur Verfügung. Häkchen „Pflicht“ in der Fahrzeugliste prüfen.`);
     }
     // Anfahrtsgrenze: geschätzte Anfahrt bzw. bei Vorgabe die Bereitschaftszeit
     const anfOf = (v) => { const r = rdy.get(v.id); return r.kind === "geschaetzt" ? r.e.min : r.ready; };
@@ -610,21 +614,53 @@
     // ---------------- Bedarf (Aufgaben) in Prioritätsreihenfolge (Annahme)
     const dirDeg = mainDir ?? (result.refInfo?.[0]?.headDeg ?? 0);
     const dirU = [Math.sin((dirDeg * Math.PI) / 180), Math.cos((dirDeg * Math.PI) / 180)];
+    const lineXY = (line) => line.xy || line.latlngs.map(([la, lo]) => g.proj.toXY(la, lo));
     const lineTasks = (line, rank) => {
-      const xy = line.xy || line.latlngs.map(([la, lo]) => g.proj.toXY(la, lo));
+      const xy = lineXY(line);
       const n = Math.max(1, Math.min(S.maxVehiclesPerLine, Math.ceil(line.lengthM / S.sectionPerVehicleM)));
       return Array.from({ length: n }, (_, q) => {
         const [x, y] = pointAt(xy, (q + 0.5) / n);
         return { task: "Riegel", line, rank, section: q + 1, sections: n, x, y, sectionM: line.lengthM / n };
       });
     };
+
+    // Zweite Riegellinie für die ZWEITE Bereitschaftsstufe (Annahme, 0.4.2): Fahrzeuge, die für die erste
+    // Linie zu spät sind (z. B. Löschzug im anderen Gemeindeteil, 40 statt 25 min), bekommen eine weiter
+    // rückwärts liegende Auffanglinie, statt pauschal als Reserve geparkt zu werden. Sicherheitsprüfung
+    // unverändert: die Linie wird gegen die „möglich“-Zone zum SPÄTEREN Prüfzeitpunkt geprüft.
+    const tooLateForFirst = allLines.length
+      ? rieg.filter((v) => rdy.get(v.id).ready + (S.lineMinLeadMin || 0) > allLines[0].minArrivalMin)
+      : [];
+    let ctx2 = null;
+    if (ready2 && (S.secondStageLines || 0) > 0 && allLines.length && tooLateForFirst.length) {
+      ctx2 = context(g, result, ignition, P, { readyMin: ready2.min, readyText: ready2.text, anfahrtMin: ready2.min - S.setupMin });
+      const ex2 = new Set([...excluded, ...allLines.map((l) => l.candId)]);
+      const l2 = lineSuggestions(g, result, osm, ignition, P, ctx2, mainDir, ex2);
+      const along = (l) => { const m = pointAt(lineXY(l), 0.5); return (m[0] - ctx.ignXY[0]) * dirU[0] + (m[1] - ctx.ignXY[1]) * dirU[1]; };
+      const a1 = allLines.map(along);
+      const add = l2.lines
+        .filter((l) => a1.every((v) => Math.abs(along(l) - v) >= S.lineMinSeparationM))
+        .slice(0, S.secondStageLines);
+      const haveIds = new Set(allLines.map((l) => l.id));
+      for (const l of add) {
+        if (haveIds.has(l.id)) { l.id = `${l.id}:stufe2`; l.candId = `${l.candId}:stufe2`; }
+        haveIds.add(l.id);
+        l.secondStage = true; l.readyMin = ctx2.readyMin; l.leadMin = l.minArrivalMin - ctx2.readyMin;
+        l.reason = `Auffanglinie für die zweite Bereitschaftsstufe (${ctx2.readyMin} min: ${ready2.text}), weil ${tooLateForFirst.length} wasserführende(s) Fahrzeug(e) für die vorderste Linie zu spät einsatzbereit sind. ` + l.reason;
+        allLines.push(l);
+      }
+      if (!add.length) notes.push(`Keine zweite Riegelstellung für die spätere Bereitschaftsstufe (${ready2.min} min) gefunden: ${l2.lines.length ? "nur Lagen zu nah an der ersten Linie" : "keine Lage erfüllt die Bedingungen zum späteren Prüfzeitpunkt"}.`);
+    }
+    if (allLines.some((l) => l.kind === "geometrisch")) notes.push("Ohne OSM-Daten wird genau EINE geometrische Riegellinie je Bereitschaftsstufe erzeugt (die erste Lage quer zur Hauptausbreitungsrichtung, die alle Bedingungen erfüllt). Es werden keine Alternativen bewertet und keine Wege/Barrieren berücksichtigt.");
+
     const objects = threatenedObjects(g, result, osm, ctx, P).slice(0, S.maxObjectTasks);
+    if (osm && osm.objects && !objects.length) notes.push(`Kein Objektschutz vorgeschlagen: keine Gebäude-/Wohnflächen (OSM) innerhalb von ${S.objectThreatDistM} m um den 6-h-„möglich“-Bereich.`);
     const tasks = [];
     if (allLines[0]) tasks.push(...lineTasks(allLines[0], 0));
     for (const o of objects) { const [x, y] = G.cellCenter(g, o.at); tasks.push({ task: "Objektschutz", obj: o, x, y }); }
     allLines.slice(1).forEach((l, q) => tasks.push(...lineTasks(l, q + 1)));
     for (const l of allLines) {
-      const mid = pointAt(l.xy || l.latlngs.map(([la, lo]) => g.proj.toXY(la, lo)), 0.5);
+      const mid = pointAt(lineXY(l), 0.5);
       const [la, lo] = g.proj.toLatLng(mid[0], mid[1]);
       const w = nearestWater(osm?.waterPoints, la, lo, 1)[0];
       if (!w || w.distM > S.hoseMaxM) tasks.push({ task: "Wasserversorgung", line: l, water: w || null, x: mid[0], y: mid[1] });
@@ -636,12 +672,13 @@
     // Pflichtfahrzeuge zuerst (vorrangig), danach nach Anfahrt
     const pool = [...supp.filter(isPflicht), ...supp.filter((v) => !isPflicht(v))];
     const late = new Map(); // vehicleId -> [Linienname]
-    const pflichtWhy = new Map(); // vehicleId -> [Grund, warum keine Aufgabe]
-    const why = (v, txt) => { if (!isPflicht(v)) return; if (!pflichtWhy.has(v.id)) pflichtWhy.set(v.id, []); if (!pflichtWhy.get(v.id).includes(txt)) pflichtWhy.get(v.id).push(txt); };
+    const vehWhy = new Map(); // vehicleId -> [Grund, warum keine (weitere) Aufgabe]
+    const why = (v, txt) => { if (!vehWhy.has(v.id)) vehWhy.set(v.id, []); const a = vehWhy.get(v.id); if (!a.includes(txt) && a.length < 4) a.push(txt); };
     const readyAtXY = (v, x, y, setup) => { const [la, lo] = g.proj.toLatLng(x, y); return rdyAt(v, la, lo, setup); };
     let unmet = 0;
-    for (const t of tasks) {
-      if (!pool.length) { unmet++; continue; }
+    /** Besetzt eine Aufgabe mit dem ersten geeigneten Fahrzeug des Pools. Gibt true zurück, wenn besetzt. */
+    const assignTask = (t, opt = {}) => {
+      if (!pool.length) return false;
       const label = t.line ? lineName(allLines, t.line) : "";
       const setup = t.task === "Objektschutz" ? S.objectSetupMin : S.setupMin;
       let order = pool.map((v, q) => q);
@@ -654,16 +691,19 @@
         const e = readyAtXY(v, t.x, t.y, setup);
         if (!e.ok) continue;
         const ready = e.ready;
-        if (t.task === "Riegel" && ready + (S.lineMinLeadMin || 0) > t.line.minArrivalMin) {
-          if (!late.has(v.id)) late.set(v.id, []);
-          if (!late.get(v.id).includes(label)) late.get(v.id).push(label);
-          if (!firstLate) firstLate = { v, ready };
-          why(v, `zu spät für Riegel ${label} (bereit nach ${Math.round(ready)} min, „möglich“-Front an der Linie nach ${fmtMin(t.line.minArrivalMin)})`);
+        if ((t.task === "Riegel" || t.task === "Verstärkung") && ready + (S.lineMinLeadMin || 0) > t.line.minArrivalMin) {
+          if (t.task === "Riegel") {
+            if (!late.has(v.id)) late.set(v.id, []);
+            if (!late.get(v.id).includes(label)) late.get(v.id).push(label);
+            if (!firstLate) firstLate = { v, ready };
+            why(v, `zu spät für Riegel ${label} (bereit nach ${Math.round(ready)} min, „möglich“-Front an der Linie nach ${fmtMin(t.line.minArrivalMin)})`);
+          }
           continue;
         }
         let pos;
-        if (t.task === "Riegel") pos = pickPosition(g, result, osm, ctx, P, t.x, t.y, 500, { used, readyMin: ready, behind: { x: t.x, y: t.y, ux: dirU[0], uy: dirU[1] } });
+        if (t.task === "Riegel" || t.task === "Verstärkung") pos = pickPosition(g, result, osm, ctx, P, t.x, t.y, 500, { used, readyMin: ready, behind: { x: t.x, y: t.y, ux: dirU[0], uy: dirU[1] } });
         else if (t.task === "Objektschutz") pos = pickPosition(g, result, osm, ctx, P, t.x, t.y, 300, { used, readyMin: ready });
+        else if (t.task === "Flanke") pos = pickPosition(g, result, osm, ctx, P, t.x, t.y, 500, { used, readyMin: ready });
         else {
           const tx = t.water ? g.proj.toXY(t.water.lat, t.water.lon) : null;
           pos = tx ? pickPosition(g, result, osm, ctx, P, tx[0], tx[1], 200, { used, readyMin: ready }) : null;
@@ -677,12 +717,12 @@
         chosen = q; p = pos; a = { e, ready };
         break;
       }
-      if (chosen < 0 && noPos) { chosen = -2; a = noPos; }
       if (chosen < 0) {
-        if (chosen === -2) notes.push(`${t.task}${label ? " " + label : ""}${t.section ? ` Abschnitt ${t.section}/${t.sections}` : ""}: kein sicherer${osm ? ", befahrbarer" : ""} Standort gefunden (Bedingungen: „möglich“-Front frühestens ${S.vehicleSafetyMin} min nach Bereitschaft des Fahrzeugs (${Math.round(a.ready)} min), kein Lauf vor der Bereitschaft, ≥ ${S.vehicleMinDistM} m vom 1-h-Bereich).`);
+        if (opt.optional) return false;
+        if (noPos) notes.push(`${t.task}${label ? " " + label : ""}${t.section ? ` Abschnitt ${t.section}/${t.sections}` : ""}: kein sicherer${osm ? ", befahrbarer" : ""} Standort gefunden (Bedingungen: „möglich“-Front frühestens ${S.vehicleSafetyMin} min nach Bereitschaft des Fahrzeugs (${Math.round(noPos.ready)} min), kein Lauf vor der Bereitschaft, ≥ ${S.vehicleMinDistM} m vom 1-h-Bereich).`);
         else if (firstLate) notes.push(`Riegel ${label} Abschnitt ${t.section}/${t.sections}: kein Fahrzeug rechtzeitig. Nächstes geeignetes (${firstLate.v.bezeichnung || firstLate.v.typ}) wäre nach ${Math.round(firstLate.ready)} min bereit, „möglich“-Front an der Linie nach ${fmtMin(t.line.minArrivalMin)} (Mindest-Wirkzeit ${S.lineMinLeadMin || 0} min).`);
         else unmet++;
-        continue;
+        return false;
       }
       const v = pool.splice(chosen, 1)[0];
       used.push([p.x, p.y]);
@@ -691,10 +731,17 @@
       const rr = rdyAt(v, lat, lon, setup);
       const anf = disp(rr);
       const anfTxt = ` Bereitschaft: ${rr.text}.`;
-      let reason, task = t.task;
+      let reason, task = t.task, taskKind = t.task;
       if (t.task === "Riegel") {
         task = `Riegel ${label}, Abschnitt ${t.section}/${t.sections}`;
         reason = `Riegel an ${KIND_LABEL[t.line.kind] || t.line.kind} (${label}): Linie ca. ${Math.round(t.line.lengthM / 10) * 10} m, aufgeteilt in ${t.sections} Abschnitt(e) zu ca. ${Math.round(t.sectionM / 10) * 10} m (Annahme ${S.sectionPerVehicleM} m je Fahrzeug). Front („möglich“) an der Linie frühestens in ${fmtMin(t.line.minArrivalMin)}.${anfTxt} Standort auf der brandabgewandten Seite, frühestens erreicht: ${fmtMin(result.earliest[p.k])}, ${Math.round(ctx.dist1h[p.k])} m vom 1-h-Bereich.`;
+      } else if (t.task === "Verstärkung") {
+        taskKind = "Riegel";
+        task = `Riegel ${label}, Verstärkung/Ablösung`;
+        reason = `Verstärkung/Ablösung an Riegel ${label} (Annahme 0.4.2: solange Fahrzeuge verfügbar sind und rechtzeitig bereit werden, wird die Linie dichter besetzt als die Planungsannahme ${S.sectionPerVehicleM} m je Fahrzeug, höchstens ${S.maxVehiclesPerLine} Fahrzeuge je Linie). Front („möglich“) an der Linie frühestens in ${fmtMin(t.line.minArrivalMin)}.${anfTxt} Standort ${Math.round(ctx.dist1h[p.k])} m vom 1-h-Bereich.`;
+      } else if (t.task === "Flanke") {
+        task = `Flankensicherung ${t.side}`;
+        reason = `Flankensicherung ${t.side} der Ausbreitungsachse (ANNAHME 0.4.2, nicht mit der Feuerwehr abgestimmt): Fahrzeug ist weder für eine Riegelstellung rechtzeitig noch für Objektschutz/Wasserversorgung nötig und begrenzt stattdessen die seitliche Ausbreitung. Standort ca. ${Math.round(t.offsetM)} m seitlich der Hauptausbreitungsrichtung, ${Math.round(ctx.dist1h[p.k])} m vom 1-h-Bereich, frühestens erreicht ${fmtMin(result.earliest[p.k])}.${anfTxt} Keine durchgehende Flankenlinie geprüft; Lage vor Ort erkunden.`;
       } else if (t.task === "Objektschutz") {
         const o = t.obj;
         const rdyO = rr.ready;
@@ -708,11 +755,55 @@
       reason += osm ? (p.drv === 1 ? " Liegt an einer Straße (OSM)." : " Liegt an einem Wirtschaftsweg (OSM): Befahrbarkeit prüfen.") : " Befahrbarkeit nicht geprüft (keine OSM-Daten).";
       reason += " Rückzugsweg nicht geprüft.";
       veh.push({
-        id: `fz:${v.id}`, type: "fahrzeug", vehicleId: v.id, vehicle: v, task, taskKind: t.task, lat, lon,
+        id: `fz:${v.id}`, type: "fahrzeug", vehicleId: v.id, vehicle: v, task, taskKind, lat, lon,
         reason, water, waterInfo: waterText(v, water, P), lineId: t.line?.id || null,
         arrivalMin: result.earliest[p.k], distTo1hM: ctx.dist1h[p.k], anfahrt: anf, readyMin: rr.ready,
         source: osm ? "Modellprognose + OSM (nicht verifiziert) + Fahrzeugliste" : "Modellprognose + Fahrzeugliste",
       });
+      return true;
+    };
+    for (const t of tasks) assignTask(t);
+
+    // ---------------- Grundschutz: direkt nach den Einsatzaufgaben und VOR Verstärkung/Flanke/Bereitstellung
+    // (0.4.2). Der Grundschutz an den Gerätehäusern ist eine Vorgabe des Auftraggebers und hat damit Vorrang
+    // vor der Reserve im Bereitstellungsraum; Fahrzeuge mit Einsatzaufgabe sind gebunden und bleiben es.
+    const plannedTask = new Set(veh.map((s) => s.vehicleId));
+    for (const s of locked.values()) if (s.type === "fahrzeug") plannedTask.add(s.vehicleId);
+    const gs = grundschutz(vehicles, opts.stations || [], P, plannedTask, opts.grundschutzOverride || {});
+    const gsIds = new Map(gs.assignments.filter((a) => a.vehicle).map((a) => [a.vehicle.id, a]));
+    for (let q = pool.length - 1; q >= 0; q--) {
+      const a = gsIds.get(pool[q].id);
+      if (!a) continue;
+      notes.push(`${pool[q].bezeichnung || pool[q].typ}: keine Einsatzaufgabe, deshalb Grundschutz am Gerätehaus ${a.wache ? a.wache.name : a.wacheId} (Vorgabe Grundschutz vor Verstärkung/Flanke/Reserve); steht nicht im Bereitstellungsraum.`);
+      pool.splice(q, 1);
+    }
+
+    // ---------------- Verbleibende wasserführende Fahrzeuge sinnvoll einsetzen, statt sie als Reserve zu parken
+    // (Annahme 0.4.2): 1. Linien bis maxVehiclesPerLine verstärken, 2. Flanken sichern. Sicherheitsprüfung
+    // (sicherer Standort, rechtzeitige Bereitschaft) unverändert; wer sie nicht erfüllt, bleibt Reserve.
+    if (S.lineReinforceToMax) {
+      for (const l of allLines) {
+        const xy = lineXY(l);
+        let n = veh.filter((x) => x.lineId === l.id && x.taskKind === "Riegel").length;
+        const base = Math.max(1, Math.min(S.maxVehiclesPerLine, Math.ceil(l.lengthM / S.sectionPerVehicleM)));
+        while (n > 0 && n < S.maxVehiclesPerLine && pool.some((v) => !supplyOnly(v))) {
+          const [x, y] = pointAt(xy, (n + 0.5) / (n + 1));
+          if (!assignTask({ task: "Verstärkung", line: l, x, y, sections: base }, { optional: true })) break;
+          n++;
+        }
+      }
+    }
+    const flankLeft = pool.filter((v) => !supplyOnly(v)).length;
+    if (flankLeft && (S.maxFlankVehicles || 0) > 0 && allLines.length) {
+      const px = dirU[1], py = -dirU[0];
+      let half = 0;
+      for (const k of ctx.readyCells) { const [x, y] = G.cellCenter(g, k); const q = Math.abs((x - ctx.ignXY[0]) * px + (y - ctx.ignXY[1]) * py); if (q > half) half = q; }
+      const n = Math.min(S.maxFlankVehicles, flankLeft);
+      for (let q = 0; q < n; q++) {
+        const sg = q % 2 === 0 ? 1 : -1, step = Math.floor(q / 2);
+        const off = half + S.flankOffsetM * (1 + step);
+        assignTask({ task: "Flanke", side: sg > 0 ? "rechts der Ausbreitungsrichtung" : "links der Ausbreitungsrichtung", offsetM: off, x: ctx.ignXY[0] + px * off * sg, y: ctx.ignXY[1] + py * off * sg }, { optional: true });
+      }
     }
     if (unmet) notes.push(`Bedarf übersteigt die verfügbaren Löschfahrzeuge: ${unmet} Aufgabe(n) ohne Fahrzeug (Nachalarmierung/Überlandhilfe prüfen).`);
     if (late.size) notes.push(`Zu spät für Riegel (Bereitschaft + ${S.lineMinLeadMin || 0} min Mindest-Wirkzeit nach Eintreffen der „möglich“-Front, Anfahrt geschätzt): ${[...late.entries()].map(([id, ls]) => `${(vehicles.find((v) => v.id === id) || {}).bezeichnung || id} (${ls.join(", ")})`).join("; ")}.`);
@@ -740,18 +831,27 @@
         if (!stage || score < stage.score) stage = { k, score, drv, x, y };
       }
     }
-    // Pflichtfahrzeuge ohne Aufgabe: eigener Status, nicht Reserve
-    const pflichtLeft = pool.filter(isPflicht);
-    const restPool = pool.filter((v) => !isPflicht(v));
-    const pflichtStaged = pflichtLeft.map((v) => ({ v, role: "Pflichtfahrzeug – bereitgestellt", pflicht: true, why: `Pflichtfahrzeug (wird bei jedem Einsatz eingebunden), aber keine sichere Aufgabe: ${(pflichtWhy.get(v.id) || [tasks.length ? "alle Aufgaben besetzt" : `keine Aufgabe (keine gültige Riegelstellung${osm ? ", keine bedrohte Bebauung" : ""})`]).join("; ")}. Bereitgestellt nahe der Einsatzstelle.` }));
+    // Begründung je Fahrzeug im Bereitstellungsraum (0.4.2: immer nachvollziehbar, nie nur „Reserve“)
+    const whyOf = (v) => {
+      const r = vehWhy.get(v.id);
+      if (r && r.length) return r.join("; ");
+      if (!tasks.length) return `keine Aufgabe ermittelt (keine gültige Riegelstellung${osm ? ", keine bedrohte Bebauung" : " und ohne OSM-Daten kein Objektschutz"})`;
+      return `alle ${tasks.length} Aufgaben (Riegelabschnitte, Objektschutz, Wasserversorgung) wurden an früher einsatzbereite Fahrzeuge vergeben (Bereitschaft dieses Fahrzeugs: ${Math.round(rdy.get(v.id).ready)} min)`;
+    };
+    // Pflichtfahrzeuge ohne Aufgabe: eigener Status, nicht Reserve. Grundschutzfahrzeuge stehen am Gerätehaus
+    // und erscheinen NICHT im Bereitstellungsraum.
+    const stagePool = pool;
+    const pflichtLeft = stagePool.filter(isPflicht);
+    const restPool = stagePool.filter((v) => !isPflicht(v));
+    const pflichtStaged = pflichtLeft.map((v) => ({ v, role: "Pflichtfahrzeug – bereitgestellt", pflicht: true, why: `Pflichtfahrzeug (wird bei jedem Einsatz eingebunden), aber keine sichere Aufgabe: ${whyOf(v)}. Bereitgestellt nahe der Einsatzstelle.` }));
     const reserveAll = restPool;
     const reserveUse = reserveAll.slice(0, A.maxReserve ?? reserveAll.length);
-    const reserve = reserveUse.map((v) => ({ v, role: "Reserve", why: tasks.length ? `Alle ${tasks.length} ermittelten Aufgaben (Riegelabschnitte, Objektschutz, Wasserversorgung) sind besetzt, ohne sicheren Standort oder das Fahrzeug käme zu spät; Löschfahrzeug bleibt als Reserve.` : `Keine gültige Riegelstellung${osm ? " und keine bedrohte Bebauung" : ""} gefunden; Löschfahrzeug bleibt als Reserve.` }));
+    const reserve = reserveUse.map((v) => ({ v, role: "Reserve", why: `Keine sichere Aufgabe für dieses Fahrzeug: ${whyOf(v)}. Löschfahrzeug bleibt als Reserve im Bereitstellungsraum.` }));
     const leadAll = avail.filter((v) => /^(ELW|KdoW)/.test(String(v.typ)));
     const crewAll = avail.filter((v) => /^(MTF|MTW)/.test(String(v.typ)));
     const lim = (list, n) => [...list.filter(isPflicht), ...list.filter((v) => !isPflicht(v)).slice(0, n ?? list.length)];
-    const lead = lim(leadAll, A.maxStageLead).map((v) => ({ v, role: "Führung", why: "Führungsfahrzeug ohne Löschwasser: Einsatzleitung am Bereitstellungsraum (Annahme)." }));
-    const crew = lim(crewAll, A.maxStageCrew).map((v) => ({ v, role: "Personalreserve", why: "Mannschaftstransport ohne Löschwasser: Personalreserve/Ablösung (Annahme)." }));
+    const lead = lim(leadAll, A.maxStageLead).map((v) => ({ v, role: "Führung", why: "Führungsfahrzeug ohne Löschwasser: kein Riegel-, Objektschutz- oder Wasserversorgungsauftrag möglich; Einsatzleitung am Bereitstellungsraum (Annahme)." }));
+    const crew = lim(crewAll, A.maxStageCrew).map((v) => ({ v, role: "Personalreserve", why: "Mannschaftstransportfahrzeug ohne Löschwasser: kein Riegel-, Objektschutz- oder Wasserversorgungsauftrag möglich; Personalreserve/Ablösung (Annahme)." }));
     const notNeeded = [...reserveAll.slice(reserve.length), ...leadAll.filter((v) => !lead.some((x) => x.v === v)), ...crewAll.filter((v) => !crew.some((x) => x.v === v))];
     if (notNeeded.length) notes.push(`Nicht benötigt (nicht eingeplant, Begrenzung Bereitstellungsraum: max. ${A.maxReserve} Reserve, ${A.maxStageLead} Führung, ${A.maxStageCrew} Personal; Annahme): ${notNeeded.map((v) => v.bezeichnung || v.typ).join(", ")}.`);
     const staged = [...pflichtStaged, ...lead, ...reserve, ...crew];
@@ -771,17 +871,15 @@
       }
     } else if (staged.length) {
       notes.push("Kein sicherer Bereitstellungsraum gefunden.");
-      for (const s of pflichtStaged) alerts.push(`ACHTUNG: Pflichtfahrzeug ${s.v.bezeichnung || s.v.id}: keine sichere Aufgabe und kein sicherer Bereitstellungsraum gefunden (${(pflichtWhy.get(s.v.id) || ["keine Aufgabe"]).join("; ")}).`);
+      for (const s of pflichtStaged) alerts.push(`ACHTUNG: Pflichtfahrzeug ${s.v.bezeichnung || s.v.id}: keine sichere Aufgabe und kein sicherer Bereitstellungsraum gefunden (${whyOf(s.v)}).`);
     }
     for (const x of veh) { if (late.has(x.vehicleId)) x.lateFor = late.get(x.vehicleId); if (isPflicht(x.vehicle)) x.pflicht = true; }
-    const planned = new Set(veh.map((s) => s.vehicleId));
+    const planned = new Set([...veh.map((s) => s.vehicleId), ...gsIds.keys()]);
     for (const s of locked.values()) if (s.type === "fahrzeug") planned.add(s.vehicleId);
     const unassigned = avail.filter((v) => !planned.has(v.id) && !notNeeded.includes(v));
     if (unassigned.length) notes.push(`Nicht eingeplant (kein Löschwasser bzw. Ausstattung offen, für Vegetationsbrand nicht vorgesehen): ${unassigned.map((v) => v.bezeichnung || v.typ).join(", ")}.`);
     if (!supp.length) notes.push(vehicles.some((v) => hasWater(v, P)) ? "Keine einplanbaren Löschfahrzeuge mit Wasser (Koordinate, Verfügbarkeit oder Anfahrtsgrenze prüfen)." : "Keine verfügbaren Löschfahrzeuge mit Wasser in der Fahrzeugliste.");
     const lockedVeh = [...locked.values()].filter((s) => s.type === "fahrzeug");
-    // Grundschutz an den Gerätehäusern aus Nachbarkommunen (nicht im Einsatz eingeplante Fahrzeuge)
-    const gs = grundschutz(vehicles, opts.stations || [], P, planned, opts.grundschutzOverride || {});
     notes.push(...gs.notes);
     alerts.push(...gs.alerts);
     return {

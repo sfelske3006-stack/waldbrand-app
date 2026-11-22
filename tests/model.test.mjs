@@ -939,12 +939,82 @@ test("Grundschutz mit den echten Kreisdaten (Brand bei 50,8045 N / 7,3405 O)", (
   assert.notEqual(gs.assignments[0].vehicle.id, gs.assignments[1].vehicle.id);
 });
 
+// ------------------------------------------------------------------ 0.4.2: Einsatz statt Reserve, Grundschutz, Begründungen
+test("0.4.2: Grundschutz nie im Bereitstellungsraum, wasserführende Fahrzeuge nicht pauschal Reserve, Begründung je Bereitstellung", async () => {
+  const nd = Dispatch.normalize(FZ_DATA);
+  const g = Grid.makeGrid(50.8705, 7.3120, P.grid.halfSizeM, P.grid.cellM, CL);
+  const r = 60;
+  const poly = Array.from({ length: 16 }, (_, k) => g.proj.toLatLng(Math.sin((k / 16) * 2 * Math.PI) * r, Math.cos((k / 16) * 2 * Math.PI) * r));
+  const ign = Grid.polygonCells(g, poly);
+  const res = await F.runEnsemble({ grid: g, classList: CL, ignition: ign, weatherHours: wx(7, { windKmh: 12, windDirDeg: 225, tempC: 27, rh: 30 }), P, runs: 12, fuelClass: "mischwald" });
+  const m = F.metrics(res, g, ign, P);
+  const s = Suggest.compute(g, res, null, ign, nd.fahrzeuge, P, m.mainDirDeg, null, { stations: nd.wachen, teil: { teil: "Seelscheid", innerhalb: true, quelle: "Test" } });
+
+  // 1. Grundschutz steht AM GERÄTEHAUS und nie im Bereitstellungsraum / als Pflichtfahrzeug
+  const gsIds = new Set(s.grundschutz.filter((a) => a.vehicle).map((a) => a.vehicle.id));
+  assert.equal(gsIds.size, 2, "zwei Gerätehäuser mit Grundschutz");
+  for (const v of s.vehicles) assert.ok(!gsIds.has(v.vehicleId), `Grundschutzfahrzeug ${v.vehicleId} darf nicht im Einsatz-/Bereitstellungsvorschlag stehen (${v.task})`);
+  for (const a of s.grundschutz) assert.notEqual(a.kommune, P.grundschutz.kommune);
+
+  // 2. Zweite Bereitschaftsstufe bekommt eine eigene Riegelstellung; die später bereiten Fahrzeuge
+  //    (hier LZ Neunkirchen, 40 statt 25 min) stehen dort und nicht als Reserve im Bereitstellungsraum.
+  assert.ok(s.lineInfo.second, "zweite Prüfgrenze vorhanden");
+  assert.ok(s.lines.length >= 2, `zweite Riegelstellung für die spätere Bereitschaftsstufe: ${s.lines.length}`);
+  const r2 = s.lines[s.lines.length - 1];
+  assert.equal(r2.secondStage, true);
+  assert.ok(r2.minArrivalMin > s.lines[0].minArrivalMin, "Auffanglinie liegt weiter vor der Front");
+  for (const id of ["nk-hlf20", "nk-lf20"]) {
+    const v = s.vehicles.find((x) => x.vehicleId === id);
+    assert.ok(v && !v.stage, `${id}: Einsatzaufgabe statt Reserve (${v ? v.task : "fehlt"})`);
+  }
+  // Sicherheitsprüfung unverändert: jedes eingesetzte Fahrzeug erfüllt Puffer und Mindestabstand
+  for (const v of s.vehicles.filter((x) => !x.stage)) {
+    const k = Grid.cellOf(g, ...g.proj.toXY(v.lat, v.lon));
+    assert.ok(res.tPossible[k] >= v.readyMin + P.suggestions.vehicleSafetyMin - 1e-9, `${v.vehicleId}: Puffer`);
+    assert.ok(res.earliest[k] > v.readyMin, `${v.vehicleId}: kein Lauf vor der Bereitschaft`);
+    assert.ok(v.distTo1hM >= P.suggestions.vehicleMinDistM, `${v.vehicleId}: Mindestabstand 1-h-Bereich`);
+  }
+  // Keine Riegel-/Verstärkungsstellung für ein zu spätes Fahrzeug
+  for (const v of s.vehicles.filter((x) => x.taskKind === "Riegel")) {
+    const l = s.lines.find((x) => x.id === v.lineId);
+    assert.ok(v.readyMin + P.suggestions.lineMinLeadMin <= l.minArrivalMin + 1e-9, `${v.vehicleId} zu spät für ${l.id}`);
+  }
+
+  // 3. Jedes Fahrzeug im Bereitstellungsraum hat eine nachvollziehbare Begründung
+  const staged = s.vehicles.filter((v) => v.stage);
+  assert.ok(staged.length, "Bereitstellungsraum besetzt");
+  for (const v of staged) {
+    assert.ok(v.role, `${v.vehicleId}: Rolle`);
+    assert.ok(v.reason && v.reason.length > 60, `${v.vehicleId}: Begründung`);
+    if (v.role === "Reserve") assert.match(v.reason, /Keine sichere Aufgabe für dieses Fahrzeug: .+/);
+    if (v.role === "Pflichtfahrzeug – bereitgestellt") assert.match(v.reason, /keine sichere Aufgabe/);
+    if (v.role === "Führung" || v.role === "Personalreserve") assert.match(v.reason, /ohne Löschwasser/);
+    assert.match(v.reason, /Bereitschaft:/);
+  }
+});
+
+test("0.4.2: Flankensicherung nur für übrige Fahrzeuge und nur an sicheren Standorten; eindeutige Linien-Ids", async () => {
+  const vehicles = [HL("nah1", "w-nah"), HL("nah2", "w-nah"), HL("nah3", "w-nah"), HL("nah4", "w-nah"), HL("nah5", "w-nah"), HL("nah6", "w-nah"), HL("nah7", "w-nah")];
+  const st = (g) => synthSt(g, [["w-nah", "Testkommune", -2000, 0]]);
+  const { s } = await dispatchScenario(vehicles, st, { maxAnfahrtMin: 60 }, 12);
+  const fl = s.vehicles.filter((v) => v.taskKind === "Flanke");
+  assert.ok(fl.length <= P.suggestions.maxFlankVehicles, `höchstens ${P.suggestions.maxFlankVehicles} Flankenfahrzeuge`);
+  for (const v of fl) {
+    assert.match(v.reason, /ANNAHME/);
+    assert.ok(v.distTo1hM >= P.suggestions.vehicleMinDistM);
+  }
+  // Riegel wird zuerst besetzt
+  assert.ok(!fl.length || s.vehicles.some((v) => v.taskKind === "Riegel"), "Flanke erst nach Riegel");
+  // Linien-Ids bleiben eindeutig (sonst falsche Zuordnung Fahrzeug -> Linie)
+  assert.equal(s.lines.length, new Set(s.lines.map((l) => l.id)).size, "Linien-Ids eindeutig");
+});
+
 // ------------------------------------------------------------------ Veröffentlichung: Version, Cache-Busting, relative Pfade
 test("Version einheitlich (params.js, index.html-Loader, package.json) und alle eigenen Pfade relativ", () => {
   const html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8");
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
   const v = html.match(/window\.WB_VERSION = "([^"]+)"/)[1];
-  assert.equal(P.version, "0.4.1-prototyp");
+  assert.equal(P.version, "0.4.2-prototyp");
   assert.equal(v, P.version); assert.equal(pkg.version, P.version);
   assert.match(html, /TESTVERSION – nicht für den Einsatz/);
   const js = JSON.parse(html.match(/window\.WB_JS = (\[[^\]]+\])/)[1]), css = JSON.parse(html.match(/window\.WB_CSS = (\[[^\]]+\])/)[1]);

@@ -179,6 +179,7 @@ td.num, th.num { text-align: right; }
 .leaflet-container { font: 14px var(--font); }
 .leaflet-image-layer.wb-overlay { image-rendering: pixelated; }
 .vx-marker { width: 34px; height: 34px; border-radius: 50%; background: #fff; border: 4px solid #c0281c; box-shadow: 0 0 0 2px #000; }
+.veh-marker, .veh-group, .line-label, .ready-label, .hz-label { display: inline-block; }
 .hz-label { background: #fff; border: 2px solid #000; border-radius: 4px; padding: 1px 6px; font-weight: 800; font-size: 14px; white-space: nowrap; color: #000; }
 .veh-marker { background: #0b4f8a; color: #fff; border: 3px solid #fff; box-shadow: 0 0 0 2px #000; border-radius: 6px; padding: 4px 8px; font-weight: 800; font-size: 13px; white-space: nowrap; }
 .veh-marker.locked { background: #062a4a; }

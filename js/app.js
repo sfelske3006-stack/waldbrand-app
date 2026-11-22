@@ -895,6 +895,49 @@
   }
   map.on("zoomend", renderVehicleMarkers);
 
+  /**
+   * Überlappende Kartenbeschriftungen entzerren (nur Anzeige, 0.4.2). Fahrzeug-, Linien-, Prüfgrenzen- und
+   * Horizont-Label werden gemessen und, wenn sie sich überdecken, schrittweise nach oben/unten versetzt
+   * (die Markerposition selbst bleibt unverändert). Reihenfolge: Fahrzeuge zuerst, damit sie ihren Platz
+   * behalten und die übrigen Label ausweichen.
+   */
+  const LABEL_SEL = ".veh-marker,.veh-group,.line-label,.ready-label,.hz-label";
+  let declutterPending = false;
+  function declutterLabels() {
+    const els = [...document.querySelectorAll(`#map ${LABEL_SEL.split(",").join(",#map ")}`)];
+    if (!els.length) return;
+    for (const el of els) el.style.transform = "";
+    const rank = (el) => (el.classList.contains("veh-marker") || el.classList.contains("veh-group") ? 0 : el.classList.contains("line-label") ? 1 : 2);
+    const items = els.map((el) => ({ el, r: el.getBoundingClientRect(), rank: rank(el) }))
+      .filter((it) => it.r.width > 0 && it.r.height > 0)
+      .sort((a, b) => a.rank - b.rank || a.r.top - b.r.top);
+    // feste Hindernisse (nicht verschiebbar): Stützpunkte der Brandfläche, Entnahmestellen
+    const placed = [...document.querySelectorAll("#map .vx-marker, #map .water-marker")]
+      .map((el) => el.getBoundingClientRect()).filter((r) => r.width > 0)
+      .map((r) => ({ left: r.left, right: r.right, top: r.top, bottom: r.bottom }));
+    const hits = (r) => placed.some((q) => r.left < q.right + 2 && r.right > q.left - 2 && r.top < q.bottom + 2 && r.bottom > q.top - 2);
+    for (const it of items) {
+      const h = it.r.height + 4;
+      // Kandidaten: erst senkrecht versetzen (abwechselnd nach oben/unten), dann zusätzlich waagerecht
+      const cand = [[0, 0]];
+      for (let step = 1; step <= 8; step++) for (const sg of [-1, 1]) cand.push([0, sg * step * h]);
+      for (const dx of [-1, 1]) for (let step = 0; step <= 6; step++) for (const sg of [-1, 1]) cand.push([dx * (it.r.width * 0.6), sg * step * h]);
+      let best = [0, 0];
+      for (const [dx, dy] of cand) {
+        if (!hits({ left: it.r.left + dx, right: it.r.right + dx, top: it.r.top + dy, bottom: it.r.bottom + dy })) { best = [dx, dy]; break; }
+      }
+      const [dx, dy] = best;
+      if (dx || dy) it.el.style.transform = `translate(${Math.round(dx)}px, ${dy}px)`;
+      placed.push({ left: it.r.left + dx, right: it.r.right + dx, top: it.r.top + dy, bottom: it.r.bottom + dy });
+    }
+  }
+  function scheduleDeclutter() {
+    if (declutterPending) return;
+    declutterPending = true;
+    requestAnimationFrame(() => { declutterPending = false; try { declutterLabels(); } catch { /* nur Anzeige */ } });
+  }
+  map.on("zoomend moveend", scheduleDeclutter);
+
   function moveVehicle(v, lat, lon) {
     v.lat = lat; v.lon = lon; v.moved = true; v.locked = true;
     const st = Dispatch.stationMap(S.stations);
@@ -958,6 +1001,7 @@
       </div>`);
     });
     renderVehicleMarkers();
+    scheduleDeclutter();
     const stageVeh = res.vehicles.filter((v) => v.stage && !v.moved);
     res.vehicles.filter((v) => !(v.stage && !v.moved)).forEach((v) => html.push(vehCard(v, false)));
     if (stageVeh.length) {

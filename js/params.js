@@ -8,7 +8,7 @@
   const TPA = 0.0459137; // 1 ton/acre (US short ton) in lb/ft²
 
   const PARAMS = {
-    version: "0.4.1-prototyp",
+    version: "0.4.2-prototyp",
     modelName: "Rothermel-1972-Raster-MTT (vereinfachte Eigenimplementierung)",
 
     // Prognosehorizonte in Stunden (Spezifikation 2.3)
@@ -264,6 +264,22 @@
       // vom Standort; Anzahl Fahrzeuge je Linie = Linienlänge / Abschnitt (aufgerundet)
       sectionPerVehicleM: 300,
       maxVehiclesPerLine: 4,
+      // ANNAHME (0.4.2, NICHT fachlich belegt): sind nach der Grundbesetzung (Linienlänge / sectionPerVehicleM)
+      // noch rechtzeitig einsatzbereite Löschfahrzeuge übrig, wird die Linie bis maxVehiclesPerLine dichter
+      // besetzt (Verstärkung/Ablösung), statt die Fahrzeuge als Reserve zu parken. Mit der Feuerwehr klären:
+      // wirksamer Abschnitt je Fahrzeug und sinnvolle Mindestbesetzung je Linie (offen).
+      lineReinforceToMax: true,
+      // ANNAHME (0.4.2): zweite Riegelstellung (Auffanglinie) für die ZWEITE Bereitschaftsstufe, wenn
+      // Fahrzeuge für die vorderste Linie zu spät einsatzbereit sind (z. B. Löschzug im anderen Gemeindeteil:
+      // 40 statt 25 min). Anzahl zusätzlicher Linien und Mindestabstand zur ersten Linie (m).
+      secondStageLines: 1,
+      lineMinSeparationM: 200,
+      // ANNAHME (0.4.2, NICHT mit der Feuerwehr abgestimmt): Flankensicherung. Bleiben wasserführende
+      // Fahrzeuge ohne Aufgabe übrig, werden bis zu maxFlankVehicles seitlich der Hauptausbreitungsrichtung
+      // eingesetzt (Abstand = seitliche Ausdehnung der „möglich“-Zone + flankOffsetM je Stufe). Es wird KEINE
+      // durchgehende Flankenlinie geprüft; die Sicherheitsprüfung des Standorts gilt unverändert.
+      maxFlankVehicles: 2,
+      flankOffsetM: 150,
       // Bebauung gilt als bedroht, wenn sie höchstens so weit von der 6-h-"möglich"-Zone entfernt ist (m)
       objectThreatDistM: 50,
       // Annahme: Gebäude/Wohnflächen mit Lücken bis 100 m bilden ein Objekt (ein Objektschutz-Vorschlag)

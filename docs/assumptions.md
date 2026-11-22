@@ -147,3 +147,30 @@ Alle Werte stehen versioniert in `js/params.js` (Version `0.4.1-prototyp`). Jede
 | dto., 12 km/h SW | 412 / 1.043 ms | 2.593,6 → 2.457,6 ha (−5,2 %) | −15,0 % |
 | Tal bei Eischeid, 6 km/h SW | 153 / 533 ms | −3,5 % | −20,7 % |
 | dto., 12 km/h SW | 418 / 681 ms | −0,5 % | −20,1 % |
+
+## Neu in 0.4.2 (Befunde zum Nutzer-Screenshot „nur zwei Fahrzeuge an der Front“)
+
+### Befunde (Code-Belege)
+
+| Beobachtung | Ursache | Beleg |
+|---|---|---|
+| nur EINE Riegellinie | Ohne OSM-Daten erzeugt `lineSuggestions` genau eine geometrische Ersatzlinie: die erste Lage quer zur Hauptrichtung, die alle Bedingungen erfüllt, und kehrt sofort zurück. Es werden keine Alternativen bewertet, die Verwerfungszähler bleiben 0. | `js/suggest.js` (geometrischer Zweig in `lineSuggestions`, `return` in der Schleife über `d`) |
+| wenige Fahrzeuge an der Linie | Grundbesetzung = `ceil(Länge / sectionPerVehicleM)` (300 m), gekappt auf `maxVehiclesPerLine` (4). Abschnitte ohne rechtzeitig einsatzbereites Fahrzeug bleiben frei (Sicherheitsregel: Bereitschaft + `lineMinLeadMin` ≤ Ankunft der „möglich“-Front). | `js/suggest.js` (`lineTasks`, Prüfung `ready + lineMinLeadMin > line.minArrivalMin`) |
+| kein Objektschutz | `threatenedObjects` braucht `osm.objects.wohnbebauung`; ohne OSM-Daten gibt es keine Gebäudedaten. Mit OSM gilt: Bebauung höchstens `objectThreatDistM` (50 m) von der 6-h-„möglich“-Zone entfernt. | `js/suggest.js` (`threatenedObjects`), `PARAMS.suggestions.objectThreatDistM` |
+| wasserführende Fahrzeuge als „Reserve“ | Es gab nur Aufgaben zur ERSTEN Bereitschaftsstufe (früheste Bereitschaft). Fahrzeuge der zweiten Stufe (z. B. Löschzug im anderen Gemeindeteil, 40 statt 25 min) waren für die vorderste Linie zu spät und fielen deshalb pauschal in den Bereitstellungsraum. Die zweite Prüfgrenze wurde nur gezeichnet, aber nicht zur Planung genutzt. | `js/suggest.js` (`lineInfo.second`), `js/app.js` (`ready-label r2`) |
+| Grundschutzfahrzeug im Bereitstellungsraum | Der Grundschutz wurde ZULETZT berechnet und durfte nur Fahrzeuge nehmen, die nicht „eingeplant“ waren – auch die bloße Reserve/Bereitstellung galt als eingeplant. Damit verdrängte die Reserve die Vorgabe Grundschutz. | bis 0.4.1: `grundschutz(..., planned, ...)` am Ende von `compute` |
+
+### Korrekturen
+
+| Thema | Neu | Status |
+|---|---|---|
+| Reihenfolge | Einsatzaufgaben (Riegel, Objektschutz, Wasserversorgung) → **Grundschutz (Vorgabe)** → Verstärkung/Flanke → Bereitstellungsraum. Ein Grundschutzfahrzeug steht am Gerätehaus und erscheint nie im Bereitstellungsraum. | Vorgabe umgesetzt |
+| Auffanglinie zweite Stufe (`secondStageLines`, `lineMinSeparationM`) | Sind Fahrzeuge für die vorderste Linie zu spät einsatzbereit, wird eine zweite Riegelstellung gegen die „möglich“-Zone zum SPÄTEREN Prüfzeitpunkt gesucht (mind. 200 m hinter der ersten). Findet sich keine, wird das begründet. | Annahme |
+| Verstärkung/Ablösung (`lineReinforceToMax`) | Bleiben rechtzeitig einsatzbereite Löschfahrzeuge übrig, wird eine Linie bis `maxVehiclesPerLine` dichter besetzt, statt die Fahrzeuge zu parken. Die 300 m je Fahrzeug sind weiterhin eine Planungsannahme ohne Beleg aus der Fachliteratur. | Annahme, **offen** |
+| Flankensicherung (`maxFlankVehicles`, `flankOffsetM`) | Neue Aufgabe „Flanke“: bis zu 2 übrige wasserführende Fahrzeuge seitlich der Hauptausbreitungsrichtung (seitliche Ausdehnung der „möglich“-Zone + 150 m je Stufe). KEINE durchgehende Flankenlinie, keine Barrierenprüfung. | Annahme, **offen** |
+| Begründung je Fahrzeug im Bereitstellungsraum | Jedes Fahrzeug nennt den konkreten Grund (zu spät für Riegel X, kein sicherer Standort, Aufgaben an früher bereite Fahrzeuge vergeben, kein Löschwasser) und seine Bereitschaftszeit. | – |
+| Hinweis geometrische Linie | Ohne OSM weist die App ausdrücklich darauf hin, dass genau eine Ersatzlinie je Bereitschaftsstufe erzeugt und keine Alternative bewertet wird. | – |
+| Kartenbeschriftungen | Überlappende Label (Fahrzeuge, Linien, Prüfgrenzen, Horizonte) werden nach dem Zeichnen gemessen und senkrecht/waagerecht versetzt; die Markerposition bleibt unverändert (nur Anzeige). | – |
+
+Unverändert (bewusst NICHT aufgeweicht): Mindestabstand zur „möglich“-Zone, Sicherheitspuffer `vehicleSafetyMin`,
+Mindest-Wirkzeit `lineMinLeadMin`, Mindestabstand zum 1-h-Bereich, Befahrbarkeitsprüfung, Pflichtfahrzeug-Vorrang.
