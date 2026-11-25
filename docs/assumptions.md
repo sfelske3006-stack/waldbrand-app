@@ -1,6 +1,6 @@
 # Annahmen und Parameter
 
-Alle Werte stehen versioniert in `js/params.js` (Version `0.4.1-prototyp`). Jede Zeile ist eine **Annahme**, bis sie fachlich bestätigt ist.
+Alle Werte stehen versioniert in `js/params.js` (Version `0.5.0-prototyp`). Jede Zeile ist eine **Annahme**, bis sie fachlich bestätigt ist.
 
 | Bereich | Parameter | Wert | Status |
 |---|---|---|---|
@@ -174,3 +174,25 @@ Alle Werte stehen versioniert in `js/params.js` (Version `0.4.1-prototyp`). Jede
 
 Unverändert (bewusst NICHT aufgeweicht): Mindestabstand zur „möglich“-Zone, Sicherheitspuffer `vehicleSafetyMin`,
 Mindest-Wirkzeit `lineMinLeadMin`, Mindestabstand zum 1-h-Bereich, Befahrbarkeitsprüfung, Pflichtfahrzeug-Vorrang.
+
+## Neu in 0.5.0 (Ortssuche)
+
+Die Suche enthält **keine Modellparameter**; sie liefert nur Orte. Trotzdem gehen Annahmen und Festlegungen ein, die die
+Lagebeurteilung beeinflussen können:
+
+| Thema | Festlegung | Status |
+|---|---|---|
+| Suchgebiet | Neunkirchen-Seelscheid + alle Kommunen mit gemeinsamer Grenze laut DVG1 (Overath, Siegburg, Ruppichteroth, Lohmar, Much, Hennef). Außerhalb gibt es nur Koordinaten oder die Online-Suche. | Festlegung (Gebiet der Fahrzeugdaten) |
+| Ortsteile | „Ortsteil“ = benannte **Ortslage** des Basis-DLM (`AX_Ortslage`, Attribut `NAM`). Das ist nicht identisch mit den amtlichen Ortsteilen/Wohnplätzen; kleine Weiler ohne Ortslage fehlen. | **Annahme**, mit dem Auftraggeber zu prüfen |
+| Mittelpunkt einer Straße | diejenige Hausadresse, die dem Schwerpunkt aller Adressen der Straße am nächsten liegt (liegt damit sicher an der Straße, anders als der geometrische Schwerpunkt). | Annahme (nur Anzeige) |
+| Fläche statt Punkt | Straße, Ortsteil und Kommune zoomen auf die umschließende BBox (Straße mit 15 % Rand); „Als Zündpunkt setzen“ nimmt dort den Mittelpunkt. Das ist **kein** Hinweis auf den tatsächlichen Brandort. | Annahme (Anzeige) |
+| Gleichnamige Straßen | Straßen gleichen Namens in einer Gemeinde (unterschiedliche Straßenschlüssel) bleiben getrennt; unterschieden wird über die Ortslage. Treffer in Neunkirchen-Seelscheid stehen vor Treffern aus Nachbarkommunen (Bonus). | Annahme (Ranking) |
+| Hausnummern | Zusatz wird berücksichtigt („12a“); unbekannter Zusatz → Hausnummer ohne Zusatz mit Hinweis; Bereiche („12-14“) werden auf die erste Nummer abgebildet; unbekannte Nummer → Straße mit Hinweis. | Annahme |
+| Lagequalität der Adressen | Kennzeichen A/B/C aus `gebref` wird angezeigt; die Bedeutung ist **zu prüfen** (Formatbeschreibung in der Erstellungsumgebung nicht abrufbar). Die Koordinate ist die **Gebäudereferenz**, nicht die Zufahrt. | **offen** |
+| Tippfehlertoleranz | eine Vertauschung/Auslassung (OSA-Distanz 1), ab 8 Zeichen zwei. Keine phonetische Suche. | Annahme |
+| Koordinaten | ETRS89 = WGS84 gesetzt (Abweichung < 1 m, wie beim DGM). UTM nur Nordhalbkugel; Gauß-Krüger (DHDN) wird **abgelehnt** statt genähert. Koordinaten außerhalb von Suchgebiet oder DGM werden gekennzeichnet. | Festlegung |
+| Rettungspunkte: Aktualitätsfrist | Warnung, wenn die Veröffentlichung mehr als **7 Monate** zurückliegt (`PARAMS` unabhängig, Konstante `rpMaxAgeMonths` in `js/search.js` und `KWF.maxAgeMonths` in `js/app.js`). Das KWF exportiert etwa zweimal jährlich; die Frist ist eine **Annahme** auf dieser Grundlage. | Annahme |
+| Rettungspunkte: Ausschnitt | Nur Punkte im Gebiet (BBox + ca. 2 km): 655 von 71.621. Inhalt unverändert. Ob die Weitergabe eines Ausschnitts unter **CC BY-ND 4.0** zulässig ist, ist **lizenzrechtlich zu prüfen**. | **offen** |
+| Rettungspunkte: Darstellung | Marker ab Zoom 13, Nummer ab Zoom 14; Nummern, die andere Kartenbeschriftungen überdecken würden, werden ausgeblendet (Marker und Popup bleiben erreichbar). Dadurch sind bei dichter Lage **nicht alle Nummern gleichzeitig lesbar**. | Annahme (Anzeige) |
+| Online-Suche | Nur auf ausdrückliche Aktion, höchstens 1 Anfrage/s, `bounded=1` auf das Gebiet, keine Weitergabe personenbezogener Daten (kein `email`-Parameter gesetzt). Der eingegebene Suchtext verlässt dabei das Gerät – darauf weist die Listenzeile hin. | Festlegung, Nutzungsbedingungen **zu prüfen** |
+| Datenschutz | Suchindex und Rettungspunkte liegen offline im Projekt; ohne Online-Suche verlässt kein Suchtext das Gerät. Jede Auswahl wird lokal im Sitzungsprotokoll vermerkt (Hash-Kette). | Festlegung |

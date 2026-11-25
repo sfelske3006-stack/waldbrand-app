@@ -1,4 +1,4 @@
-# Waldbrand-Lagebild Neunkirchen-Seelscheid (Prototyp, Version 0.4.2-prototyp)
+# Waldbrand-Lagebild Neunkirchen-Seelscheid (Prototyp, Version 0.5.0-prototyp)
 
 > **TESTVERSION – nicht für den Einsatz.** **Modellprognose, unvalidiert. Keine Handlungsanweisung. Entscheidung und Verantwortung liegen bei der Einsatzleitung.**
 
@@ -18,10 +18,12 @@ Dann im Browser `http://localhost:8080` öffnen. Ein statischer Server ist nöti
 Tests:
 
 ```bash
-npm test          # Unit- und Szenariotests des Berechnungskerns (node --test)
-npm run e2e       # Browser-Test mit Playwright/Chromium, Screenshots nach docs/ (u. a. screenshot-konturen.png, screenshot-raster.png, screenshot-fahrzeuge.png)
+npm test          # Unit- und Szenariotests: Berechnungskern (model.test.mjs) und Ortssuche (search.test.mjs), node --test
+npm run e2e       # Browser-Test mit Playwright/Chromium, Screenshots nach docs/ (u. a. screenshot-konturen.png, screenshot-raster.png, screenshot-fahrzeuge.png, screenshot-suche.png)
 npm run build:vorschau   # Einzeldatei-Vorschau dist/vorschau.html (für die Artifact-Seite)
 ```
+
+Stand 0.5.0: 78 Unit-/Szenariotests und 89 Browser-Tests, alle bestanden.
 
 `npm run e2e` prüft zusätzlich den Betrieb unter einem Unterpfad (statischer Server unter `/waldbrand-app/` wie GitHub Pages), das Cache-Busting (`?v=<Version>` an allen eigenen Skripten, CSS- und Datendateien) und erzeugt `docs/screenshot-gelaendewind.png`.
 
@@ -46,6 +48,7 @@ Google Maps (optional): In `config.js` `googleMapsApiKey` eintragen. Erst dann e
 ## Bedienung (Kurzfassung)
 
 1. Beim Start die Modellgrenzen bestätigen (einmal je Sitzung, wird protokolliert).
+   **Suchfeld oben links** in der Werkzeugleiste: Ortsteil, Straße, Adresse mit Hausnummer, Rettungspunkt-Nummer oder Koordinate eingeben (siehe Abschnitt „Suche“).
 2. **Brandfläche zeichnen**: Eckpunkte antippen, „Fläche fertig“. Punkte bleiben verschiebbar. Alternativ **Zündpunkt + Radius**. „Mein Standort“ zentriert per GPS (nur nach Einwilligung, nur lokal).
 3. **Wetter laden** (Open-Meteo) oder **Beispieldaten** (deutlich als fiktiv markiert). Unter „Werte vor Ort überschreiben“ alle Werte manuell setzen; überschriebene Werte sind mit * markiert.
 4. Optional **OSM-Daten laden** (Brennstoff, Wege, Gewässer, Gebäude, Hydranten). Ohne OSM wird mit einem wählbaren Ersatz-Brennstoff ohne Barrieren gerechnet; das wird im Ergebnis angezeigt. Das **Geländemodell** (DGM, offline) wird beim Start automatisch geladen; Status im Abschnitt „Gelände & Brennstoff“. „Geländeschummerung anzeigen“ blendet eine offline berechnete Schummerung ein; im Ebenen-Menü gibt es zusätzlich die amtliche WMS-Schummerung (online).
@@ -57,6 +60,108 @@ Google Maps (optional): In `config.js` `googleMapsApiKey` eintragen. Erst dann e
    **Geländewind** (Abschnitt 3, Schalter „Geländewind: an/aus“): lokaler Wind und Feuchte je Zelle aus dem DGM, Ebene „Geländewind“ mit Pfeilen (alle 250 m, Farbe = Faktor lokal/synoptisch). Aus = Rechnung wie 0.3.0 (bitgenau, Test).
 7. **Szenario B** (z. B. „Wind aus 270°“) neben A vergleichen.
 8. **Protokoll**: lokale Hash-Kette (SHA-256), Export als JSON und GeoJSON, Drucken/PDF über den Browser.
+
+## Änderungen in Version 0.5.0
+
+**Ortssuche** (neu, siehe Abschnitt „Suche“): Suchfeld in der Werkzeugleiste für Ortsteile, Straßen, Adressen mit Hausnummer,
+KWF-Rettungspunkte und Koordinaten (Grad, Grad/Minuten, Grad/Minuten/Sekunden, UTM 32 ETRS89), offline aus amtlichen Daten.
+Treffer zentrieren die Karte (Adresse/Rettungspunkt/Koordinate: Marker; Straße/Ortsteil/Kommune: umschließendes Rechteck),
+Knopf „Als Zündpunkt setzen“ legt die Brandfläche mit dem gewählten Startradius an. Rettungspunkte zusätzlich als abschaltbare
+Kartenebene mit Nummer, Tooltip und eigenem Symbol. Der Suchindex (ca. 860 KB) wird erst beim ersten Antippen des Suchfeldes
+geladen, damit der Start schnell bleibt. Online-Suche (OpenStreetMap/Nominatim) nur als ausdrücklich angestoßene Ergänzung und
+abschaltbar. Neu: `js/search.js`, `js/search-ui.js`, `css/search.css`, `data/suche-index.json`, `data/rettungspunkte-kwf.json`,
+`tools/build-suche.py`, `tools/build-rettungspunkte.py`, `tools/httpzip.py`, `tests/search.test.mjs`.
+
+## Suche
+
+### Bedienung
+
+| Eingabe | Beispiel | Ergebnis |
+|---|---|---|
+| Ortsteil / Ortslage | `Hermerath`, `Seelsch` | Ortsteil, Karte auf die Ortslage (Rechteck) |
+| Kommune | `Much`, `Hennef` | Gemeindegebiet (Rechteck) |
+| Straße | `Zum Wirbel`, `Hauptstr` | Straße mit Anzahl Hausnummern, Rechteck über alle Adressen |
+| Adresse | `Zum Wirbel 12a`, `Hauptstraße 5 Much`, `Zum Wirbel 4, Neunkirchen-Seelscheid` | Adresse mit Marker |
+| Rettungspunkt | `01-501-SU`, `01501su`, `rp 01-501-su` | Rettungspunkt mit Beschreibung, Schild, Urheber |
+| Koordinate | `50.8045, 7.3405`, `N 50° 48.27' E 7° 20.43'`, `32U 381234 5634567` | Punkt mit Marker, Anzeige in Grad und UTM 32N |
+
+- **Tastatur**: Pfeiltasten wählen, Enter zeigt an, Esc schließt die Liste (zweites Esc leert das Feld). Die Liste ist eine
+  ARIA-Combobox mit Listbox; die aktive Zeile steht in `aria-activedescendant`. Touch-Ziele mindestens 52 px (Tablet).
+- **Ergebniskarte** unter dem Suchfeld: Bezeichnung, Typ, Koordinate in Grad und UTM 32N, Quelle und Lizenz, Knopf
+  **„Als Zündpunkt setzen“** (bei Flächen der Mittelpunkt) und „Schließen“. Jede Auswahl wird im Protokoll vermerkt.
+- **Warnungen**: Koordinaten außerhalb des Suchgebiets oder außerhalb des Geländemodells werden gekennzeichnet; bei einer
+  Hausnummer ohne Treffer erscheint die Straße mit Hinweis; Gauß-Krüger-Koordinaten werden ausdrücklich abgelehnt.
+- **Rettungspunkt-Ebene** (Ebenen-Menü rechts oben, „Rettungspunkte (KWF, ab Zoom 13)“): grünes Quadrat mit weißem Kreuz,
+  Nummer als Beschriftung ab Zoom 14, Popup mit Beschreibung, Schild, Urheber, Bundesland, Koordinate und Quellenvermerk.
+  Nummern, die andere Kartenbeschriftungen überdecken würden, werden ausgeblendet (Marker bleibt antippbar).
+- **Online-Suche**: Nur wenn offline kein Treffer gefunden wurde, erscheint eine eigene Zeile „Online suchen“. Erst beim
+  Antippen geht eine Anfrage an Nominatim (kein Autocomplete, höchstens 1 Anfrage/s, auf das Gebiet begrenzt, Ergebnis mit
+  „© OpenStreetMap“ gekennzeichnet). Abschaltbar im Reiter „Grenzen & Quellen“ (Häkchen) oder dauerhaft über
+  `searchOnline: false` in `config.js`.
+
+### Datenquellen und Lizenzen
+
+| Inhalt | Quelle | Lizenz | Umfang |
+|---|---|---|---|
+| Straßen, Adressen mit Hausnummer | Gebäudereferenzen NRW (`gebref`, Stand 01.10.2026), Geobasis NRW | dl-de/zero-2-0 | 3.223 Straßen, 62.152 Adressen |
+| Ortsteile | Basis-DLM NRW, Objektart `AX_Ortslage` (Ebene `sie01_f`, Attribut `NAM`), Geobasis NRW | dl-de/zero-2-0 (allgemeine Nutzungsbedingungen; Einzelbeleg zu prüfen) | 306 Ortslagen |
+| Kommunen, Suchgebiet | DVG1 Gemeindegrenzen (Stand 12.11.2025), Geobasis NRW | dl-de/zero-2-0 | 7 Kommunen (NKS + 6 Nachbarn) |
+| Rettungspunkte | KWF-Rettungspunkte, Gesamtdatensatz (Shapefile `KWF_RP.shp`), Kuratorium für Waldarbeit und Forsttechnik e. V. | **CC BY-ND 4.0** | 655 von 71.621 Punkten (Gebietsausschnitt) |
+| Online-Ergänzung | OpenStreetMap / Nominatim | ODbL | nur auf Knopfdruck |
+
+**Pflicht-Quellenvermerk Rettungspunkte** (in der App im Reiter „Grenzen & Quellen“, in der Kartenattribution, in der
+Ergebniskarte und im Popup):
+`© KWF-Rettungspunkte v2.21, Datenurheber, www.rettungspunkte-forst.de` – „Datenurheber“ verweist auf
+<https://docs.rettungspunkte-forst.de/Metadaten_KWF_Rettungspunkte.pdf>, „www.rettungspunkte-forst.de“ auf
+<https://rettungspunkte-forst.de>. Lizenz **CC BY-ND 4.0**, **Daten unverändert** (alle Attribute, Bezeichnungen und
+Koordinaten wie geliefert; Bearbeitung nur räumlicher Ausschnitt und Formatwandlung Shapefile → JSON), **Version 2.21,
+Stand 10/2026** (veröffentlicht 07.10.2026). Angaben ohne Gewähr
+(<https://kwf2020.kwf-online.de/rettungspunkte-download/>). Das KWF exportiert etwa zweimal jährlich und verlangt, veraltete
+Versionen zu löschen und durch die aktuelle zu ersetzen: Die App **warnt sichtbar**, sobald die Veröffentlichung mehr als
+7 Monate zurückliegt (Reiter „Grenzen & Quellen“, Statuszeile der Suche und Kopfzeile). Dann `data/rettungspunkte-kwf.json`
+mit `tools/build-rettungspunkte.py` neu erzeugen.
+
+### Indizes neu erzeugen
+
+Rohdaten **nicht** ins Projektverzeichnis legen und nach dem Lauf löschen (die Rohpakete sind mehrere GB groß).
+
+```bash
+# 1) Suchindex (Adressen, Straßen, Ortsteile, Kommunen). Voraussetzung: Python 3 mit pyproj und pyshp.
+#    gebref:   https://www.opengeodata.nrw.de/produkte/geobasis/lk/akt/gebref_txt/gebref_EPSG25832_ASCII.zip
+#    dvg1:     https://www.opengeodata.nrw.de/produkte/geobasis/vkg/dvg/dvg1/dvg1_EPSG25832_Shape.zip
+#    Basis-DLM (sie01_f, nur das nötige Mitglied per HTTP-Range, siehe tools/httpzip.py):
+#              https://www.opengeodata.nrw.de/produkte/geobasis/lm/akt/basis-dlm/basis-dlm_EPSG25832_Shape.zip
+python3 -I tools/build-suche.py --gebref raw/gebref/gebref.txt --dvg raw/dvg/dvg1gem_nw.shp \
+    --ortslage raw/ortslage_bbox.geojson --out data --fixtures tests/fixtures
+
+# 2) Rettungspunkte (eigener Zyklus, andere Lizenz). Paket von https://rettungspunkte-forst.de herunterladen.
+python3 -I tools/build-rettungspunkte.py --shp raw/kwf/KWF_RP.shp --doku raw/kwf/KWF_RP_V2_21_Doku.txt \
+    --zip raw/kwf/KWF_RP.zip --veroeffentlicht 2026-10-07 --out data --fixtures tests/fixtures
+
+npm test   # prüft Anzahlen, Stichproben gegen die Rohdaten, Quellenvermerk und Datenstand
+```
+
+Beide Skripte schreiben Metadaten (Quelle, Stand, Lizenz, SHA-256 der Rohdateien, Anzahlen) in die JSON-Dateien und legen
+Stichproben als Testfixtures unter `tests/fixtures/` ab. Nach dem Austausch der KWF-Datei die Konstanten `KWF` in `js/app.js`
+prüfen – der Test „Einbindung: Pflicht-Attribution …“ vergleicht sie mit der Datei.
+
+### Bekannte Grenzen der Suche
+
+- **Nur das Gebiet der 7 Kommunen** (Neunkirchen-Seelscheid und direkte Nachbarn). Außerhalb helfen nur Koordinaten oder die
+  Online-Suche.
+- **Ortsteile = benannte Ortslagen des Basis-DLM** (bebaute Flächen). Kleine Weiler, Wohnplätze, Hofnamen, Flur-, Wald- und
+  Gewässernamen sowie POI (Schulen, Hallen) sind **nicht** enthalten.
+- **Adressen** haben den Stand der Gebäudereferenzen (01.10.2026); neue Baugebiete können fehlen. Das Qualitätskennzeichen
+  A/B/C aus `gebref` wird angezeigt, seine genaue Bedeutung ist **zu prüfen** (Formatbeschreibung nicht abrufbar).
+  Hausnummernbereiche („12-14“) werden auf die erste Nummer abgebildet.
+- **Rettungspunkte**: nur der Gebietsausschnitt (BBox + ca. 2 km), Stand 10/2026. Ob die Weitergabe eines Ausschnitts unter
+  **CC BY-ND** zulässig ist, ist **lizenzrechtlich zu prüfen**. Die Punkte sind Angaben Dritter (Urheber je Punkt) und ohne
+  Gewähr; sie ersetzen keine Erkundung.
+- **Tippfehler** werden nur begrenzt ausgeglichen (eine Vertauschung/Auslassung, ab 8 Zeichen zwei). Keine phonetische Suche.
+- **Koordinaten**: UTM nur Nordhalbkugel, Zonen 1–60 (Gebiet = Zone 32, ETRS89). **Gauß-Krüger (DHDN) wird abgelehnt**
+  (7-stelliger Rechtswert) – eine Umrechnung ohne Datumsübergang wäre um bis zu ca. 100 m falsch. Zwei nackte Ganzzahlen
+  (z. B. „50 7“) gelten nicht als Koordinate, sondern als Text.
+- Die Suche kennt **keine Brandfläche und keine Prognose**; sie dient nur dem Finden und Zentrieren.
 
 ## Änderungen in Version 0.4.2
 
@@ -104,13 +209,21 @@ Reines HTML/CSS/JavaScript ohne Build-Schritt, Leaflet 1.9.4 lokal unter `vendor
 | `js/dispatch.js` | Anfahrtsschätzung, Bereitschaft (Vorgabe eigene Wehr), Gemeindeteil, Import-Normalisierung, Filter/Sortierung, Marker-Gruppierung. |
 | `js/suggest.js` | Riegel- und Fahrzeugvorschläge, Pflichtfahrzeuge, Grundschutz, Positionsprüfung, Differenz bei Neuberechnung. |
 | `js/protocol.js` | Sitzungsprotokoll mit SHA-256-Hash-Kette. |
-| `js/app.js` | UI. |
+| `js/search.js` | Ortssuche: Index laden (lazy), Bewertung/Ranking, Hausnummern, Rettungspunkt-Nummern, Koordinatenparser (Grad/UTM, Krüger-Reihen ohne proj4), Online-Abfrage (Nominatim, gedrosselt), Quellenvermerke. Ohne Abhängigkeiten, auch unter Node (Tests). |
+| `js/search-ui.js` | Bedienung der Suche (Leaflet): Combobox/Listbox, Tastatur, Ergebniskarte, Marker/Rechtecke, Kartenebene „Rettungspunkte“ mit Nummern-Entzerrung. |
+| `css/search.css` | Stile der Suche (Präfix `sx-`), nutzt die Tokens aus `css/app.css` (Tag-/Nachtmodus). |
+| `js/app.js` | UI, verdrahtet auch die Suche (Zündpunkt, Protokoll, Ebene, Quellenangaben). |
 | `data/fahrzeuge.json` | Fahrzeug- und Wachendaten Rhein-Sieg-Kreis (schema 2), editierbar, Quelle/Quellentyp je Eintrag (ca. 220 KB). |
 | `data/gemeindeteile.json` | Gemarkungen Neunkirchen-Seelscheid (ALKIS) mit Zuordnung zu den Gemeindeteilen (ca. 50 KB). |
 | `data/dgm25.bin`, `data/dgm25.json` | Geländemodell 25 m (Int16, Dezimeter) mit Metadaten (Quelle, Stand, Lizenz, Raster). |
-| `tests/` | Unit-/Szenariotests (`model.test.mjs`), Browser-Test (`e2e.mjs`), synthetische OSM-Testdaten (`synth-osm.mjs`, keine echten Daten). |
+| `data/suche-index.json` | Offline-Suchindex: 7 Kommunen, 306 Ortslagen, 3.223 Straßen, 62.152 Adressen (ca. 860 KB, delta-kodierte Mikrograd). Wird erst beim ersten Fokus im Suchfeld geladen. |
+| `data/rettungspunkte-kwf.json` | KWF-Rettungspunkte v2.21 (Stand 10/2026), Gebietsausschnitt 655 Punkte, Attribute unverändert (ca. 98 KB). |
+| `tests/` | Unit-/Szenariotests (`model.test.mjs`, `search.test.mjs`), Browser-Test (`e2e.mjs`), synthetische OSM-Testdaten (`synth-osm.mjs`, keine echten Daten), Stichproben aus den Rohdaten (`fixtures/`). |
 | `tools/build-artifact.mjs` | Erzeugt die Einzeldatei-Vorschau. |
 | `tools/build-dgm.py` | Erzeugt `data/dgm25.*` aus dem DGM1 NRW. |
+| `tools/build-suche.py` | Erzeugt `data/suche-index.json` aus gebref, Basis-DLM und DVG1 (pyproj, pyshp). |
+| `tools/build-rettungspunkte.py` | Erzeugt `data/rettungspunkte-kwf.json` aus dem KWF-Shapefile (eigener Aktualisierungszyklus). |
+| `tools/httpzip.py` | Liest einzelne Mitglieder großer ZIP-Dateien per HTTP-Range (Basis-DLM, mehrere GB). |
 
 ## Datenquellen, Lizenzen, Status
 
@@ -131,6 +244,11 @@ Reines HTML/CSS/JavaScript ohne Build-Schritt, Leaflet 1.9.4 lokal unter `vendor
 | Wachenkoordinaten | GEOBASIS.NRW Gebäudereferenzen (gebref, Stand 01.10.2026) | dl-de/zero-2-0 | 80 exakt, 8 Näherung (gekennzeichnet), 5 ohne Koordinate |
 | Gemarkungen (Gemeindeteile) | ALKIS Grundrissdaten vereinfacht, Rhein-Sieg-Kreis (KatasterBezirk), opengeodata.nrw.de, Stand 09/2026 | dl-de/zero-2-0 | Zuordnung zu Gemeindeteilen über Gemarkungen hergeleitet, **bestätigt vom Auftraggeber** (22.11.2026; siehe docs/assumptions.md) |
 | Bereitschaftszeiten eigene Wehr 25/40 min | Auftraggeber | – | **Vorgabe Auftraggeber, 22.11.2026** |
+| Adressen/Straßen (Suche) | Gebäudereferenzen NRW (`gebref`, Stand 01.10.2026), opengeodata.nrw.de | dl-de/zero-2-0 (Beleg: `<Fees>` WMS NW Gebäudereferenzen) | offline im Index (`data/suche-index.json`), 62.152 Adressen |
+| Ortsteile (Suche) | Basis-DLM NRW, `AX_Ortslage` (`sie01_f`, Attribut `NAM`) | dl-de/zero-2-0 laut allgemeinen Nutzungsbedingungen, **Einzelbeleg zu prüfen** | 306 Ortslagen |
+| Kommunen/Suchgebiet | DVG1 Gemeindegrenzen (Stand 12.11.2025) | dl-de/zero-2-0 (Beleg: `<Fees>` WMS NW DVG) | 7 Kommunen |
+| Rettungspunkte | KWF-Rettungspunkte v2.21, Gesamtdatensatz Shapefile, Kuratorium für Waldarbeit und Forsttechnik e. V., Stand 10/2026 | **CC BY-ND 4.0**, Quellenvermerk „© KWF-Rettungspunkte v2.21, Datenurheber, www.rettungspunkte-forst.de“, Daten unverändert, veraltete Versionen ersetzen | 655 Punkte (Gebietsausschnitt), Warnung nach 7 Monaten. Weitergabe des Ausschnitts unter ND **zu prüfen** |
+| Ortssuche online (optional) | Nominatim (`nominatim.openstreetmap.org`) | ODbL, Nutzungsregeln (max. 1 Anfrage/s, kein Autocomplete) | nur auf ausdrückliche Aktion, abschaltbar; im Test **gemockt** |
 | Leaflet 1.9.4 | npm-Paket, lokal | BSD-2-Clause (`vendor/leaflet/LICENSE`) | eingebunden |
 
 ### Fahrzeugdaten (`data/fahrzeuge.json`)

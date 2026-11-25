@@ -37,6 +37,45 @@
 
 Polygon → Rechenraster (10 × 10 km, 25 m) → Höhe je Zelle aus DGM (falls geladen) → Brennstoff (OSM oder Ersatz) → Wetter je Stunde (+ Überschreibungen, Szenario) → Raten je Stunde/Klasse/Richtung (+ R0 und Hangkoeffizient je Klasse) → Hangzuschlag je Kante in der Minimum-Travel-Time → Referenzlauf + Ensemble (Zähler je Horizont, Zeitfelder „möglich“/„wahrscheinlich“) → Kennzahlen, Erreichzeiten → Vorschläge (Prüfzeitpunkt Bereitschaft + Wirkzeit) → Anzeige (Konturen oder Rasterumrisse) → Karte, Protokoll, Export.
 
+## Suche (0.5.0)
+
+**Entwurfsentscheidungen**
+
+| Thema | Gewählt | Alternativen | Begründung |
+|---|---|---|---|
+| Suchdaten | vorab erzeugter Offline-Index `data/suche-index.json` (ca. 860 KB) aus amtlichen Daten (gebref, Basis-DLM, DVG1) | Geocoder-Dienst (Nominatim, NRW-Adressdienst) zur Laufzeit, Volltext-Engine (lunr, FlexSearch) | Einsatz ohne Netz muss funktionieren; amtliche Adressen sind vollständiger und genauer als OSM. Keine zusätzliche Bibliothek: eigene Bewertung reicht für 62.000 Adressen und bleibt erklärbar. |
+| Ladezeitpunkt | **lazy**: Index und Rettungspunkte erst beim ersten Fokus/Antippen des Suchfeldes (`Search.ensureLoaded`) | beim Start laden, Service Worker, in `index.html` einbetten | Der Start (DGM 1,35 MB, Fahrzeuge, Gemarkungen) bleibt schnell; wer nicht sucht, lädt nichts. Ein Service Worker (Offline-Cache) ist Phase 2. |
+| Format | kompaktes Array-Format, Koordinaten in Mikrograd, je Straße delta-kodiert; Hausnummern als Text | GeoJSON, CSV, SQLite/WASM | GeoJSON wäre ca. 4-fach größer. Delta-Kodierung bringt zusätzlich etwa den Faktor 2 bei gzip. |
+| Bewertung | eigene Staffel: exakt > Präfix > alle Wörter als Präfix > Wortanfang > ganzer Name mit 1–2 Tippfehlern (OSA/Damerau) > enthält; Bonus für Neunkirchen-Seelscheid und für passenden Kontext (Kommune/Ortslage) | BM25/TF-IDF, trigram, phonetisch (Kölner Phonetik) | Nachvollziehbar und testbar (Tests fixieren die Reihenfolge). Phonetik brächte bei Straßennamen mehr Fehltreffer. |
+| Normalisierung | klein, `ß`→`ss`, Umlaute→`ae/oe/ue` **und** Grundvokal, Satzzeichen→Leerzeichen, `Straße/Strasse/Str./Stra…`→`str` | nur NFKD, Wörterbuch | „Hauptstr“, „Hauptstraße“, „Hauptstrasse“, „Hauptstra“ (Eingabe läuft noch) treffen dasselbe; „Rosrather“ findet „Rösrather“. |
+| Koordinaten | eigener Parser und Krüger-Reihen 6. Ordnung (Karney 2011) für UTM↔WGS84 | proj4js, keine UTM-Eingabe | Kein zusätzliches Paket; Abweichung gegen pyproj < 1 mm (Test mit 10 Prüfpunkten). Gauß-Krüger wird bewusst **abgelehnt** statt genähert (Datumsübergang DHDN→ETRS89 fehlt, bis ca. 100 m Fehler). |
+| Online-Suche | nur auf ausdrückliche Aktion (eigene Listenzeile), gedrosselt (1 Anfrage/s), auf das Gebiet begrenzt, Ergebnis gekennzeichnet, abschaltbar | Autocomplete gegen Nominatim, eigener Geocoder-Proxy | Nominatim-Nutzungsregeln verbieten Autocomplete-Last; außerdem soll kein Suchtext unbemerkt das Gerät verlassen. |
+| Rettungspunkte | eigene Datei mit eigenem Aktualisierungszyklus (`tools/build-rettungspunkte.py`), Attribute unverändert, Warnung nach 7 Monaten | in den Suchindex mischen | Andere Lizenz (CC BY-ND statt dl-de/zero), andere Herkunft und anderer Zyklus; die Pflicht, veraltete Stände zu ersetzen, lässt sich so sauber prüfen. |
+| Nummern auf der Karte | permanente Leaflet-Tooltips ab Zoom 14; Nummern, die andere Beschriftungen überdecken würden, werden ausgeblendet (`obstacleSelector`) | Clustering, Nummern erst im Popup | Die Nummer ist die eigentliche Information (Meldung an die Leitstelle). Die Entzerrung der App (`declutterLabels`) verschiebt Label per `transform`; bei Leaflet-Tooltips ist `transform` die Position, deshalb hier Ausblenden statt Verschieben. |
+
+**Schnittstellen**
+
+- `Search.configure({indexUrl, rpUrl, online, areaBbox, demBbox, fetch, now, sleep})`, `Search.ensureLoaded()` → Promise,
+  `Search.loadData(index, rp)` (synchron, für Tests), `Search.status()`.
+- `Search.query(text, {limit})` → `[{typ: "kommune"|"ortsteil"|"strasse"|"adresse"|"rettungspunkt"|"koordinate"|"online"|"hinweis",
+  label, sub, kommune, lat, lon, bbox?, hinweis?, quelle, score, …}]`, `bbox` immer `[süd, west, nord, ost]` in Grad.
+- `Search.parseCoordinate(text)` → `{lat, lon, format, utm, imGebiet, imDgm, warnungen[]}` | `{fehler}` | `null`.
+- `Search.online(text)` → Promise (Nominatim, gereiht und gedrosselt, Cache je Anfrage).
+- `Search.rettungspunkte()`, `Search.rpInfo()` (Version, Stand, Alter, Warnung, Quellenvermerk als Text und HTML),
+  `Search.utmToWgs84(e, n, zone)`, `Search.wgs84ToUtm(lat, lon, zone)`.
+- `SearchUI.init({map, onSelect(hit), onIgnition(lat, lon, hit), limit, searchConfig})` → `{run, select, close, resultLayer, current, items}`;
+  `SearchUI.rettungspunkteLayer(map, {minZoom, labelZoom, onWarn, obstacleSelector})` → `L.LayerGroup`.
+- Verdrahtung in `js/app.js`: `onIgnition` legt die Kreisfläche wie der Modus „Zündpunkt + Radius“ an (`setIgnitionPoint`),
+  jede Auswahl wird protokolliert (`Protocol.add("suche", …)`), die DGM-Ausdehnung wird nach dem Laden an die Suche gegeben,
+  die Rettungspunkt-Ebene hängt im Ebenen-Menü von Leaflet.
+
+**Datenfluss Suche**: Eingabe → (Koordinatenparser; wenn Koordinate: fertig) → Rettungspunkt-Nummern → Zerlegung in Name,
+Hausnummer und Kontext (mehrere Lesarten) → Bewertung gegen Kommunen, Ortslagen, Straßen/Adressen → Sortierung → Trefferliste →
+Auswahl → Karte (Marker oder Rechteck) + Ergebniskarte mit Quelle → optional „Als Zündpunkt setzen“ → Brandfläche + Protokoll.
+
+**Laufzeit** (Node, gesamter Index): unter 100 ms je Anfrage (Test), typisch 5–20 ms. Index laden und aufbereiten im Browser
+ca. 0,3–0,6 s (einmalig, beim ersten Fokus); die Eingabe ist mit 120 ms entprellt.
+
 ## Laufzeit (gemessen im Test, Chromium in der Sandbox)
 
 0.4.0 mit Geländewind (Node, 24 + 1 Läufe, 400 × 400 Zellen, hügeliges Gelände): 0,5–1,1 s (ohne Geländewind 0,13–0,42 s); Vorbereitung der Geländefelder ca. 70–90 ms je Raster. Im Browser-E2E ca. 0,7–0,8 s je Prognose.

@@ -14,7 +14,8 @@ let leafletCss = rd("vendor/leaflet/leaflet.css").replace(/url\(images\/([\w-]+\
   const b64 = fs.readFileSync(path.join(root, "vendor/leaflet/images", f)).toString("base64");
   return `url(data:image/png;base64,${b64})`;
 });
-const appCss = rd("css/app.css");
+// eigene Stylesheets zentral aus dem Loader (css/app.css, css/search.css, …)
+const appCss = JSON.parse(html.match(/window\.WB_CSS = (\[[^\]]+\])/)[1]).filter((f) => !f.startsWith("vendor/")).map((f) => `/* ${f} */\n${rd(f)}`).join("\n");
 const body = html.slice(html.indexOf("<body>") + 6, html.indexOf("<!--WB-SCRIPTS-->"));
 // Dateiliste und Version zentral aus dem Loader in index.html
 const version = html.match(/window\.WB_VERSION = "([^"]+)"/)[1];

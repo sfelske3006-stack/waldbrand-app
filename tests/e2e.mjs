@@ -466,12 +466,263 @@ try {
   check("Testablauf Gemeindeteil/Grundschutz", false, e.message);
 }
 
+// Ortssuche (0.5.0): Lazy Loading, Straße, Adresse, Ortsteil, Rettungspunkt, Koordinate, Zündpunkt,
+// Rettungspunkt-Ebene, Beschriftungen, Pflicht-Attribution. Externe Dienste bleiben blockiert.
+try {
+  const pg = await newPage();
+  const mark = ownRequests.length;
+  const reqs = (re) => ownRequests.slice(mark).filter((u) => re.test(u)).length;
+  await ack(pg);
+  await pg.waitForTimeout(300);
+  check("Suche: Index vor dem ersten Fokus nicht geladen (lazy)", reqs(/^\/data\/suche-index\.json/) === 0 && reqs(/^\/data\/rettungspunkte-kwf\.json/) === 0, `${reqs(/suche-index/)} Abrufe`);
+  const aria = await pg.evaluate(() => {
+    const i = document.getElementById("sx-input"), l = document.getElementById("sx-list");
+    return { role: i.getAttribute("role"), controls: i.getAttribute("aria-controls"), ac: i.getAttribute("aria-autocomplete"), exp: i.getAttribute("aria-expanded"),
+      lrole: l.getAttribute("role"), label: (document.querySelector("label[for=sx-input]") || {}).textContent, h: Math.round(i.getBoundingClientRect().height) };
+  });
+  check("Suche: ARIA-Combobox mit Listbox, beschriftet, Touch-Ziel >= 48 px", aria.role === "combobox" && aria.controls === "sx-list" && aria.ac === "list" && aria.exp === "false" && aria.lrole === "listbox" && !!aria.label && aria.h >= 48, JSON.stringify(aria));
+  await pg.click("#sx-input");
+  await pg.waitForFunction(() => window.Search.status().geladen, null, { timeout: 30000 });
+  check("Suche: Index + Rettungspunkte erst beim Fokus geladen (je 1 Abruf, mit ?v=Version)",
+    reqs(new RegExp(`^/data/suche-index\\.json\\?v=${VERSION}$`)) === 1 && reqs(new RegExp(`^/data/rettungspunkte-kwf\\.json\\?v=${VERSION}$`)) === 1,
+    ownRequests.slice(mark).filter((u) => /suche-index|rettungspunkte/.test(u)).join(", "));
+
+  // Straße: Rechteck (BBox) und Ergebniskarte
+  await pg.fill("#sx-input", "Zum Wirbel");
+  await pg.waitForSelector("#sx-opt-0.sx-strasse");
+  const strLabel = await pg.textContent("#sx-opt-0 .sx-label");
+  await pg.keyboard.press("ArrowDown");
+  const act = await pg.getAttribute("#sx-input", "aria-activedescendant");
+  await pg.keyboard.press("Enter");
+  await pg.waitForSelector("#sx-card:not([hidden])");
+  await pg.waitForTimeout(1300);
+  const st = await pg.evaluate(() => ({
+    title: document.querySelector(".sx-card-title").textContent,
+    rect: [...document.querySelectorAll("#map path")].filter((p) => p.getAttribute("stroke-dasharray")).length,
+    c: window.__wb.map.getCenter(), sub: document.querySelector("#sx-card .sx-sub").textContent,
+  }));
+  check("Suche Straße: Treffer, Tastaturauswahl, BBox-Rechteck auf der Karte", strLabel.trim() === "Zum Wirbel" && act === "sx-opt-0" && st.title === "Zum Wirbel" && st.rect >= 1 && /Straße/.test(st.sub), JSON.stringify({ strLabel, act, rect: st.rect, sub: st.sub.slice(0, 60) }));
+
+  // Adresse mit Hausnummer + „Als Zündpunkt setzen“
+  await pg.fill("#sx-input", "Zum Wirbel 12a");
+  await pg.waitForSelector("#sx-opt-0.sx-adresse");
+  const adrLabel = await pg.textContent("#sx-opt-0 .sx-label");
+  await pg.keyboard.press("Enter");
+  await pg.waitForSelector("#sx-card:not([hidden])");
+  await pg.waitForTimeout(1300);
+  const adr = await pg.evaluate(() => ({ pins: document.querySelectorAll(".sx-pin").length, c: window.__wb.map.getCenter(), z: window.__wb.map.getZoom(), title: document.querySelector(".sx-card-title").textContent, coord: document.querySelector("#sx-card .sx-coord").textContent }));
+  check("Suche Adresse mit Hausnummer: Marker, Karte zentriert, Koordinate + UTM in der Ergebniskarte",
+    adrLabel.trim() === "Zum Wirbel 12a" && adr.pins === 1 && Math.abs(adr.c.lat - 50.848274) < 0.0006 && Math.abs(adr.c.lng - 7.400211) < 0.0006 && adr.z >= 17 && /UTM 32N \d{6} \d{7}/.test(adr.coord),
+    JSON.stringify(adr));
+  await pg.selectOption("#sel-radius", "50");
+  await pg.click("#sx-ign");
+  await pg.waitForTimeout(300);
+  const ign = await pg.evaluate(() => {
+    const s = window.__wb.state;
+    const lat = s.poly.reduce((a, p) => a + p[0], 0) / s.poly.length, lon = s.poly.reduce((a, p) => a + p[1], 0) / s.poly.length;
+    return { n: s.poly.length, lat, lon, status: document.getElementById("poly-status").innerText, proto: Protocol.all().some((e) => e.typ === "brandflaeche" && /Suchtreffer „Zum Wirbel 12a“/.test(e.daten.text || "")) };
+  });
+  check("Suche: „Als Zündpunkt setzen“ erzeugt Brandfläche am Treffer und wird protokolliert",
+    ign.n === 24 && Math.abs(ign.lat - 50.848274) < 0.0006 && Math.abs(ign.lon - 7.400211) < 0.0008 && /24 Punkten/.test(ign.status) && ign.proto, JSON.stringify(ign).slice(0, 200));
+
+  // Ortsteil
+  await pg.fill("#sx-input", "Hermerath");
+  await pg.waitForSelector("#sx-opt-0.sx-ortsteil");
+  await pg.click("#sx-opt-0");
+  await pg.waitForSelector("#sx-card:not([hidden])");
+  await pg.waitForTimeout(1300);
+  const ot = await pg.evaluate(() => ({ title: document.querySelector(".sx-card-title").textContent, sub: document.querySelector("#sx-card .sx-sub").textContent,
+    rect: [...document.querySelectorAll("#map path")].filter((p) => p.getAttribute("stroke-dasharray")).length, c: window.__wb.map.getCenter() }));
+  check("Suche Ortsteil: Klick zentriert auf die Ortslage (BBox-Rechteck)", ot.title === "Hermerath" && /Ortsteil/.test(ot.sub) && ot.rect >= 1 && Math.abs(ot.c.lat - 50.85) < 0.08, JSON.stringify(ot).slice(0, 160));
+
+  // Rettungspunkt-Nummer (tolerant) mit Pflicht-Quellenvermerk
+  await pg.fill("#sx-input", "01 501 su");
+  await pg.waitForSelector("#sx-opt-0.sx-rettungspunkt");
+  await pg.keyboard.press("Enter");
+  await pg.waitForSelector("#sx-card:not([hidden])");
+  const rpCard = await pg.evaluate(() => document.getElementById("sx-card").innerHTML);
+  check("Suche Rettungspunkt-Nummer: Treffer mit Quellenvermerk (Version, Datenurheber-PDF, CC BY-ND 4.0, Haftungsausschluss)",
+    /01-501-SU/.test(rpCard) && /© KWF-Rettungspunkte v2\.21/.test(rpCard) && /docs\.rettungspunkte-forst\.de\/Metadaten_KWF_Rettungspunkte\.pdf/.test(rpCard)
+    && /href="https:\/\/rettungspunkte-forst\.de"/.test(rpCard) && /CC BY-ND 4\.0/.test(rpCard) && /Haftungsausschluss/.test(rpCard), rpCard.slice(0, 120));
+
+  // Koordinate (Grad/Dezimalminuten) -> Marker + UTM
+  await pg.fill("#sx-input", "N 50° 48.27' E 7° 20.43'");
+  await pg.waitForSelector("#sx-opt-0.sx-koordinate");
+  await pg.keyboard.press("Enter");
+  await pg.waitForSelector("#sx-card:not([hidden])");
+  // flyTo abwarten (Animation)
+  await pg.waitForFunction(() => { const c = window.__wb.map.getCenter(); return Math.abs(c.lat - 50.8045) < 0.0005 && Math.abs(c.lng - 7.3405) < 0.0005; }, null, { timeout: 15000 }).catch(() => {});
+  await pg.waitForTimeout(400);
+  const co = await pg.evaluate(() => ({ coord: document.querySelector("#sx-card .sx-coord").textContent, c: window.__wb.map.getCenter(), pins: document.querySelectorAll(".sx-pin").length }));
+  check("Suche Koordinate: Grad/Dezimalminuten erkannt, Marker, UTM 32N angezeigt",
+    /50,804500° N · 7,340500° O · UTM 32N 383068 5629397/.test(co.coord) && co.pins === 1 && Math.abs(co.c.lat - 50.8045) < 0.001 && Math.abs(co.c.lng - 7.3405) < 0.001, JSON.stringify(co));
+
+  // Esc: Liste schließen, zweites Esc leert das Feld
+  await pg.fill("#sx-input", "Seelsch");
+  await pg.waitForSelector("#sx-list:not([hidden])");
+  await pg.keyboard.press("Escape");
+  const listHidden = await pg.evaluate(() => document.getElementById("sx-list").hidden);
+  await pg.keyboard.press("Escape");
+  check("Suche Tastatur: Esc schließt die Liste, zweites Esc leert das Feld", listHidden === true && (await pg.inputValue("#sx-input")) === "");
+
+  // Kartenebene Rettungspunkte an/aus (Ebenenschalter), Nummern, Tooltip, Attribution
+  await pg.evaluate(() => { window.__wb.map.stop(); window.__wb.map.setView([50.70771, 7.215326], 14, { animate: false }); window.__wb.setRpLayer(true); });
+  await pg.waitForFunction(() => document.querySelectorAll(".sx-rp-marker").length > 3, null, { timeout: 20000 });
+  await pg.waitForTimeout(800);
+  const on14 = await pg.evaluate(() => ({ m: document.querySelectorAll(".sx-rp-marker").length,
+    lab: [...document.querySelectorAll(".sx-rp-label")].filter((e) => getComputedStyle(e).display !== "none").length,
+    attr: document.querySelector(".leaflet-control-attribution").textContent,
+    attrHref: [...document.querySelectorAll(".leaflet-control-attribution a")].map((a) => a.getAttribute("href")),
+    ctl: [...document.querySelectorAll(".leaflet-control-layers-overlays label")].map((l) => l.textContent.trim()) }));
+  check("Rettungspunkt-Ebene: Marker mit Nummer, im Ebenenschalter abschaltbar, Attribution in der Karte",
+    on14.m > 3 && on14.lab > 3 && on14.ctl.some((t) => /Rettungspunkte \(KWF/.test(t)) && /© KWF-Rettungspunkte v2\.21/.test(on14.attr) && /Datenurheber/.test(on14.attr)
+    && on14.attrHref.includes("https://rettungspunkte-forst.de") && on14.attrHref.includes("https://docs.rettungspunkte-forst.de/Metadaten_KWF_Rettungspunkte.pdf"),
+    JSON.stringify({ m: on14.m, lab: on14.lab, ctl: on14.ctl.slice(-1) }));
+  const tip = await pg.evaluate(async () => {
+    const m = document.querySelector(".sx-rp-marker").closest(".leaflet-marker-icon");
+    const title = m.getAttribute("title") || m.getAttribute("alt");
+    m.dispatchEvent(new MouseEvent("click", { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 400));
+    const p = document.querySelector(".leaflet-popup-content");
+    return { title, pop: p ? p.textContent : "" };
+  });
+  check("Rettungspunkt-Ebene: Tooltip/Beschriftung und Popup mit Beschreibung, Koordinate und Quelle", /^Rettungspunkt /.test(tip.title) && /Rettungspunkt /.test(tip.pop) && /KWF-Rettungspunkte v2\.21/.test(tip.pop) && /° N/.test(tip.pop), JSON.stringify(tip).slice(0, 160));
+  // Entzerrung: sichtbare Nummern dürfen sich nicht überdecken, auch nicht mit Wachen-/Fahrzeuglabeln
+  await pg.evaluate(() => window.__wb.rpLayer.refresh());
+  await pg.waitForTimeout(500);
+  const ov = await pg.evaluate(() => {
+    const els = [...document.querySelectorAll("#map .sx-rp-label, #map .veh-marker, #map .veh-group, #map .st-group, #map .gs-marker, #map .line-label, #map .ready-label, #map .hz-label")]
+      .filter((e) => getComputedStyle(e).display !== "none");
+    const rs = els.map((e) => e.getBoundingClientRect()).filter((r) => r.width > 0);
+    let n = 0;
+    for (let i = 0; i < rs.length; i++) for (let j = i + 1; j < rs.length; j++) {
+      const a = rs[i], b = rs[j];
+      if (Math.min(a.right, b.right) - Math.max(a.left, b.left) > 2 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 2) n++;
+    }
+    return { labels: rs.length, overlaps: n, aus: document.querySelectorAll(".sx-rp-label.sx-rp-label-off").length };
+  });
+  check("Rettungspunkt-Nummern überdecken keine anderen Beschriftungen (Entzerrung)", ov.overlaps === 0 && ov.labels > 3, `${ov.labels} Label sichtbar, ${ov.aus} ausgeblendet, ${ov.overlaps} Überdeckungen`);
+  await pg.evaluate(() => window.__wb.map.setZoom(12, { animate: false }));
+  await pg.waitForTimeout(500);
+  const z12 = await pg.evaluate(() => document.querySelectorAll(".sx-rp-marker").length);
+  await pg.evaluate(() => { window.__wb.map.setView([50.70771, 7.215326], 14, { animate: false }); window.__wb.setRpLayer(false); });
+  await pg.waitForTimeout(500);
+  const off = await pg.evaluate(() => ({ m: document.querySelectorAll(".sx-rp-marker").length, attr: document.querySelector(".leaflet-control-attribution").textContent }));
+  check("Rettungspunkt-Ebene: unter Zoom 13 ausgeblendet, Ebene abschaltbar (Marker und Attribution verschwinden)", z12 === 0 && off.m === 0 && !/KWF-Rettungspunkte/.test(off.attr), `Zoom 12: ${z12}, aus: ${off.m}`);
+
+  // Pflicht-Attribution im Reiter „Grenzen & Quellen“
+  await pg.click("#tab-info");
+  const src = await pg.evaluate(() => {
+    const el = document.getElementById("search-sources");
+    return { text: el.innerText, links: [...el.querySelectorAll("a")].map((a) => a.textContent.trim() + " -> " + a.getAttribute("href")), sichtbar: !document.getElementById("panel-info").hidden };
+  });
+  check("Reiter „Grenzen & Quellen“: Pflicht-Attribution KWF (Links, CC BY-ND 4.0, unverändert, v2.21, Stand 10/2026) und Geobasis NRW",
+    src.sichtbar && /© KWF-Rettungspunkte v2\.21, Datenurheber, www\.rettungspunkte-forst\.de/.test(src.text.replace(/\s+/g, " "))
+    && src.links.includes("www.rettungspunkte-forst.de -> https://rettungspunkte-forst.de")
+    && src.links.includes("Datenurheber -> https://docs.rettungspunkte-forst.de/Metadaten_KWF_Rettungspunkte.pdf")
+    && /CC BY-ND 4\.0/.test(src.text) && /unverändert/.test(src.text) && /Version 2\.21, Stand 10\/2026/.test(src.text)
+    && /Geobasis NRW/.test(src.text) && /dl-de\/zero-2-0/.test(src.text), src.links.join(" | ").slice(0, 200));
+  await pg.context().close();
+} catch (e) {
+  check("Testablauf Ortssuche", false, e.message);
+}
+
+// Online-Suche (Nominatim): nur auf ausdrückliche Aktion, mit Attribution, abschaltbar. Nominatim wird GEMOCKT.
+try {
+  const c = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+  const pg = await c.newPage();
+  pg.on("pageerror", (e) => consoleErrors.push("PAGEERROR " + e.message));
+  const nominatim = [];
+  await pg.route("**/*", (route) => {
+    const u = new URL(route.request().url());
+    if (u.hostname === "localhost") return route.continue();
+    if (u.hostname === "nominatim.openstreetmap.org") {
+      nominatim.push(u.toString());
+      return route.fulfill({ status: 200, contentType: "application/json", body: JSON.stringify([{ lat: "50.8601", lon: "7.3302", display_name: "Mockhof, Neunkirchen-Seelscheid (MOCK)", name: "Mockhof", osm_type: "node", osm_id: 42, boundingbox: ["50.8600", "50.8602", "7.3301", "7.3303"] }]) });
+    }
+    blocked.add(u.hostname);
+    return route.abort("blockedbyclient");
+  });
+  await ack(pg);
+  await pg.click("#sx-input");
+  await pg.waitForFunction(() => window.Search.status().geladen, null, { timeout: 30000 });
+  await pg.fill("#sx-input", "Mockhofweg Nirgendwo");
+  await pg.waitForSelector("#sx-opt-online");
+  await pg.waitForTimeout(600);
+  check("Online-Suche: kein Autocomplete – ohne Knopfdruck keine Anfrage an Nominatim", nominatim.length === 0, `${nominatim.length} Anfragen`);
+  await pg.click("#sx-opt-online");
+  await pg.waitForSelector("#sx-opt-0.sx-online");
+  const on = await pg.evaluate(() => ({ label: document.querySelector("#sx-opt-0 .sx-label").textContent, status: document.getElementById("sx-status").textContent }));
+  const nu = new URL(nominatim[0]);
+  await pg.keyboard.press("Enter");
+  await pg.waitForSelector("#sx-card:not([hidden])");
+  const onSrc = await pg.textContent("#sx-card .sx-src");
+  check("Online-Suche: genau 1 Anfrage auf Knopfdruck, auf das Gebiet begrenzt, Attribution © OpenStreetMap",
+    nominatim.length === 1 && nu.searchParams.get("bounded") === "1" && !!nu.searchParams.get("viewbox") && on.label === "Mockhof" && /OpenStreetMap/.test(on.status) && /OpenStreetMap/.test(onSrc),
+    JSON.stringify(on).slice(0, 140));
+  // abschaltbar
+  await pg.click("#tab-info");
+  await pg.uncheck("#chk-search-online");
+  await pg.click("#tab-lage");
+  await pg.fill("#sx-input", "Mockhofweg Nirgendwo zwei");
+  await pg.waitForTimeout(600);
+  const offRow = await pg.evaluate(() => ({ row: !!document.getElementById("sx-opt-online"), en: window.Search.config.online.enabled }));
+  check("Online-Suche abschaltbar: ohne Erlaubnis kein Online-Eintrag und keine Anfrage", offRow.row === false && offRow.en === false && nominatim.length === 1, JSON.stringify(offRow));
+  await c.close();
+} catch (e) {
+  check("Testablauf Online-Suche", false, e.message);
+}
+
+// Screenshots Ortssuche (deviceScaleFactor 2, Tablet quer): Trefferliste mit Typ-Symbolen und Rettungspunkt-Ebene
+// sowie Ergebniskarte mit Quellenangabe und „Als Zündpunkt setzen“.
+try {
+  const c2 = await browser.newContext({ viewport: { width: 1280, height: 860 }, deviceScaleFactor: 2 });
+  const pg = await c2.newPage();
+  pg.on("pageerror", (e) => consoleErrors.push("PAGEERROR " + e.message));
+  await pg.route("**/*", (route) => { const u = new URL(route.request().url()); if (u.hostname === "localhost") return route.continue(); blocked.add(u.hostname); return route.abort("blockedbyclient"); });
+  await ack(pg);
+  await pg.click("#sx-input");
+  await pg.waitForFunction(() => window.Search.status().geladen, null, { timeout: 30000 });
+  await pg.evaluate(() => { window.__wb.map.setView([50.8182, 7.2708], 14, { animate: false }); window.__wb.setRpLayer(true); });
+  await pg.waitForFunction(() => document.querySelectorAll(".sx-rp-marker").length > 0, null, { timeout: 20000 });
+  await pg.waitForTimeout(800);
+  // Hinweisleiste der Karte mit Erklärung zum Bild (wie bei den übrigen Screenshots), frei von Maßstab und Attribution
+  const caption = (pg2, text) => pg2.evaluate((t) => {
+    let cap = document.getElementById("shot-caption");
+    if (!cap) { cap = document.createElement("div"); cap.id = "shot-caption"; cap.className = "maphint"; document.querySelector(".mapwrap").appendChild(cap); }
+    cap.style.zIndex = "900"; cap.style.left = "72px"; cap.style.bottom = "76px"; cap.style.maxWidth = "min(560px, calc(100% - 100px))";
+    cap.textContent = t;
+  }, text);
+  await caption(pg, "Ortssuche: Trefferliste mit Typ-Symbol (Ortsteil, Straße, Kommune), Tastaturbedienung; grüne Quadrate = KWF-Rettungspunkte mit Nummer (abschaltbare Kartenebene). Kartenhintergrund im Test gesperrt.");
+  await pg.fill("#sx-input", "Seelscheid");
+  await pg.waitForSelector("#sx-opt-0");
+  await pg.keyboard.press("ArrowDown");
+  await pg.waitForTimeout(400);
+  await pg.screenshot({ path: path.join(OUT, "screenshot-suche.png") });
+  const shotOk = fs.existsSync(path.join(OUT, "screenshot-suche.png"));
+  const opts = await pg.evaluate(() => [...document.querySelectorAll("#sx-list [role=option]")].map((o) => o.querySelector(".sx-typ").textContent));
+  check("Screenshot Suche (deviceScaleFactor 2) erstellt, Trefferliste mit mehreren Typ-Symbolen", shotOk && new Set(opts).size >= 2, opts.join(", "));
+  // zweites Bild: Ergebniskarte mit Quelle und Knopf „Als Zündpunkt setzen“
+  await pg.fill("#sx-input", "01-501-SU");
+  await pg.waitForSelector("#sx-opt-0.sx-rettungspunkt");
+  await pg.keyboard.press("Enter");
+  await pg.waitForSelector("#sx-card:not([hidden])");
+  await caption(pg, "Suchtreffer Rettungspunkt: Nummer, Beschreibung, Koordinate und UTM, Quellenvermerk mit Lizenz und Haftungsausschluss, Knopf „Als Zündpunkt setzen“ (legt die Brandfläche mit dem gewählten Startradius an).");
+  await pg.waitForTimeout(1400);
+  await pg.screenshot({ path: path.join(OUT, "screenshot-suche-treffer.png") });
+  check("Screenshot Suchtreffer (Rettungspunkt mit Quellenvermerk und Zündpunkt-Knopf) erstellt", fs.existsSync(path.join(OUT, "screenshot-suche-treffer.png")) && await pg.locator("#sx-ign").isVisible());
+  await c2.close();
+} catch (e) {
+  check("Testablauf Screenshots Ortssuche", false, e.message);
+}
+
 // GitHub-Pages-Simulation: Projekt unter Unterpfad /waldbrand-app/ (alle Pfade relativ, kein Abruf außerhalb)
 try {
   const PREFIX = "/waldbrand-app/";
-  const outside = [], notFound = [];
+  const outside = [], notFound = [], served2 = [];
   const sub = http.createServer((req, res) => {
     const u = req.url.split("?")[0];
+    served2.push(u);
     if (!u.startsWith(PREFIX)) { outside.push(req.url); res.writeHead(404); res.end(); return; }
     const p = path.join(root, decodeURIComponent(u.slice(PREFIX.length - 1)).replace(/\/$/, "/index.html"));
     if (!p.startsWith(root) || !fs.existsSync(p) || fs.statSync(p).isDirectory()) { notFound.push(req.url); res.writeHead(404); res.end(); return; }
@@ -495,6 +746,16 @@ try {
   const demOk = (await pg.locator("#dem-status").innerText()).includes("DGM1 NRW");
   const vehOk = await pg.evaluate(() => window.__wb.state.vehicles.length);
   check("Unterpfad /waldbrand-app/ (GitHub Pages): lädt, DGM + Fahrzeuge + Grenzen, Prognose, keine Abrufe außerhalb, keine 404", r.includes("Geländewind:") && demOk && vehOk >= 100 && outside.length === 0 && notFound.length === 0 && subErr.length === 0, `außerhalb: ${outside.slice(0, 3).join(", ")}; 404: ${notFound.slice(0, 3).join(", ")}; Fehler: ${subErr.slice(0, 2).join(" | ")}`);
+  // Ortssuche unter dem Unterpfad: Index und Rettungspunkte werden relativ geladen und finden Treffer
+  await pg.click("#sx-input");
+  await pg.waitForFunction(() => window.Search.status().geladen, null, { timeout: 30000 });
+  await pg.fill("#sx-input", "Zum Wirbel 12a");
+  await pg.waitForSelector("#sx-opt-0.sx-adresse");
+  const subHit = await pg.textContent("#sx-opt-0 .sx-label");
+  const subIdx = served2.filter((u) => /suche-index\.json|rettungspunkte-kwf\.json/.test(u));
+  check("Unterpfad: Ortssuche lädt data/suche-index.json und data/rettungspunkte-kwf.json relativ und findet die Adresse",
+    subHit.trim() === "Zum Wirbel 12a" && subIdx.length === 2 && subIdx.every((u) => u.startsWith(PREFIX)) && outside.length === 0 && notFound.length === 0 && subErr.length === 0,
+    subIdx.join(", "));
   await c.close();
   sub.close();
 } catch (e) {

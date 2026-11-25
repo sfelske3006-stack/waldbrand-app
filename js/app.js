@@ -1476,6 +1476,104 @@
     run.twDisplay = { hour: h, arrows: f.points.length, ratioMin: Math.min(...f.points.map((q) => q.ratio)), ratioMax: Math.max(...f.points.map((q) => q.ratio)) };
   }
 
+  // ---------------------------------------------------------------- Ortssuche (0.5.0)
+  /*
+   * Verdrahtung von js/search.js (Logik) und js/search-ui.js (Bedienung) mit der App:
+   *   - Suchfeld oben in der Werkzeugleiste (Markup in index.html, IDs sx-*), Index wird erst beim ersten Fokus geladen.
+   *   - Treffer zentriert die Karte (Adresse/Rettungspunkt/Koordinate: Marker; Straße/Ortsteil/Kommune: BBox).
+   *   - „Als Zündpunkt setzen“ erzeugt dieselbe Kreisfläche wie der Kartenmodus „Zündpunkt + Radius“.
+   *   - Rettungspunkte zusätzlich als abschaltbare Kartenebene (Ebenenschalter rechts oben).
+   * Pflicht-Quellenvermerk KWF: Text, Verlinkung und Lizenz unverändert anzeigen; die Konstanten unten werden
+   * von tests/search.test.mjs gegen data/rettungspunkte-kwf.json geprüft (kein Auseinanderlaufen beim Austausch).
+   */
+  const KWF = { version: "2.21", stand: "10/2026", veroeffentlicht: "2026-10-07", maxAgeMonths: 7 };
+  const KWF_ATTR_HTML = `© KWF-Rettungspunkte v${KWF.version}, `
+    + '<a href="https://docs.rettungspunkte-forst.de/Metadaten_KWF_Rettungspunkte.pdf" target="_blank" rel="noopener">Datenurheber</a>, '
+    + '<a href="https://rettungspunkte-forst.de" target="_blank" rel="noopener">www.rettungspunkte-forst.de</a>';
+  const SEARCH_SOURCES_HTML = `<ul>
+    <li><b>Rettungspunkte</b>: ${KWF_ATTR_HTML}. Lizenz
+      <a href="https://creativecommons.org/licenses/by-nd/4.0/deed.de" target="_blank" rel="noopener">CC BY-ND 4.0</a>,
+      <b>Daten unverändert</b> (alle Attribute, Bezeichnungen und Koordinaten wie geliefert; Bearbeitung nur räumlicher
+      Ausschnitt Gebiet + ca. 2 km und Formatwandlung Shapefile → JSON), <b>Version ${KWF.version}, Stand ${KWF.stand}</b>
+      (veröffentlicht ${KWF.veroeffentlicht}). Angaben ohne Gewähr
+      (<a href="https://kwf2020.kwf-online.de/rettungspunkte-download/" target="_blank" rel="noopener">Haftungsausschluss des KWF</a>).
+      Laut Nutzungsbedingungen sind veraltete Versionen zu löschen und durch die aktuelle zu ersetzen; die App warnt nach
+      ${KWF.maxAgeMonths} Monaten (KWF exportiert etwa zweimal jährlich). Die Weitergabe eines Ausschnitts ist unter ND lizenzrechtlich <b>zu prüfen</b>.</li>
+    <li><b>Adressen und Straßen</b>: Gebäudereferenzen NRW (<code>gebref</code>, Stand 2026-10-01), Geobasis NRW,
+      <a href="https://www.govdata.de/dl-de/zero-2-0" target="_blank" rel="noopener">dl-de/zero-2-0</a>; Umrechnung EPSG:25832 → WGS84 mit <code>tools/build-suche.py</code>.</li>
+    <li><b>Ortsteile</b>: benannte Ortslagen aus dem Basis-DLM NRW (Objektart <code>AX_Ortslage</code>), Geobasis NRW, dl-de/zero-2-0.
+      Kleine Weiler und Wohnplätze ohne eigene Ortslage fehlen.</li>
+    <li><b>Kommunen/Gebiet</b>: DVG1 Gemeindegrenzen (Stand 2025-11-12), Geobasis NRW, dl-de/zero-2-0. Enthalten sind
+      Neunkirchen-Seelscheid und die sechs Nachbarkommunen.</li>
+    <li><b>Online-Suche</b> (nur auf Knopfdruck, abschaltbar): © <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a>-Mitwirkende (ODbL), Suche über Nominatim.
+      Nutzungsregeln (höchstens 1 Anfrage/s, kein Autocomplete) sind eingehalten; für den Betrieb eigene Instanz prüfen.</li>
+  </ul>`;
+
+  /** Alter der KWF-Veröffentlichung in Monaten (gleiche Rechnung wie Search.rpInfo, auch ohne geladene Datei). */
+  function kwfAgeMonths(nowMs) {
+    const d = new Date(KWF.veroeffentlicht + "T00:00:00Z"), n = new Date(nowMs === undefined ? Date.now() : nowMs);
+    return (n.getUTCFullYear() - d.getUTCFullYear()) * 12 + (n.getUTCMonth() - d.getUTCMonth()) - (n.getUTCDate() < d.getUTCDate() ? 1 : 0);
+  }
+  function kwfWarnung() {
+    const info = window.Search && Search.rpInfo ? Search.rpInfo() : null; // nach dem Laden maßgeblich
+    if (info) return info.warnung;
+    return kwfAgeMonths() > KWF.maxAgeMonths
+      ? `KWF-Rettungspunkte v${KWF.version} (Stand ${KWF.stand}) sind älter als ${KWF.maxAgeMonths} Monate. Aktuelle Version auf www.rettungspunkte-forst.de prüfen und Datei ersetzen (Pflicht laut KWF-Nutzungsbedingungen).`
+      : null;
+  }
+  function renderSearchSources() {
+    const w = kwfWarnung();
+    $("search-sources").innerHTML = SEARCH_SOURCES_HTML + (w ? msg("warn", esc(w)) : msg("ok", `Datenstand Rettungspunkte: v${esc(KWF.version)} (${esc(KWF.stand)}), innerhalb der ${KWF.maxAgeMonths}-Monats-Frist.`));
+  }
+
+  /** Kreisfläche um einen Punkt als Brandfläche setzen (wie Kartenmodus „Zündpunkt + Radius“). */
+  function setIgnitionPoint(lat, lon, logText) {
+    const r = Number($("sel-radius").value);
+    const pr = Grid.makeProjection(lat, lon);
+    S.poly = Array.from({ length: 24 }, (_, k) => pr.toLatLng(Math.sin((k / 24) * 2 * Math.PI) * r, Math.cos((k / 24) * 2 * Math.PI) * r));
+    setMode(null);
+    savePoly(logText || `Zündpunkt mit Radius ${r} m gesetzt`);
+    return r;
+  }
+
+  // Online-Suche: abschaltbar über config.js (searchOnline) und über den Schalter im Reiter „Grenzen & Quellen“
+  const onlineCfg = { enabled: CFG.searchOnline !== false && store.get("wb_search_online", true) };
+  if (CFG.nominatimUrl) onlineCfg.url = CFG.nominatimUrl;
+  Search.configure({ online: onlineCfg });
+  const chkOnline = $("chk-search-online");
+  chkOnline.checked = onlineCfg.enabled;
+  chkOnline.disabled = CFG.searchOnline === false;
+  chkOnline.onchange = () => {
+    Search.configure({ online: { enabled: chkOnline.checked } });
+    store.set("wb_search_online", chkOnline.checked);
+  };
+
+  // Vorschau-Seite (Artifact): die Datendateien der Suche sind dort nicht abrufbar -> Suche ausblenden statt Fehlermeldung
+  const searchUsable = !ARTIFACT;
+  if (!searchUsable) $("sx-box").hidden = true;
+
+  // Kartenebene Rettungspunkte (lädt die Daten erst beim Einschalten; Nummern weichen vorhandenen Label aus)
+  const rpLayer = SearchUI.rettungspunkteLayer(map, {
+    // Nummern weichen allen vorhandenen Kartenbeschriftungen und festen Markern aus (sonst verdecken sie Lageinformation)
+    minZoom: 13, labelZoom: 14, obstacleSelector: `${LABEL_SEL},.st-group,.gs-marker,.vx-marker,.water-marker,.gps-marker`,
+    onWarn: (t) => { renderSearchSources(); $("hdr-status").textContent = t; },
+  });
+  if (searchUsable) layerCtl.addOverlay(rpLayer, "Rettungspunkte (KWF, ab Zoom 13)");
+
+  const searchUI = SearchUI.init({
+    map,
+    onSelect(h) {
+      Protocol.add("suche", { typ: h.typ, treffer: h.label, lat: h.lat === null ? null : +h.lat.toFixed(6), lon: h.lon === null ? null : +h.lon.toFixed(6), quelle: h.quelle || "" });
+      refreshProtocol();
+      renderSearchSources();
+    },
+    onIgnition(lat, lon, h) {
+      const r = setIgnitionPoint(lat, lon, `Zündpunkt mit Radius ${Number($("sel-radius").value)} m aus Suchtreffer „${h.label}“ (${h.typ}, Quelle: ${h.quelle || "Eingabe"})`);
+      $("map-hint").hidden = false;
+      $("map-hint").textContent = `Zündpunkt aus Suchtreffer „${h.label}“ gesetzt (Radius ${r} m). Lage vor Ort prüfen.`;
+      setTimeout(() => { $("map-hint").hidden = true; }, 6000);
+    },
+  });
   // ---------------------------------------------------------------- Kopfzeile, Tabs, Theme
   function updateHeader() {
     const parts = [];
@@ -1507,6 +1605,7 @@
   syncTwControls();
   $("ack-text").innerHTML = `<p><b>TESTVERSION – nicht für den Einsatz</b> (Version ${esc(P.version)}).</p><p>Diese App ist ein <b>unvalidierter Prototyp</b>. Sie zeigt eine Modellprognose mit Unsicherheitsband und einfache Vorschläge. Sie ersetzt weder Einsatzleitung noch Lageerkundung vor Ort.</p>${LIMITS_HTML}`;
   $("sources-text").innerHTML = SOURCES_HTML;
+  renderSearchSources();
   document.querySelectorAll(".p-likely").forEach((e) => { e.textContent = Math.round(P.ensemble.likely * 100); });
   document.querySelectorAll(".p-possible").forEach((e) => { e.textContent = Math.round(P.ensemble.possible * 100); });
 
@@ -1526,6 +1625,8 @@
   loadGrenzen().then(() => updateTeilStatus());
   initDem();
   S.demPromise.then(syncTwControls);
+  // Ausdehnung des Geländemodells an die Suche geben (Warnung bei Koordinaten außerhalb des DGM)
+  S.demPromise.then(() => { if (S.dem) Search.configure({ demBbox: [S.dem.meta.south, S.dem.meta.west, S.dem.meta.north, S.dem.meta.east] }); });
   if (store.get("wb_shade", false)) S.demPromise.then(() => setShade(true));
 
   // Vorschau-Modus (Artifact): externe Dienste sind dort blockiert -> Demo mit Beispieldaten
@@ -1558,6 +1659,9 @@
     setTeil(m) { $("sel-teil").value = m; $("sel-teil").onchange(); },
     grenzenReady() { return S.grenzen; },
     setVehicles(data) { applyVehicleData(data, "Testdaten (synthetisch)"); saveVehicles(); },
+    search: searchUI,
+    rpLayer,
+    setRpLayer(on) { if (on) map.addLayer(rpLayer); else map.removeLayer(rpLayer); },
     map,
     state: S,
   };

@@ -1,0 +1,102 @@
+[
+ {
+  "raw": "N;DENW46HK1000rLh5;A;05;Nordrhein-Westfalen;3;Köln;82;Rhein-Sieg-Kreis;028;Lohmar;0000;;23502;Adolf-Kolping-Weg;2;;32;374133.437;5633725.230;2026-10-01",
+  "kommune": "Lohmar",
+  "strasse": "Adolf-Kolping-Weg",
+  "hnr": "2",
+  "e": 374133.437,
+  "n": 5633725.23,
+  "lat": 50.841528,
+  "lon": 7.212276
+ },
+ {
+  "raw": "N;DENW46HK1000r39P;A;05;Nordrhein-Westfalen;3;Köln;82;Rhein-Sieg-Kreis;028;Lohmar;0000;;23197;Ringstraße;13;;32;375583.427;5635498.339;2026-10-01",
+  "kommune": "Lohmar",
+  "strasse": "Ringstraße",
+  "hnr": "13",
+  "e": 375583.427,
+  "n": 5635498.339,
+  "lat": 50.857779,
+  "lon": 7.232258
+ },
+ {
+  "raw": "N;DENW46HK10005kJr;A;05;Nordrhein-Westfalen;3;Köln;82;Rhein-Sieg-Kreis;020;Hennef (Sieg);0000;;19163;Holunderweg;18;;32;381376.283;5625412.361;2026-10-01",
+  "kommune": "Hennef (Sieg)",
+  "strasse": "Holunderweg",
+  "hnr": "18",
+  "e": 381376.283,
+  "n": 5625412.361,
+  "lat": 50.768334,
+  "lon": 7.317786
+ },
+ {
+  "raw": "N;DENW46HK1000Tfk6;A;05;Nordrhein-Westfalen;3;Köln;82;Rhein-Sieg-Kreis;036;Much;0000;;25143;Oberdreisbach;40;;32;391274.359;5639845.134;2026-10-01",
+  "kommune": "Much",
+  "strasse": "Oberdreisbach",
+  "hnr": "40",
+  "e": 391274.359,
+  "n": 5639845.134,
+  "lat": 50.900017,
+  "lon": 7.453813
+ },
+ {
+  "raw": "N;DENW46HK1000kSts;A;05;Nordrhein-Westfalen;3;Köln;82;Rhein-Sieg-Kreis;028;Lohmar;0000;;23393;Dachsweg;12;;32;376678.198;5642149.785;2026-10-01",
+  "kommune": "Lohmar",
+  "strasse": "Dachsweg",
+  "hnr": "12",
+  "e": 376678.198,
+  "n": 5642149.785,
+  "lat": 50.9178,
+  "lon": 7.24556
+ },
+ {
+  "raw": "N;DENW46HK1000ul9f;A;05;Nordrhein-Westfalen;3;Köln;82;Rhein-Sieg-Kreis;036;Much;0000;;25125;Neßhoven;29;a;32;390557.405;5636871.212;2026-10-01",
+  "kommune": "Much",
+  "strasse": "Neßhoven",
+  "hnr": "29a",
+  "e": 390557.405,
+  "n": 5636871.212,
+  "lat": 50.873148,
+  "lon": 7.444512
+ },
+ {
+  "raw": "N;DENW46HK1000Tdsr;A;05;Nordrhein-Westfalen;3;Köln;82;Rhein-Sieg-Kreis;036;Much;0000;;25007;Bockemsweg;7;;32;388500.054;5640298.040;2026-10-01",
+  "kommune": "Much",
+  "strasse": "Bockemsweg",
+  "hnr": "7",
+  "e": 388500.054,
+  "n": 5640298.04,
+  "lat": 50.903559,
+  "lon": 7.414237
+ },
+ {
+  "raw": "N;DENW45HK0000eO2Q;A;05;Nordrhein-Westfalen;3;Köln;78;Rheinisch-Bergischer Kreis;024;Overath;0000;;06549;Krampenhöhe;41;;32;384105.368;5643804.883;2026-10-01",
+  "kommune": "Overath",
+  "strasse": "Krampenhöhe",
+  "hnr": "41",
+  "e": 384105.368,
+  "n": 5643804.883,
+  "lat": 50.934217,
+  "lon": 7.350649
+ },
+ {
+  "raw": "N;DENW45HK0000jsAn;A;05;Nordrhein-Westfalen;3;Köln;78;Rheinisch-Bergischer Kreis;024;Overath;0000;;06354;Im Auel;9;;32;379659.990;5643546.539;2026-10-01",
+  "kommune": "Overath",
+  "strasse": "Im Auel",
+  "hnr": "9",
+  "e": 379659.99,
+  "n": 5643546.539,
+  "lat": 50.930984,
+  "lon": 7.287499
+ },
+ {
+  "raw": "N;DENW46HK1000TfWr;A;05;Nordrhein-Westfalen;3;Köln;82;Rhein-Sieg-Kreis;036;Much;0000;;25070;Gerlinghausen;57;;32;386959.619;5643480.453;2026-10-01",
+  "kommune": "Much",
+  "strasse": "Gerlinghausen",
+  "hnr": "57",
+  "e": 386959.619,
+  "n": 5643480.453,
+  "lat": 50.931867,
+  "lon": 7.391352
+ }
+]

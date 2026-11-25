@@ -8,10 +8,10 @@
 <script>
   // Zentrale Version und Dateiliste (Cache-Busting). Alle Pfade RELATIV (läuft auch unter einem Unterpfad,
   // z. B. GitHub Pages /waldbrand-app/). WB_VERSION muss PARAMS.version entsprechen (Test prüft das).
-  window.WB_VERSION = "0.4.2-prototyp";
+  window.WB_VERSION = "0.5.0-prototyp";
   window.WB_ASSET = function (p) { return p + (p.indexOf("?") < 0 ? "?" : "&") + "v=" + encodeURIComponent(window.WB_VERSION); };
-  window.WB_CSS = ["vendor/leaflet/leaflet.css", "css/app.css"];
-  window.WB_JS = ["vendor/leaflet/leaflet.js", "config.js", "js/params.js", "js/grid.js", "js/dem.js", "js/terrain.js", "js/model.js", "js/contour.js", "js/weather.js", "js/osm.js", "js/dispatch.js", "js/suggest.js", "js/protocol.js", "js/app.js"];
+  window.WB_CSS = ["vendor/leaflet/leaflet.css", "css/app.css", "css/search.css"];
+  window.WB_JS = ["vendor/leaflet/leaflet.js", "config.js", "js/params.js", "js/grid.js", "js/dem.js", "js/terrain.js", "js/model.js", "js/contour.js", "js/weather.js", "js/osm.js", "js/dispatch.js", "js/suggest.js", "js/protocol.js", "js/search.js", "js/search-ui.js", "js/app.js"];
   for (var i = 0; i < window.WB_CSS.length; i++) document.write('<link rel="stylesheet" href="' + window.WB_ASSET(window.WB_CSS[i]) + '">');
 </script>
 <!--/WB-LOADER-->
@@ -29,6 +29,23 @@
     <section class="mapwrap" aria-label="Karte">
       <div id="map"></div>
       <div class="maptools" role="toolbar" aria-label="Zeichenwerkzeuge">
+        <!-- Ortssuche (js/search.js, js/search-ui.js, css/search.css). ARIA: Combobox (Eingabe) mit Listbox (Treffer),
+             aktive Zeile über aria-activedescendant. Der Suchindex wird erst beim ersten Fokus geladen (lazy). -->
+        <div class="sx-box" id="sx-box" role="search" aria-label="Ortssuche">
+          <label for="sx-input" class="sx-visually-hidden">Ort, Straße, Adresse, Rettungspunkt oder Koordinate suchen</label>
+          <div class="sx-field">
+            <svg class="sx-field-ico" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="10.5" cy="10.5" r="6.5"/><path d="M15.5 15.5L21 21"/></svg>
+            <input id="sx-input" class="sx-input" type="search" autocomplete="off" autocapitalize="off" spellcheck="false" enterkeyhint="search"
+              placeholder="Ort, Straße + Nr., Rettungspunkt, Koordinate"
+              role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="sx-list" aria-describedby="sx-status">
+            <button id="sx-clear" class="sx-clear" type="button" aria-label="Suche leeren" hidden>
+              <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true" focusable="false" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M6 6l12 12M18 6L6 18"/></svg>
+            </button>
+          </div>
+          <ul id="sx-list" class="sx-list" role="listbox" aria-label="Suchtreffer" hidden></ul>
+          <div id="sx-status" class="sx-status" role="status" aria-live="polite" hidden></div>
+          <div id="sx-card" class="sx-card" role="region" aria-label="Gewählter Suchtreffer" aria-live="polite" hidden></div>
+        </div>
         <button id="btn-draw" class="tool" type="button">Brandfläche zeichnen</button>
         <button id="btn-point" class="tool" type="button">Zündpunkt + Radius</button>
         <button id="btn-undo" class="tool" type="button" hidden>Letzten Punkt entfernen</button>
@@ -222,6 +239,10 @@
           <h2>Datenquellen</h2>
           <div id="sources-text"></div>
         </section>
+        <section class="card" id="sec-suche-quellen">
+          <h2>Suche: Quellen und Lizenzen</h2>
+          <div id="search-sources"></div>
+        </section>
         <section class="card">
           <h2>Haftung und Freigabe</h2>
           <p class="placeholder">[PLATZHALTER: Text zur rechtlichen Freigabe und Haftungsregelung. Wird vom Auftraggeber (Gemeinde / Kreisbrandmeister) bereitgestellt. Offen.]</p>
@@ -231,6 +252,8 @@
           <div class="btnrow">
             <button id="btn-theme" class="btn" type="button">Tag-/Nachtmodus wechseln</button>
           </div>
+          <label class="check"><input type="checkbox" id="chk-search-online" checked> Online-Suche (OpenStreetMap/Nominatim) als Ergänzung erlauben</label>
+          <p class="muted small">Die Online-Suche läuft nie automatisch: Sie erscheint nur als eigener Listeneintrag, wenn die Offline-Suche nichts findet, und sendet den Suchtext erst nach Antippen an nominatim.openstreetmap.org.</p>
         </section>
       </div>
     </aside>
