@@ -138,6 +138,38 @@ Kennzahlen, Engpassdiagnose, Nachplanung → Karte, Diagramme, Tabellen, Protoko
 2 Entnahmestellen und 33 geeignete Fahrzeuge ca. 120 ms inklusive 6 Nachplanungen; Neurechnen beim Verschieben eines
 Beckens ca. 15 ms. Unit-Test „Performance“: 20 Fahrzeuge, 8 Abnehmer, 6 h in 1-min-Schritten unter 200 ms.
 
+## Karten-Interaktion (0.8.0)
+
+Rechenteile `js/windrose.js` und `js/vehicle-drag.js` (beide DOM-frei prüfbar), Bedienteil `js/interaktion-ui.js`,
+Parameter `js/interaktion-params.js` (`PARAMS.interaktion`), Stile `css/interaktion.css`.
+
+**Entwurfsentscheidungen**
+
+| Thema | Gewählt | Alternativen | Begründung |
+|---|---|---|---|
+| Platz auf der Karte | Windpfeil als **Leaflet-Control unten links**, zuletzt hinzugefügt und damit über Maßstab und Zoom | Werkzeugleiste oben links, Seitenleiste, eigener Reiter | Die Werkzeugleiste `.maptools` ist seit 0.5.0 mit Suchfeld und sieben Knöpfen voll; die Legende sitzt unten rechts. Leaflet stellt in den unteren Ecken jedes neue Control **vor** die vorhandenen, deshalb liegt der Pfeil oben und Maßstab/Zoom bleiben sichtbar (im E2E-Test geprüft). |
+| Höhe des Bedienelements | bei der Integration begrenzt: kleineres Pfeilfeld (132 px), kompaktere Zeilen, `max-height: calc(100vh - 290px)` mit eigenem Rollbalken | unverändert übernehmen | Unverändert war das Element 649 px hoch und wuchs in einer 730 px hohen Karte über den oberen Rand hinaus – es verdeckte das Suchfeld und machte es unklickbar (im E2E-Test aufgefallen). Jetzt 510 px. |
+| Parameter | eigene Datei `js/interaktion-params.js` | Block in `js/params.js` | Wie beim Wassermodul: konfliktfrei hinzufügbar. Fehlt die Datei, arbeiten die Module mit ihren eigenen DEFAULTS weiter. |
+| Richtung ziehen, Stärke am Regler | getrennt; Radiusmodus als abschaltbare Zugabe | beides am Pfeilradius | Auf dem Tablet mit Handschuhen würde ein Radiusgriff beide Werte gleichzeitig verstellen. |
+| Tastatur | nur am fokussierten Pfeil, **keine globalen Kürzel** | globale Taste `w` | Die Suche behandelt ihre Tasten ebenfalls nur am Eingabefeld; so gibt es keine Überschneidung. |
+| Neuberechnung | entprellt (300 ms) mit Abbruchwache (`Windrose.createRunGuard`), `runForecast()` um einen optionalen `onProgress` erweitert | bei jedem Pixel rechnen, nur Knopf | Eine Ensemble-Rechnung dauert 0,5–1,1 s. `onProgress` wirft bei neuerer Eingabe `Windrose.abortError()`, die Schleife in `runEnsemble` bricht nach **einem** Lauf ab (20–40 ms). „Prognose berechnen“ bleibt unverändert. |
+| Kennzeichnung | über das vorhandene `row.overridden` aus `js/weather.js` (ergibt „*“ in der Wettertabelle) plus `row.windSource` (`echt`/`pfeil`/`zeitplan`) | eigenes Anzeigekonzept | Ein Konzept für alle Überschreibungen; ein späteres Trockenheitsmodul, das `rh` überschreibt, nutzt denselben Weg, und die Kennzeichnung bleibt je Feld korrekt. |
+| Linienkriterium | `Suggest.lineCellOk` / `Suggest.lineCellsOk` aus `js/suggest.js` **exportiert** und im Ziehmodul aufgerufen | Kopie im Ziehmodul (so war es im Modulordner) | Das Kriterium („außerhalb der ,möglich‘-Zone zum Prüfzeitpunkt und mindestens `lineClearanceM` Abstand“) darf nur an einer Stelle stehen, sonst laufen Vorschlag und Handanpassung auseinander. `evalCells()` benutzt jetzt dieselbe Funktion. |
+| Angepasste Linie | wird automatisch **gesperrt** (`S.sugState.locked`) | beim nächsten `Suggest.compute` verwerfen | Sonst erzeugt die nächste Berechnung die Linie aus den OSM-Kandidaten neu und die Handanpassung verschwindet kommentarlos. Die Sperre steht im Protokoll (`vorschlag_sperre` mit Grund). |
+| Ziehen | eigene Umsetzung über Pointer Events statt Leaflets `marker.dragging` | Leaflet-Dragging | Ein Codeweg für Maus, Finger und Stift; die Hilfslinien brauchen dieselben Ereignisse, und das Ziehen **aus der Liste** gibt es in Leaflet nicht. |
+| Griff in der Fahrzeugliste | `⠿` in der vorhandenen Spalte „Fahrzeug“ | eigene Spalte | Eine zusätzliche Spalte verschiebt die Tabelle (und brach die Spaltenindizes im E2E-Test); die Tabelle ist mit acht Spalten ohnehin breit. |
+| A/B | auf dem vorhandenen Vergleich aufgesetzt (`S.run`/`S.runB`, Knöpfe bleiben), ergänzt um `InteraktionUI.renderCompare` und den Modus „A und B“ | zweiter, eigener Vergleich | Zwei Vergleiche nebeneinander wären verwirrend. Die gleichzeitige Darstellung unterscheidet die Läufe über das **Strichmuster**, nicht über die Farbe. |
+| Rückgängig | nur für die von Hand gesetzten Fahrzeuge, flache Schnappschüsse (Tiefe 20) | vollständiger Verlauf | Ein allgemeiner Undo-Stack über Wind, Linien und Vorschläge wäre ein größerer Umbau. Die Grenze steht in der Oberfläche und in docs/assumptions.md. |
+
+**Nicht übernommen (bewusst):** `demo.html`, `demo.js` und `demo-lib/` aus dem Modulordner (unveränderte Kopien von
+`js/*`) liegen **nicht** im Repository – sie würden auf GitHub Pages als zweite, veraltete App erscheinen und
+`tests/model.test.mjs` verlangt für jede Datei in `js/` einen Loader-Eintrag.
+
+**Laufzeit:** `Windrose` rechnet in Mikrosekunden (reine Winkel-/Zeitarithmetik); der sichtbare Aufwand ist die
+Ensemble-Rechnung selbst. Ein Abbruch nach einer Windänderung kostet einen Ensemble-Lauf (20–40 ms).
+`VehicleDrag.guides()` liest nur vorbereitete Felder (`ctx.distReady`, `ctx.dist1h`), `adjustLine()` prüft je Stufe
+eine gerasterte Linie – beides weit unter einem Frame.
+
 ## Rückzugsflächen und Fluchtwege (0.7.0)
 
 Rechenkern `js/safearea.js` (DOM-frei, deterministisch), Oberfläche `js/safearea-ui.js`, Stile `css/safearea.css`,

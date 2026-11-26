@@ -1,10 +1,10 @@
-# Waldbrand-Lagebild Neunkirchen-Seelscheid (Prototyp, Version 0.7.0-prototyp)
+# Waldbrand-Lagebild Neunkirchen-Seelscheid (Prototyp, Version 0.8.0-prototyp)
 
 > **TESTVERSION – nicht für den Einsatz.** **Modellprognose, unvalidiert. Keine Handlungsanweisung. Entscheidung und Verantwortung liegen bei der Einsatzleitung.**
 
 Veröffentlicht (Test) unter <https://sfelske3006-stack.github.io/waldbrand-app/> (GitHub Pages, Unterpfad `/waldbrand-app/`; alle Pfade relativ).
 
-Browser-App für Einsatzleiter bei Vegetations- und Waldbränden: Brandfläche einzeichnen, Wetter laden oder vor Ort eingeben, Ausbreitung für 1/2/4/6 h mit Unsicherheitsband berechnen, einfache Vorschläge für Riegelstellungen und Fahrzeugstandorte, dazu eine Simulation der Löschwasserversorgung (Pufferbecken, Förderstrecke, Pendelverkehr) und Vorschläge für Rückzugsflächen mit Fluchtwegen je Fahrzeug. Die gesamte Rechnung läuft im Browser, ein Server ist nicht nötig.
+Browser-App für Einsatzleiter bei Vegetations- und Waldbränden: Brandfläche einzeichnen, Wetter laden oder vor Ort eingeben, Ausbreitung für 1/2/4/6 h mit Unsicherheitsband berechnen, einfache Vorschläge für Riegelstellungen und Fahrzeugstandorte, dazu eine Simulation der Löschwasserversorgung (Pufferbecken, Förderstrecke, Pendelverkehr) und Vorschläge für Rückzugsflächen mit Fluchtwegen je Fahrzeug. Wind und Fahrzeugstandorte lassen sich direkt auf der Karte ändern (drehbarer Windpfeil, Fahrzeuge per Drag & Drop). Die gesamte Rechnung läuft im Browser, ein Server ist nicht nötig.
 
 ## Start
 
@@ -60,8 +60,27 @@ Google Maps (optional): In `config.js` `googleMapsApiKey` eintragen. Erst dann e
    **Geländewind** (Abschnitt 3, Schalter „Geländewind: an/aus“): lokaler Wind und Feuchte je Zelle aus dem DGM, Ebene „Geländewind“ mit Pfeilen (alle 250 m, Farbe = Faktor lokal/synoptisch). Aus = Rechnung wie 0.3.0 (bitgenau, Test).
 7. **Rückzugsflächen und Fluchtwege (Abschnitt 6 im Reiter „Lage“, neu in 0.7.0)**: Nach jeder Prognose werden aus Landnutzung (OSM) und Gelände Flächen ohne Brandlast vorgeschlagen (Gewässer, abgebrannte Fläche, Steinbruch, Parkplatz, Sportfläche, Hoffläche, Acker, Grünland), je Fläche mit Soll-Radius, Status (geeignet / bedingt geeignet / ungeeignet) und Begründung, dazu je eingesetztem Fahrzeug ein Fluchtweg (Fahrzeug und zu Fuß) mit geschätzter Zeit. Ist die Fluchtzeit plus Sicherheitspuffer größer als die Zeit, bis die „möglich“-Front den Standort erreichen kann, erscheint eine Warnung an der Fahrzeugkarte, auf der Karte und im Protokoll. Jede Fläche lässt sich verwerfen (bleibt über Neuberechnungen erhalten, wird protokolliert). **Ohne OSM-Daten wird nichts erfunden**: dann bleibt nur die abgebrannte Fläche und ein Hinweis. Details und Quellenlage: Abschnitt „Rückzugsflächen und Fluchtwege“.
 8. **Wasserversorgung (Reiter „Wasser“, neu in 0.6.0)**: Aus den Fahrzeugvorschlägen (Riegel, Auffanglinie, Flanke, Objektschutz), den Entnahmestellen, dem Wegenetz und dem Gelände wird eine **Simulation** der Löschwasserversorgung über 6 h gerechnet: Pufferbecken (Faltbehälter 5.000 l), Förderstrecken bis 600 m Schlauchweg, sonst Pendelverkehr. Zeitregler mit Abspielen (1× / 10× / 60×) bewegt Fahrzeuge und Füllstände, je Becken ein Diagramm (Füllstand, Zufluss, Verbrauch). Becken lassen sich auf der Karte verschieben, hinzufügen und löschen – es wird jedes Mal neu gerechnet. Details: Abschnitt „Wasserversorgung“.
-9. **Szenario B** (z. B. „Wind aus 270°“) neben A vergleichen.
-10. **Protokoll**: lokale Hash-Kette (SHA-256), Export als JSON und GeoJSON, Drucken/PDF über den Browser.
+9. **Windpfeil unten links auf der Karte (neu in 0.8.0)**: Richtung durch Ziehen am Pfeilkopf (Maus, Finger, Stift), Stärke am eigenen großen Regler, Feinmodus 1° / 0,5 km/h, Tastatur am fokussierten Pfeil (Pfeiltasten, Umschalt = fein, Bild auf/ab = 45°, Pos1/Ende, `0` = echtes Wetter). Jede Änderung ist **als manuelle Überschreibung gekennzeichnet** (rote Marke am Pfeil, „*“ in der Wettertabelle, Vermerk in Protokoll und Export) und löst nach ca. 300 ms eine **neue Prognose** mit Fortschrittsanzeige und Abbruch aus; „Zurück auf echtes Wetter“ nimmt alles zurück. Über „Zeitplan …“ lassen sich Stützstellen setzen (ab Uhrzeit Richtung/Stärke, dazwischen interpoliert).
+10. **Fahrzeuge per Drag & Drop (neu in 0.8.0)**: Im Reiter „Fahrzeuge“ am Griff `⠿` ein Fahrzeug auf die Karte ziehen. Während des Ziehens zeigen Hilfslinien Abstand zur Front, nächste Riegelstellung und nächste Entnahmestelle mit Zahlen. Beim Ablegen wird der Standort mit derselben Prüfung wie die Vorschläge geprüft (`Suggest.checkPosition`), das Fahrzeug einer Riegellinie zugeordnet und die Linie **nur dann** verlängert oder verschoben, wenn sie dabei sicher bleibt – sonst bleibt sie unverändert, mit Begründung. Von Hand gesetzte Fahrzeuge sind gesperrt und werden von „Vorschläge neu berechnen“ nicht umgesetzt; Entfernen und Rückgängig stehen unter den Einsatzvorschlägen.
+11. **Szenario B** (z. B. „Wind aus 270°“) neben A vergleichen; der Vergleich zeigt zusätzlich eine Kennzahlentabelle mit Differenzen und kann **A und B gleichzeitig** zeichnen (durchgezogen/gestrichelt, ohne Farbe unterscheidbar).
+12. **Protokoll**: lokale Hash-Kette (SHA-256), Export als JSON und GeoJSON, Drucken/PDF über den Browser.
+
+## Änderungen in Version 0.8.0
+
+**Karten-Interaktion** (neu, siehe Abschnitt „Karten-Interaktion“): drehbarer **Windpfeil** als Leaflet-Control unten
+links (Maus, Touch, Tastatur), getrennter Stärkeregler, Zeitplan mit Stützstellen und Interpolation über 0°,
+Kennzeichnung der manuellen Überschreibung in Anzeige, Wettertabelle, Protokoll und Export, Knopf „Zurück auf echtes
+Wetter“, entprellte Neuberechnung (ca. 300 ms) mit Fortschritt und Abbruch; **A/B-Vergleich** mit Kennzahlentabelle
+und gleichzeitiger Darstellung beider Konturen; **Fahrzeuge per Drag & Drop** aus der Fahrzeugliste auf die Karte mit
+Hilfslinien, Zuordnung zur Riegellinie, sicherer Linienanpassung, Warnung mit Zahlen, Sperre, Entfernen und
+Rückgängig. Protokolltypen `wind_manuell`, `fahrzeug_gesetzt`, `fahrzeug_entfernt`, `fahrzeug_sperre`,
+`rueckgaengig`, `wiederherstellen`; GeoJSON um `wind_*`-Eigenschaften an der Brandfläche und `fahrzeug_manuell`
+erweitert.
+Neu: `js/windrose.js`, `js/vehicle-drag.js`, `js/interaktion-params.js`, `js/interaktion-ui.js`,
+`css/interaktion.css`, `tests/interaktion.test.mjs`.
+Dabei wurde `js/suggest.js` um `lineCellOk`/`lineCellsOk` erweitert: Das Zellkriterium einer Riegellinie steht damit
+nur noch an **einer** Stelle und wird vom Ziehmodul aufgerufen statt kopiert.
+**Alle Zahlen des Moduls sind Annahmen** (`PARAMS.interaktion`, [docs/assumptions.md](docs/assumptions.md)).
 
 ## Änderungen in Version 0.7.0
 
@@ -281,6 +300,76 @@ jede Zahl steht in `js/water-params.js` (`PARAMS.wasser`).
   Becken, Wasserbedarf und Einsatzanteil je Riegelfahrzeug, Zahl verfügbarer Faltbehälter, Standortkriterien,
   Grenze Schlauch/Pendelverkehr, Pendelgeschwindigkeiten, Darstellung nach taktischen Zeichen, Ablösung nach 6 h.
 
+## Karten-Interaktion (Windpfeil, Fahrzeuge ziehen)
+
+Neu in 0.8.0. **Kein eigener Reiter**: der Windpfeil liegt als Leaflet-Control unten links auf der Karte (über
+Maßstab und Zoomknöpfen, die Werkzeugleiste oben links bleibt unberührt), das Ziehen nutzt den vorhandenen Reiter
+„Fahrzeuge“ und die Karte. Von Hand gesetzte Fahrzeuge erscheinen unter den Einsatzvorschlägen (Abschnitt 5).
+
+### Windpfeil
+
+* **Drehen** durch Ziehen am Pfeilkopf – Maus, Finger und Stift laufen über denselben Codeweg (Pointer Events).
+  Je weiter weg vom Drehpunkt gezogen wird, desto feiner die Auflösung (langer Hebel, für Handschuhe).
+  Rastung 5°, mit Umschalttaste oder Schalter „Feinmodus“ 1°.
+* **Stärke** an einem eigenen großen Regler (Vorgabe), damit nicht beide Werte gleichzeitig verstellt werden.
+  Optional „Stärke beim Ziehen mitändern (Radius)“.
+* **Tastatur** nur am fokussierten Pfeil (`role="slider"`, `tabindex="0"`), **keine globalen Kürzel**: Pfeiltasten
+  Richtung/Stärke, Umschalt = fein, Bild auf/ab = 45°, Pos1/Ende = 0/Maximum, `0` = zurück auf echtes Wetter.
+* **Richtung = Richtung, AUS der der Wind weht**; der Pfeil zeigt in Strömungsrichtung. Gesetzt wird der
+  **synoptische 10-m-Wind**; die Geländekorrektur (0.4.0) rechnet unverändert darauf.
+* **Zeitplan …**: Stützstellen (ab Uhrzeit, Richtung, Stärke, optional Böen). Vor der ersten Stützstelle gilt das
+  echte Wetter bzw. die Pfeileinstellung, dazwischen wird linear interpoliert (Richtung über den kürzeren
+  Winkelweg), nach der letzten wird deren Wert gehalten (Annahme). Böen ohne Angabe werden aus dem echten Wetter
+  abgeleitet, mindestens Mittelwind (Annahme, gekennzeichnet).
+* **Kennzeichnung der Überschreibung**: rote Marke „manuell überschrieben“ am Pfeil, „*“ je betroffener Stunde in der
+  Wettertabelle, Warnzeile über der Tabelle, Warnung im Prognoseergebnis, Protokolleintrag `wind_manuell` und
+  `wind_manuell`/`wind_text`/`ueberschriebene_stunden` im Eintrag `prognose`, Eigenschaften `wind_*` im GeoJSON.
+  **„Zurück auf echtes Wetter“** nimmt alles zurück.
+* **Neuberechnung**: ca. 300 ms nach der letzten Änderung (`PARAMS.interaktion.wind.debounceMs`) startet eine neue
+  Prognose mit Fortschrittsbalken und Knopf „Abbrechen“; eine noch laufende Rechnung bricht nach einem
+  Ensemble-Lauf ab. „Prognose berechnen“ bleibt unverändert daneben bestehen.
+
+### Szenario-Vergleich A/B
+
+Der vorhandene Vergleich bleibt; ergänzt wurden eine **Kennzahlentabelle** (Fläche je Horizont, Hauptrichtung,
+Objekte, jeweils mit Differenz B − A) und der Knopf **„Karte: A und B“**, der beide „möglich“-Konturen gleichzeitig
+zeichnet – A durchgezogen, B gestrichelt, also **ohne Farbe unterscheidbar**.
+
+### Fahrzeuge per Drag & Drop
+
+* Im Reiter „Fahrzeuge“ steht in jeder Zeile ein Griff `⠿`. Damit lässt sich das Fahrzeug auf die Karte ziehen
+  (Maus, Finger, Stift; Ziehpunkte ≥ 52 px, `touch-action: none` nur auf den Ziehflächen).
+* **Hilfslinien während des Ziehens** mit Zahlen: Abstand zur „möglich“-Zone zum Prüfzeitpunkt und zum 1-h-Bereich
+  (Kreis mit diesem Radius – der kürzeste Weg dorthin wird nicht gesucht, das wäre eine Scheingenauigkeit),
+  Lotlinie zur nächsten Riegelstellung mit Entfernung, Linie zur nächsten Entnahmestelle.
+* **Beim Ablegen** prüft die App den Standort mit derselben Funktion wie die Vorschläge
+  (`Suggest.checkPosition`): Front („möglich“) am Standort, frühester einzelner Lauf, Einsatzbereitschaft des
+  Fahrzeugs, Mindestabstand zum 1-h-Bereich. Die Warnung nennt die Zahlen („Front erreicht die Position nach X min,
+  Einsatzbereitschaft erst nach Y min“). **Platzieren bleibt immer erlaubt**, die Warnung geht ins Protokoll.
+* **Zuordnung zur Riegellinie** innerhalb von 150 m (Annahme). Die Linie wird höchstens 300 m je Ende verlängert oder
+  höchstens 60 m quer verschoben – und **nur**, wenn jede Rasterzelle der geänderten Linie das Kriterium aus
+  `js/suggest.js` (`Suggest.lineCellsOk`, dieselbe Funktion wie in `evalCells`) weiter erfüllt. Ist keine Stufe
+  sicher, bleibt die Linie unverändert, mit Begründung. Eine angepasste Linie wird **automatisch gesperrt**, sonst
+  würde der nächste `Suggest.compute` sie aus den OSM-Kandidaten neu erzeugen.
+* **Sperre, Entfernen, Rückgängig**: Von Hand gesetzte Fahrzeuge sind gesperrt (Annahme) und werden von „Vorschläge
+  neu berechnen“ nicht umgesetzt; der Unterschiedstext nennt sie. Zurückziehen in die Liste oder „Entfernen“ nimmt
+  sie weg, „Rückgängig“/„Wiederherstellen“ arbeitet mit flachen Schnappschüssen (Tiefe 20) und umfasst **nur** die
+  von Hand gesetzten Fahrzeuge – Windänderungen und Linienanpassungen sind nicht umkehrbar.
+
+### Offene Fragen an die Feuerwehr
+
+1. Sind die Zahlen der Bedienung brauchbar: Rastung 5° (fein 1°), Zuordnungsradius 150 m, Verlängerung ≤ 300 m je
+   Ende, Querverschiebung ≤ 60 m, Sperre beim Ablegen?
+2. Ist die Entprellung von 300 ms richtig? Auf dem Tablet dauert eine Ensemble-Rechnung 0,5–1 s; zu häufige Abbrüche
+   wären störend, eine längere Wartezeit träge. **Am Gerät zu messen.**
+3. Beim Anpassen einer Riegellinie werden die geometrischen Kriterien „quer zur Hauptausbreitungsrichtung“ und „vor
+   der Front“ **nicht erneut** geprüft (die Achse ändert sich durch Verlängerung auf der eigenen Achse und eine
+   Querverschiebung ≤ 60 m praktisch nicht). **Annahme, zu bestätigen.**
+4. Soll eine angepasste Linie automatisch gesperrt werden (so umgesetzt) oder beim nächsten Neuberechnen verworfen?
+5. Soll der Windpfeil bei aktivem Zeitplan eine kleine Zeitleiste zeigen (ein Pfeil je Stunde)?
+   `Windrose.timeline()` liefert die Daten, die Anzeige fehlt noch.
+6. Welche Wind-Obergrenze ist sinnvoll (hier 120 km/h) und sollen Böen getrennt eingebbar bleiben?
+
 ## Rückzugsflächen und Fluchtwege
 
 Neu in 0.7.0. Abschnitt **6 „Rückzugsflächen und Fluchtwege“** im Reiter „Lage“ (bewusst **kein eigener Reiter**: ein
@@ -430,19 +519,24 @@ Reines HTML/CSS/JavaScript ohne Build-Schritt, Leaflet 1.9.4 lokal unter `vendor
 | `js/water-params.js` | Parameterblock `PARAMS.wasser` (eigene Datei, ändert `js/params.js` nicht). Jede Zahl eine Annahme, Herkunft im Kommentar ([A] [F] [P] [V] [App]). |
 | `js/water-ui.js` | Oberfläche der Wasserversorgung: Leaflet-Ebenen (Becken mit Füllstand, Schlauch, Pendelrouten, Fahrzeuge), Zeitregler mit Animation, Canvas-Diagramme ohne Zusatzbibliothek, Kennzahlen-/Entnahmestellen-/Fahrzeugtabellen. |
 | `css/water.css` | Stile der Wasserversorgung (Präfix `w-`, `wbasin`, `wsrc`, `wveh`), nutzt die Tokens aus `css/app.css`. |
+| `js/windrose.js` | Windpfeil (Rechenteil, DOM-frei): Winkel und Rastung, Interpolation über 0°, Zeitplan, Kennzeichnung der Überschreibung für Anzeige/Protokoll/Export, A/B-Kennzahlen, Entprellung und Abbruchwache. |
+| `js/vehicle-drag.js` | Fahrzeuge ziehen: Zuordnung zur Riegellinie, Linienanpassung (verlängern/verschieben/unverändert), Prüfung und Warnung mit Zahlen, Hilfslinien, Ablage mit Sperre, Rückgängig/Wiederherstellen. Nutzt `Suggest.checkPosition` und `Suggest.lineCellsOk` – keine eigene Sicherheitslogik. |
+| `js/interaktion-ui.js` | Bedienteil: Windpfeil als Leaflet-Control (Pointer Events für Maus/Touch/Stift, ARIA-Slider), entprellte Neuberechnung mit Fortschritt und Abbruch, A/B-Kennzahlentabelle. |
+| `js/interaktion-params.js` | Parameterblock `PARAMS.interaktion` (eigene Datei wie `js/water-params.js`). Jede Zahl eine Annahme. |
+| `css/interaktion.css` | Stile der Karten-Interaktion (Präfix `wb-`), nutzt die Tokens aus `css/app.css`. |
 | `js/safearea.js` | Rückzugsflächen und Fluchtwege (Rechenkern, DOM-frei, deterministisch): Flammenlänge aus dem Rothermel-Kern, Soll-Radius mit Hang-/Windzuschlag, Kandidatensuche (Komponenten, Chamfer-Distanz, größter einbeschriebener Kreis, Randbrennstoff), Fluchtwege per Dijkstra über das Raster (Fahrzeug/Fuß), Warnung gegen die „möglich“-Front, Darstellung für Protokoll und Export. |
 | `js/safearea-ui.js` | Oberfläche der Rückzugsflächen: Leaflet-Ebenen „Safe Areas“ und „Fluchtwege“ (Flächen nach Status, Sicherheitskreis, Beschriftung, Richtungspfeile), Legende an der Kartenlegende, Tabellen in der Seitenleiste, Verwerfen/Zeigen. Nutzt die vorhandene Label-Entzerrung aus `js/app.js`. |
 | `css/safearea.css` | Stile der Rückzugsflächen (Präfix `sa-`), nutzt die Tokens aus `css/app.css` (Tag-/Nachtmodus, `--tap`). |
 | `js/search.js` | Ortssuche: Index laden (lazy), Bewertung/Ranking, Hausnummern, Rettungspunkt-Nummern, Koordinatenparser (Grad/UTM, Krüger-Reihen ohne proj4), Online-Abfrage (Nominatim, gedrosselt), Quellenvermerke. Ohne Abhängigkeiten, auch unter Node (Tests). |
 | `js/search-ui.js` | Bedienung der Suche (Leaflet): Combobox/Listbox, Tastatur, Ergebniskarte, Marker/Rechtecke, Kartenebene „Rettungspunkte“ mit Nummern-Entzerrung. |
 | `css/search.css` | Stile der Suche (Präfix `sx-`), nutzt die Tokens aus `css/app.css` (Tag-/Nachtmodus). |
-| `js/app.js` | UI, verdrahtet auch die Suche (Zündpunkt, Protokoll, Ebene, Quellenangaben), die Wasserversorgung (Adapter `waterInput()`, Reiter, Ebenen, Protokoll, Export) und die Rückzugsflächen (`computeSafeAreas()` am Ende von `computeSuggestions()`, Warnung je Fahrzeugkarte und Marker, Protokoll, Export). |
+| `js/app.js` | UI, verdrahtet auch die Suche (Zündpunkt, Protokoll, Ebene, Quellenangaben), die Wasserversorgung (Adapter `waterInput()`, Reiter, Ebenen, Protokoll, Export) und die Rückzugsflächen (`computeSafeAreas()` am Ende von `computeSuggestions()`, Warnung je Fahrzeugkarte und Marker, Protokoll, Export) und die Karten-Interaktion (Windpfeil als Control, `Windrose.applyOverride()` in `buildInputs()`, entprellte Neuberechnung, `VehicleDrag.attach()`, Ziehgriffe in der Fahrzeugliste, A/B-Anzeige, Protokoll, Export). |
 | `data/fahrzeuge.json` | Fahrzeug- und Wachendaten Rhein-Sieg-Kreis (schema 2), editierbar, Quelle/Quellentyp je Eintrag (ca. 220 KB). |
 | `data/gemeindeteile.json` | Gemarkungen Neunkirchen-Seelscheid (ALKIS) mit Zuordnung zu den Gemeindeteilen (ca. 50 KB). |
 | `data/dgm25.bin`, `data/dgm25.json` | Geländemodell 25 m (Int16, Dezimeter) mit Metadaten (Quelle, Stand, Lizenz, Raster). |
 | `data/suche-index.json` | Offline-Suchindex: 7 Kommunen, 306 Ortslagen, 3.223 Straßen, 62.152 Adressen (ca. 860 KB, delta-kodierte Mikrograd). Wird erst beim ersten Fokus im Suchfeld geladen. |
 | `data/rettungspunkte-kwf.json` | KWF-Rettungspunkte v2.21 (Stand 10/2026), Gebietsausschnitt 655 Punkte, Attribute unverändert (ca. 98 KB). |
-| `tests/` | Unit-/Szenariotests (`model.test.mjs`, `search.test.mjs`, `water.test.mjs`, `safearea.test.mjs`), Browser-Test (`e2e.mjs`), synthetische OSM-Testdaten (`synth-osm.mjs`, `safearea-scenario.cjs`, keine echten Daten), Stichproben aus den Rohdaten (`fixtures/`). |
+| `tests/` | Unit-/Szenariotests (`model.test.mjs`, `search.test.mjs`, `water.test.mjs`, `safearea.test.mjs`, `interaktion.test.mjs`), Browser-Test (`e2e.mjs`), synthetische OSM-Testdaten (`synth-osm.mjs`, `safearea-scenario.cjs`, keine echten Daten), Stichproben aus den Rohdaten (`fixtures/`). |
 | `tools/build-artifact.mjs` | Erzeugt die Einzeldatei-Vorschau. |
 | `tools/build-dgm.py` | Erzeugt `data/dgm25.*` aus dem DGM1 NRW. |
 | `tools/build-suche.py` | Erzeugt `data/suche-index.json` aus gebref, Basis-DLM und DVG1 (pyproj, pyshp). |

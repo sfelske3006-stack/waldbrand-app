@@ -184,9 +184,42 @@
    * Gültig nur, wenn alle Zellen des Segments außerhalb der "möglich"-Zone zum Prüfzeitpunkt (Bereitschaft + Mindest-Wirkzeit)
    * liegen (Abstand >= lineClearanceM), das Segment den 6-h-Bereich berührt, quer und vor der Front liegt.
    */
+  /**
+   * Zellkriterium einer Riegel-/Abwehrlinie – die EINZIGE Stelle, an der es steht:
+   * Die Zelle muss zum Prüfzeitpunkt außerhalb der „möglich“-Zone liegen und mindestens
+   * `lineClearanceM` Abstand dazu halten. Wird von evalCells() und von js/vehicle-drag.js
+   * (angepasste Linie beim Ziehen eines Fahrzeugs) benutzt – nicht kopieren.
+   */
+  function lineCellOk(ctx, P, i) {
+    return !ctx.readyMask[i] && ctx.distReady[i] >= P.suggestions.lineClearanceM;
+  }
+
+  /**
+   * Dasselbe Kriterium für eine ganze Zellenliste, mit Zahlen für die Begründung.
+   * @returns {ok, bad, minClearanceM, minArrivalMin, reason}
+   */
+  function lineCellsOk(ctx, P, cells) {
+    const S = P.suggestions;
+    let bad = 0, minClear = Infinity, minArrival = Infinity;
+    for (const i of cells) {
+      if (i < 0 || i >= ctx.distReady.length) {
+        return { ok: false, bad: 1, minClearanceM: 0, minArrivalMin: 0, reason: "Linie verlässt das Rechengebiet." };
+      }
+      if (ctx.distReady[i] < minClear) minClear = ctx.distReady[i];
+      if (ctx.tP[i] < minArrival) minArrival = ctx.tP[i];
+      if (!lineCellOk(ctx, P, i)) bad++;
+    }
+    return {
+      ok: bad === 0, bad,
+      minClearanceM: minClear === Infinity ? 0 : minClear,
+      minArrivalMin: minArrival,
+      reason: bad === 0 ? "" : `${bad} Rasterzelle(n) der geänderten Linie liegen in der „möglich“-Zone zum Prüfzeitpunkt (${Math.round(ctx.checkMin)} min) oder halten den Mindestabstand ${S.lineClearanceM} m nicht ein (geringster Abstand ${Math.round(minClear === Infinity ? 0 : minClear)} m).`,
+    };
+  }
+
   function evalCells(g, cells, ctx, P, refDir, mainDir) {
     const S = P.suggestions;
-    const ok = cells.map((i) => !ctx.readyMask[i] && ctx.distReady[i] >= S.lineClearanceM);
+    const ok = cells.map((i) => lineCellOk(ctx, P, i));
     const near = cells.map((i) => ctx.distLast[i] <= S.lineReachM);
     if (!near.some(Boolean)) return { ok: false, why: "ausserhalb" };
     if (!near.some((v, q) => v && ok[q])) return { ok: false, why: "bereitschaft" };
@@ -1000,7 +1033,7 @@
     return { added, removed, changed };
   }
 
-  const Suggest = { compute, checkPosition, context, diff, fmtMin, KIND_LABEL, distanceTo, hasWater, possibleTimes, threatenedObjects, grundschutz, pflichtSet };
+  const Suggest = { compute, checkPosition, context, diff, fmtMin, KIND_LABEL, distanceTo, hasWater, possibleTimes, threatenedObjects, grundschutz, pflichtSet, lineCellOk, lineCellsOk };
   root.Suggest = Suggest;
   if (typeof module !== "undefined" && module.exports) module.exports = Suggest;
 })(typeof globalThis !== "undefined" ? globalThis : this);

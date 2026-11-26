@@ -497,3 +497,75 @@ einbeschriebene Kreis, nicht die Fläche in ha. Ziel der Fluchtwege ist der Kern
    und Sicht zu bewerten?
 9. Wer gibt den Sicherheitsbereich bekannt und wie wird er markiert (LACES)? Soll die App dafür einen Ausdruck je
    Fläche liefern?
+
+## Neu in 0.8.0 (Karten-Interaktion: Windpfeil, Fahrzeuge ziehen)
+
+Module `js/windrose.js`, `js/vehicle-drag.js`, `js/interaktion-ui.js`; Parameter in der eigenen Datei
+`js/interaktion-params.js` (`PARAMS.interaktion`, wie `js/water-params.js`). **Jede Zahl dort ist eine
+Annahme**, solange sie nicht mit der Feuerwehr abgestimmt ist. Fehlt die Datei, arbeiten die Module mit
+denselben Werten aus ihren eigenen DEFAULTS weiter.
+
+### Windpfeil (`PARAMS.interaktion.wind`)
+
+| Parameter | Wert | Status |
+|---|---|---|
+| `snapDeg` / `fineSnapDeg` | Rastung 5° / fein 1° | **Annahme** |
+| `snapKmh` / `fineSnapKmh` | 1 km/h / 0,5 km/h | **Annahme** |
+| `maxKmh` | 120 km/h Obergrenze der Bedienung | **Annahme** |
+| `minDragPx` | unter 18 px vom Drehpunkt keine eindeutige Richtung (Daumen auf dem Drehpunkt) | **Annahme** |
+| `debounceMs` | 300 ms nach dem Loslassen wird neu gerechnet | **Vorgabe Auftraggeber**; mit 0,5–1 s Ensemble-Rechnung auf dem Tablet **zu prüfen** (häufige Abbrüche) |
+| `keyStepDeg` / `keyFineStepDeg` / `keyPageDeg` | 5° / 1° / 45° | **Annahme** |
+| `holdAfterLast` | nach der letzten Zeitplan-Stützstelle wird deren Wert gehalten | **Annahme** |
+| Böen ohne Angabe | aus dem echten Wetter übernommen, mindestens der Mittelwind (eine Böe kann nicht unter dem Mittelwind liegen) | **Annahme**, im Ergebnis gekennzeichnet (`gustDerived`) |
+| Bezugsgröße | der Pfeil setzt den **synoptischen 10-m-Wind**; die Geländekorrektur (0.4.0) rechnet unverändert darauf | übernommen aus dem Kern |
+| Anzeige | der Pfeil zeigt die Werte der **ersten** Prognosestunde; bei aktivem Zeitplan wäre eine Zeitleiste sinnvoll (`Windrose.timeline()` liefert die Daten, Anzeige fehlt) | **offen** |
+
+Die Überschreibung ist **keine Messung und keine Vorhersage**, sondern ein vom Bediener gesetzter Eingangswert.
+Sie wird deshalb an fünf Stellen gekennzeichnet: Marke am Pfeil, „*“ je Stunde in der Wettertabelle, Warnung im
+Prognoseergebnis, Protokoll (`wind_manuell`, dazu `wind_manuell`/`wind_text`/`ueberschriebene_stunden` im Eintrag
+`prognose`) und GeoJSON (`wind_*` an der Brandfläche).
+
+### Fahrzeuge ziehen (`PARAMS.interaktion.drag`)
+
+| Parameter | Wert | Status |
+|---|---|---|
+| `snapRadiusM` | Ablage näher als 150 m = Zuordnung zur Riegellinie | **Annahme** |
+| `maxExtendM` | Linie wird höchstens 300 m je Ende verlängert | **Annahme** |
+| `maxShiftM` / `shiftStepM` | Querverschiebung höchstens 60 m, in Schritten von 10 m | **Annahme** |
+| `waterGuideMaxM` | Hilfslinie zur nächsten Entnahmestelle bis 2.000 m | **Annahme** |
+| `lockOnDrop` | von Hand gesetzte Fahrzeuge sind gegen Umsetzen gesperrt | **Annahme** |
+| `undoDepth` | 20 Schritte Rückgängig | **Annahme** |
+| `tapTargetPx` | Ziehpunkte ≥ 52 px (wie `--tap` in `css/app.css`) | übernommen |
+
+**Nicht aufgeweicht:** Die Sicherheitsprüfung des Ablageorts ist unverändert `Suggest.checkPosition`
+(js/suggest.js); das Zellkriterium der Linie ist seit 0.8.0 `Suggest.lineCellsOk` – dieselbe Funktion, die
+`evalCells()` bei der automatischen Suche benutzt. Das Ziehmodul bringt **keine eigene** Sicherheitslogik mit.
+
+**Nicht geprüft** werden bei der Linienanpassung die geometrischen Kriterien „quer zur Hauptausbreitungsrichtung“
+und „vor der Front“. Begründung: Die Verlängerung läuft auf der eigenen Achse weiter und die Querverschiebung ist
+auf 60 m begrenzt, die Achse ändert sich also praktisch nicht. **Annahme, mit der Feuerwehr zu klären.**
+
+### Grenzen
+
+* **Rückgängig/Wiederherstellen umfasst nur die von Hand gesetzten Fahrzeuge** (flache Schnappschüsse, Tiefe 20).
+  Windänderungen und Linienanpassungen sind **nicht** umkehrbar – bewusst, weil ein vollständiger Verlauf einen
+  größeren Umbau bedeutet hätte.
+* Eine angepasste Riegellinie wird **automatisch gesperrt**, sonst erzeugt der nächste `Suggest.compute` sie aus den
+  OSM-Kandidaten neu. Beim Entsperren geht die Anpassung bei der nächsten Berechnung verloren.
+* Der Windpfeil ändert **nur** Wind (`windKmh`, `windDirDeg`, `gustKmh`). Temperatur, Feuchte und Regen bleiben beim
+  Bedienfeld „Werte vor Ort überschreiben“.
+* Das Platzieren eines Fahrzeugs ist **immer erlaubt**, auch wenn die Prüfung nicht erfüllt ist; die App warnt mit
+  Zahlen und protokolliert. Die Entscheidung bleibt bei der Einsatzleitung.
+
+### Offene Fragen an die Feuerwehr (Karten-Interaktion)
+
+1. Sind Rastung (5°, fein 1°), Zuordnungsradius (150 m), Verlängerung (≤ 300 m je Ende) und Querverschiebung
+   (≤ 60 m) brauchbar?
+2. Ist die Entprellung von 300 ms richtig gewählt? Auf dem Tablet dauert eine Ensemble-Rechnung 0,5–1 s; **am Gerät
+   zu messen**, ob häufige Abbrüche stören.
+3. Dürfen „quer zur Hauptrichtung“ und „vor der Front“ bei einer Handanpassung ungeprüft bleiben (siehe oben)?
+4. Soll eine angepasste Linie automatisch gesperrt werden (so umgesetzt) oder beim nächsten Neuberechnen verworfen?
+5. Sollen von Hand gesetzte Fahrzeuge immer gesperrt sein, oder soll die Sperre je Fahrzeug abgefragt werden?
+6. Welche Wind-Obergrenze ist sinnvoll (hier 120 km/h)? Sollen Böen getrennt eingebbar bleiben, und ist die
+   Ableitung „Böe mindestens Mittelwind“ akzeptabel?
+7. Soll der Windpfeil bei aktivem Zeitplan eine Zeitleiste zeigen (ein Pfeil je Stunde)?

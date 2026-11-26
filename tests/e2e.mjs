@@ -772,6 +772,13 @@ try {
   check("Unterpfad: Wassermodul (js/water*.js, css/water.css) relativ geladen, Reiter „Wasser“ nutzbar",
     subW.has && subW.css && subFiles.length === 4 && subFiles.every((u) => u.startsWith(PREFIX)) && (subW.panel > 200 || /Keine/.test(subW.hint)) && outside.length === 0 && notFound.length === 0 && subErr.length === 0,
     `${subFiles.length} Dateien: ${subFiles.join(", ")}; Becken ${subW.basins}; Hinweis: ${subW.hint}`);
+  // Karten-Interaktion unter dem Unterpfad: js/windrose.js, js/vehicle-drag.js, js/interaktion-*.js, css/interaktion.css
+  const subIa = served2.filter((u) => /windrose|vehicle-drag|interaktion/.test(u));
+  check("Unterpfad: Modul Karten-Interaktion (windrose, vehicle-drag, interaktion-params, interaktion-ui, css) relativ geladen",
+    subIa.length === 5 && subIa.every((u) => u.startsWith(PREFIX)) &&
+    await pg.evaluate(() => ["Windrose", "VehicleDrag", "InteraktionUI"].every((k) => typeof window[k] === "object") && !!(window.PARAMS.interaktion && window.PARAMS.interaktion.wind)) &&
+    await pg.evaluate(() => !!document.querySelector(".wb-wind")),
+    `${subIa.length} Dateien: ${subIa.join(", ")}`);
   // Rückzugsflächen-Modul unter dem Unterpfad: js/safearea*.js und css/safearea.css relativ geladen
   const subSa = served2.filter((u) => /safearea/.test(u));
   check("Unterpfad: Modul Rückzugsflächen (js/safearea.js, js/safearea-ui.js, css/safearea.css) relativ geladen",
@@ -1362,6 +1369,331 @@ try {
   await pg.context().close();
 } catch (e) {
   check("Testablauf Rückzugsflächen ohne OSM/DGM", false, e.message);
+}
+
+// ------------------------------------------------------------------ Karten-Interaktion (0.8.0)
+// Windpfeil (Maus, Touch, Tastatur, Zeitplan, A/B) und Fahrzeuge per Drag & Drop.
+// Wind wird hier NICHT über "#ov-windKmh" gesetzt, damit das "*" in der Wettertabelle allein vom
+// Pfeil stammt und "Zurück auf echtes Wetter" prüfbar ist.
+try {
+  const { hillOsm } = await import("./synth-osm.mjs");
+  const c2 = await browser.newContext({ viewport: { width: 1400, height: 950 }, deviceScaleFactor: 2, hasTouch: true });
+  const pg = await c2.newPage();
+  pg.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text()); });
+  pg.on("pageerror", (e) => consoleErrors.push("PAGEERROR " + e.message));
+  await pg.route("**/*", (route) => { const u = new URL(route.request().url()); if (u.hostname === "localhost") return route.continue(); blocked.add(u.hostname); return route.abort("blockedbyclient"); });
+  const cdp = await c2.newCDPSession(pg);
+  const touchDrag = async (from, to, steps = 10) => {
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchStart", touchPoints: [{ x: from.x, y: from.y }] });
+    for (let i = 1; i <= steps; i++) {
+      await cdp.send("Input.dispatchTouchEvent", { type: "touchMove", touchPoints: [{ x: from.x + ((to.x - from.x) * i) / steps, y: from.y + ((to.y - from.y) * i) / steps }] });
+    }
+    await cdp.send("Input.dispatchTouchEvent", { type: "touchEnd", touchPoints: [] });
+  };
+  await ack(pg);
+  await pg.evaluate(() => window.__wb.demReady());
+  await pg.waitForFunction(() => !!window.__wb.grenzenReady(), null, { timeout: 15000 });
+  const lat0 = 50.8045, lon0 = 7.3405, rr = 60;
+  const pts = Array.from({ length: 12 }, (_, k) => [lat0 + (rr / 111195) * Math.cos((k / 12) * 2 * Math.PI), lon0 + (rr / (111195 * Math.cos((lat0 * Math.PI) / 180))) * Math.sin((k / 12) * 2 * Math.PI)]);
+  await pg.evaluate((p) => window.__wb.setPolygon(p), pts);
+  await pg.evaluate((j) => window.__wb.injectOsm(j, "Testdaten (synthetisch)"), hillOsm(lat0, lon0));
+  await pg.click("#btn-wx-sample");
+  await pg.click("#btn-run");
+  await pg.waitForFunction(() => document.querySelector("#suggestions")?.innerText.length > 0, null, { timeout: 60000 });
+
+  // 1) Kartenecke unten links: Windpfeil über Maßstab und Zoom, nichts überdeckt
+  const corner = await pg.evaluate(() => {
+    const c = document.querySelector(".leaflet-bottom.leaflet-left");
+    const kids = [...c.children].map((e) => e.className);
+    const w = document.querySelector(".wb-wind").getBoundingClientRect();
+    const z = document.querySelector(".leaflet-control-zoom").getBoundingClientRect();
+    const sc = document.querySelector(".leaflet-control-scale").getBoundingClientRect();
+    const tools = document.querySelector(".maptools").getBoundingClientRect();
+    return { kids, windBottom: w.bottom, zoomTop: z.top, scaleTop: sc.top, ueberlappt: w.bottom > sc.top + 1 || w.bottom > z.top + 1, toolbar: w.top > tools.bottom };
+  });
+  check("Wind: Pfeil als Leaflet-Control unten links, über Maßstab und Zoom, ohne Überdeckung und ohne die Werkzeugleiste zu berühren",
+    corner.kids.length === 3 && !corner.ueberlappt && corner.toolbar, corner.kids.join(" | "));
+
+  // 2) Tastatur: 5° / 1° fein; Stärke ändert die Richtung nicht
+  await pg.locator("#wb-wind-svg").focus();
+  const k0 = Number(await pg.locator("#wb-wind-svg").getAttribute("aria-valuenow"));
+  await pg.keyboard.press("ArrowRight");
+  const k1 = Number(await pg.locator("#wb-wind-svg").getAttribute("aria-valuenow"));
+  await pg.keyboard.press("Shift+ArrowRight");
+  const k2 = Number(await pg.locator("#wb-wind-svg").getAttribute("aria-valuenow"));
+  await pg.keyboard.press("ArrowUp");
+  const k3 = Number(await pg.locator("#wb-wind-svg").getAttribute("aria-valuenow"));
+  const kmhAfter = await pg.evaluate(() => window.__wb.windOverride().kmh);
+  check("Wind: Tastatur am Pfeil – Pfeiltaste 5°, Umschalt 1°, Hoch/Runter ändert nur die Stärke",
+    ((k1 - k0 + 360) % 360) === 5 && ((k2 - k1 + 360) % 360) === 1 && k3 === k2 && kmhAfter !== null,
+    `${k0}° -> ${k1}° -> ${k2}° -> ${k3}°, Stärke ${kmhAfter} km/h`);
+
+  // 3) + 4) Pfeil mit der Maus drehen -> Rastung, Kennzeichnung, entprellte Neuberechnung, Protokoll
+  const dial = await pg.locator("#wb-wind-svg").boundingBox();
+  const cx = dial.x + dial.width / 2, cy = dial.y + dial.height / 2, rad = dial.width / 2 - 14;
+  await pg.mouse.move(cx, cy - rad);
+  await pg.mouse.down();
+  await pg.mouse.move(cx + rad * Math.cos(-Math.PI / 4), cy + rad * Math.sin(-Math.PI / 4), { steps: 8 }); // Richtung Nordost
+  await pg.mouse.up();
+  const dirNow = Number(await pg.locator("#wb-wind-svg").getAttribute("aria-valuenow"));
+  const flagOn = await pg.evaluate(() => document.getElementById("wb-wind-flag").getAttribute("data-on"));
+  await pg.waitForFunction((d) => { const h = window.__wb.state.run?.hours?.[0]; return h && Math.abs(h.windDirDeg - d) < 0.6; }, dirNow, { timeout: 60000 });
+  const afterTurn = await pg.evaluate(() => ({
+    src: window.__wb.state.run.hours[0].windSource,
+    proto: Protocol.all().filter((e) => e.typ === "wind_manuell").length,
+    protoText: (Protocol.all().filter((e) => e.typ === "wind_manuell").pop() || { daten: {} }).daten.text || "",
+    prognose: (Protocol.all().filter((e) => e.typ === "prognose").pop() || { daten: {} }).daten.wind_manuell,
+    stars: (document.querySelector("#wx-table").innerText.match(/\*/g) || []).length,
+    kette: Protocol.verify().ok,
+  }));
+  check("Wind: Pfeil mit der Maus gedreht – Rastung 5°, Kennzeichnung „manuell überschrieben“, Neuberechnung nach ca. 300 ms, Protokoll",
+    dirNow % 5 === 0 && flagOn === "1" && afterTurn.src === "pfeil" && afterTurn.proto >= 1 &&
+    /MANUELL ÜBERSCHRIEBEN/.test(afterTurn.protoText) && afterTurn.prognose === true && afterTurn.stars > 0 && afterTurn.kette,
+    `${dirNow}°, ${afterTurn.proto} Protokolleinträge, ${afterTurn.stars} Sternchen in der Wettertabelle`);
+
+  // 5) Dasselbe per Touch
+  const beforeTouch = Number(await pg.locator("#wb-wind-svg").getAttribute("aria-valuenow"));
+  const d2 = await pg.locator("#wb-wind-svg").boundingBox();
+  const c2x = d2.x + d2.width / 2, c2y = d2.y + d2.height / 2, r2 = d2.width / 2 - 14;
+  const a0 = ((beforeTouch - 90) * Math.PI) / 180;
+  await touchDrag({ x: c2x + r2 * Math.cos(a0), y: c2y + r2 * Math.sin(a0) }, { x: c2x - r2, y: c2y });
+  await pg.waitForTimeout(400);
+  const afterTouch = Number(await pg.locator("#wb-wind-svg").getAttribute("aria-valuenow"));
+  check("Wind: Pfeil per Touch gedreht (Pointer Events, ein Codeweg für Maus und Finger)",
+    afterTouch !== beforeTouch && afterTouch % 5 === 0, `${beforeTouch}° -> ${afterTouch}°`);
+
+  // 6) Zeitplan: Stützstelle in 2 h -> nur Stunden ab dann tragen die Zeitplanwerte
+  const sched = await pg.evaluate(async () => {
+    const t = new Date(Date.now() + 2 * 3600000);
+    const hhmm = `${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`;
+    document.querySelector("#wb-wind-schedule").click();
+    await new Promise((r) => setTimeout(r, 100));
+    const offen = !document.querySelector("#modal-wind").hidden;
+    document.querySelector("#btn-wsch-add").click();
+    const set = (f, v) => { const el = document.querySelector(`#wsch-table input[data-f="${f}"]`); el.value = v; el.dispatchEvent(new Event("change", { bubbles: true })); };
+    set("ab", hhmm); set("dirDeg", "90"); set("kmh", "33");
+    document.querySelector("#btn-wsch-apply").click();
+    await new Promise((r) => setTimeout(r, 120));
+    return { offen, zu: document.querySelector("#modal-wind").hidden, hhmm };
+  });
+  await pg.waitForFunction(() => (window.__wb.state.run?.hours || []).some((h) => h.windSource === "zeitplan"), null, { timeout: 60000 });
+  const schRes = await pg.evaluate(() => {
+    const h = window.__wb.state.run.hours;
+    return {
+      quellen: h.map((r) => r.windSource),
+      dirs: h.map((r) => Math.round(r.windDirDeg)),
+      proto: (Protocol.all().filter((e) => e.typ === "wind_manuell").pop() || { daten: {} }).daten.zeitplan || [],
+    };
+  });
+  const iZp = schRes.quellen.indexOf("zeitplan");
+  check("Wind: Zeitplan – Stützstelle überschreibt nur die Stunden ab ihrem Zeitpunkt, davor bleibt die Pfeileinstellung",
+    sched.offen && sched.zu && iZp > 0 && schRes.quellen.slice(0, iZp).every((q) => q === "pfeil") &&
+    schRes.quellen.slice(iZp).every((q) => q === "zeitplan") && schRes.proto.length === 1,
+    `Quellen: ${schRes.quellen.join(",")}; Richtungen: ${schRes.dirs.join(",")}`);
+
+  // 7) Zurück auf echtes Wetter
+  await pg.click("#wb-wind-reset");
+  await pg.waitForFunction(() => (window.__wb.state.run?.hours?.[0]?.windSource || "echt") === "echt", null, { timeout: 60000 });
+  const reset = await pg.evaluate(() => ({
+    manual: Windrose.isManual(window.__wb.windOverride()),
+    flag: document.getElementById("wb-wind-flag").getAttribute("data-on"),
+    stars: (document.querySelector("#wx-table").innerText.match(/\*/g) || []).length,
+    src: window.__wb.state.run.hours[0].windSource,
+  }));
+  check("Wind: „Zurück auf echtes Wetter“ – Kennzeichnung weg, Wettertabelle ohne „*“, Prognose wieder mit echtem Wind",
+    reset.manual === false && reset.flag === "0" && reset.stars === 0 && reset.src === "echt", JSON.stringify(reset));
+
+  // 8) A/B-Vergleich mit Kennzahlentabelle und beiden Konturen
+  await pg.selectOption("#sc-dir", "90");
+  await pg.click("#btn-scenario");
+  await pg.waitForFunction(() => document.querySelector("#sc-compare")?.innerText.length > 40, null, { timeout: 60000 });
+  await pg.click('#sc-compare [data-ab="AB"]');
+  await pg.waitForTimeout(400);
+  const ab = await pg.evaluate(() => ({
+    rows: document.querySelectorAll("#sc-compare table tbody tr").length,
+    legend: document.querySelector("#sc-compare .wb-ab-legend")?.innerText.replace(/\s+/g, " ") || "",
+    a: document.querySelectorAll("#map path.wb-ab-a").length,
+    b: document.querySelectorAll("#map path.wb-ab-b").length,
+    dashA: document.querySelector("#map path.wb-ab-a")?.getAttribute("stroke-dasharray") || null,
+    dashB: document.querySelector("#map path.wb-ab-b")?.getAttribute("stroke-dasharray") || null,
+    shows: window.__wb.state.mapShows,
+  }));
+  check("Wind: A/B-Vergleich – Kennzahlentabelle, beide Konturen gleichzeitig, ohne Farbe unterscheidbar (durchgezogen/gestrichelt)",
+    ab.rows >= 4 && /durchgezogen/.test(ab.legend) && /gestrichelt/.test(ab.legend) && ab.a === 1 && ab.b === 1 &&
+    !ab.dashA && !!ab.dashB && ab.shows === "AB", `${ab.rows} Zeilen, Strichmuster A=${ab.dashA} B=${ab.dashB}`);
+  await pg.click('#sc-compare [data-ab="A"]');
+  await pg.waitForTimeout(300);
+
+  // Screenshot Windpfeil
+  await pg.evaluate(() => {
+    const s0 = window.__wb.state;
+    const c = s0.poly.reduce((a, q) => [a[0] + q[0] / s0.poly.length, a[1] + q[1] / s0.poly.length], [0, 0]);
+    window.__wb.map.setView(c, 14, { animate: false });
+    const cap = document.createElement("div");
+    cap.className = "maphint"; cap.style.top = "12px"; cap.style.bottom = "auto"; cap.style.left = "12px"; cap.style.zIndex = "900";
+    cap.textContent = "Test-Lage: synthetische OSM-Daten, Beispielwetter. Windpfeil unten links: Richtung ziehen, Stärke am Regler, Zeitplan, zurück auf echtes Wetter.";
+    document.querySelector(".mapwrap").appendChild(cap);
+    document.querySelector(".maptools").style.visibility = "hidden";
+  });
+  // Für das Bild eine sprechende Einstellung: Wind aus Südwest, 28 km/h, als manuell gekennzeichnet
+  await pg.evaluate(() => {
+    const sl = document.getElementById("wb-wind-kmh");
+    sl.value = "28";
+    sl.dispatchEvent(new Event("input", { bubbles: true }));
+    sl.dispatchEvent(new Event("change", { bubbles: true }));
+  });
+  const dial3 = await pg.locator("#wb-wind-svg").boundingBox();
+  const c3x = dial3.x + dial3.width / 2, c3y = dial3.y + dial3.height / 2, r3 = dial3.width / 2 - 12;
+  await pg.mouse.move(c3x, c3y - r3);
+  await pg.mouse.down();
+  await pg.mouse.move(c3x - r3 * Math.SQRT1_2, c3y - r3 * Math.SQRT1_2, { steps: 8 }); // aus Südwest
+  await pg.mouse.up();
+  await pg.mouse.move(5, 5);
+  await pg.waitForTimeout(1800);
+  await pg.screenshot({ path: path.join(OUT, "screenshot-wind.png") });
+  check("Wind: Screenshot docs/screenshot-wind.png (deviceScaleFactor 2) erstellt", fs.existsSync(path.join(OUT, "screenshot-wind.png")));
+  await pg.click("#wb-wind-reset");
+  await pg.waitForTimeout(1200);
+
+  // 9) Fahrzeug aus der Liste auf die Karte ziehen (Maus). Vorher einen festen Kartenausschnitt um die
+  //    Brandfläche setzen, damit die Ablagepunkte im Rechengebiet liegen.
+  await pg.evaluate(() => {
+    const s0 = window.__wb.state;
+    const c = s0.poly.reduce((a, q) => [a[0] + q[0] / s0.poly.length, a[1] + q[1] / s0.poly.length], [0, 0]);
+    window.__wb.map.setView(c, 14, { animate: false });
+  });
+  await pg.waitForTimeout(500);
+  await pg.click("#tab-fahrzeuge");
+  await pg.waitForTimeout(300);
+  await pg.locator(".wb-veh-handle").first().scrollIntoViewIfNeeded();
+  await pg.waitForTimeout(200);
+  const handle = await pg.locator(".wb-veh-handle").first().boundingBox();
+  const mapBox = await pg.locator("#map").boundingBox();
+  const dropAt = { x: mapBox.x + mapBox.width * 0.46, y: mapBox.y + mapBox.height * 0.42 };
+  await pg.mouse.move(handle.x + handle.width / 2, handle.y + handle.height / 2);
+  await pg.mouse.down();
+  await pg.mouse.move(dropAt.x, dropAt.y, { steps: 14 });
+  await pg.waitForTimeout(200);
+  const guides = await pg.evaluate(() => ({
+    hint: document.querySelector(".wb-drag-hint")?.textContent || "",
+    ghost: !document.querySelector(".wb-drag-ghost")?.hidden,
+    lines: document.querySelectorAll("#map path.wb-guide-front, #map path.wb-guide-line, #map path.wb-guide-water").length,
+  }));
+  await pg.mouse.up();
+  await pg.waitForTimeout(600);
+  const dropped = await pg.evaluate(() => {
+    const st = window.__wb.manual().store.all;
+    const e = Protocol.all().filter((x) => x.typ === "fahrzeug_gesetzt").pop();
+    return {
+      n: st.length, locked: st[0] ? !!st[0].locked : false, lineId: st[0] ? st[0].lineId : null,
+      marker: document.querySelectorAll("#map .veh-marker.manual").length,
+      lock: document.querySelectorAll("#map .veh-marker.manual .lockmark").length,
+      proto: e ? e.daten : null,
+      liste: document.querySelector("#manual-list").innerText.replace(/\s+/g, " ").slice(0, 120),
+    };
+  });
+  check("Ziehen: Fahrzeug aus der Liste auf die Karte – Hilfslinien mit Zahlen beim Ziehen, danach Marker mit Schloss, Prüfung und Protokolleintrag",
+    guides.ghost && guides.lines >= 1 && /Front: \d+ m/.test(guides.hint) && dropped.n === 1 && dropped.locked &&
+    dropped.marker === 1 && dropped.lock === 1 && dropped.proto && dropped.proto.von_hand === true && !!dropped.proto.pruefung,
+    `Hilfslinien ${guides.lines}, Riegel ${dropped.lineId || "keiner"}, Prüfung erfüllt: ${dropped.proto ? dropped.proto.pruefung.erfuellt : "–"}`);
+  check("Ziehen: Warnung mit Zahlen, wenn die Prüfung nicht erfüllt ist – sonst Begründung der erfüllten Prüfung",
+    !!dropped.proto && (dropped.proto.pruefung.erfuellt
+      ? /Sicherheitsannahmen erfüllt|Abstand/.test(dropped.proto.pruefung.text || "")
+      : /Front .*min.*Einsatzbereitschaft .*min/.test(dropped.proto.warnung || "")),
+    (dropped.proto ? (dropped.proto.warnung || dropped.proto.pruefung.text || "") : "").slice(0, 130));
+
+  // 10) Dasselbe per Touch (zweites Fahrzeug)
+  await pg.click("#tab-fahrzeuge");
+  await pg.waitForTimeout(250);
+  await pg.locator(".wb-veh-handle").nth(1).scrollIntoViewIfNeeded();
+  await pg.waitForTimeout(200);
+  const h2 = await pg.locator(".wb-veh-handle").nth(1).boundingBox();
+  await touchDrag({ x: h2.x + h2.width / 2, y: h2.y + h2.height / 2 }, { x: mapBox.x + mapBox.width * 0.56, y: mapBox.y + mapBox.height * 0.46 }, 14);
+  await pg.waitForTimeout(700);
+  const touched = await pg.evaluate(() => {
+    const e = Protocol.all().filter((x) => x.typ === "fahrzeug_gesetzt").pop();
+    return { n: window.__wb.manual().store.all.length, marker: document.querySelectorAll("#map .veh-marker.manual").length, kurz: e ? (e.daten.pruefung || {}).text || "" : "" };
+  });
+  check("Ziehen: dasselbe per Touch (Finger) – zweites Fahrzeug liegt im Rechengebiet auf der Karte, mit Prüfung",
+    touched.n === 2 && touched.marker === 2 && !/außerhalb des Rechengebiets/.test(touched.kurz), `${touched.n} Fahrzeuge; ${touched.kurz.slice(0, 90)}`);
+
+  // 10b) Drittes Fahrzeug direkt an eine Riegellinie ziehen -> Zuordnung und ggf. Anpassung der Linie
+  //      (das Zellkriterium dafür ist Suggest.lineCellsOk, dieselbe Funktion wie in evalCells)
+  const lineTarget = await pg.evaluate(() => {
+    const s0 = window.__wb.state;
+    if (!s0.sug || !s0.sug.lines.length) return null;
+    const l = s0.sug.lines[0];
+    const mid = l.latlngs[Math.floor(l.latlngs.length / 2)];
+    const m = window.__wb.map;
+    if (!m.getBounds().contains(mid)) m.setView(mid, Math.max(m.getZoom(), 14), { animate: false });
+    const p0 = m.latLngToContainerPoint(mid);
+    const r0 = m.getContainer().getBoundingClientRect();
+    return { id: l.id, x: r0.left + p0.x, y: r0.top + p0.y, len: Math.round(l.lengthM) };
+  });
+  if (lineTarget) {
+    await pg.click("#tab-fahrzeuge");
+    await pg.waitForTimeout(250);
+    await pg.locator(".wb-veh-handle").nth(2).scrollIntoViewIfNeeded();
+    await pg.waitForTimeout(200);
+    const h3 = await pg.locator(".wb-veh-handle").nth(2).boundingBox();
+    await pg.mouse.move(h3.x + h3.width / 2, h3.y + h3.height / 2);
+    await pg.mouse.down();
+    await pg.mouse.move(lineTarget.x, lineTarget.y, { steps: 16 });
+    await pg.waitForTimeout(150);
+    await pg.mouse.up();
+    await pg.waitForTimeout(700);
+    const onLine = await pg.evaluate((id) => {
+      const rec = window.__wb.manual().store.all.find((r) => r.lineId === id);
+      const e = Protocol.all().filter((x) => x.typ === "fahrzeug_gesetzt").pop();
+      const l = window.__wb.state.sug.lines.find((q) => q.id === id);
+      return { zugeordnet: !!rec, riegel: e ? e.daten.riegel : null, anpassung: e ? e.daten.linie_angepasst : null, len: l ? Math.round(l.lengthM) : null, gesperrt: l ? !!l.locked : null };
+    }, lineTarget.id);
+    check("Ziehen: Ablage an einer Riegellinie – Zuordnung zur Linie, sichere Anpassung oder begründet unverändert (Kriterium aus js/suggest.js)",
+      onLine.zugeordnet && onLine.riegel === lineTarget.id && !!onLine.anpassung && typeof onLine.anpassung.modus === "string" &&
+      (onLine.anpassung.geaendert ? onLine.gesperrt === true : String(onLine.anpassung.begruendung || "").length > 10),
+      `Linie ${lineTarget.id}: ${lineTarget.len} m -> ${onLine.len} m, Modus ${onLine.anpassung ? onLine.anpassung.modus : "–"}, Begründung: ${onLine.anpassung ? String(onLine.anpassung.begruendung).slice(0, 80) : "–"}`);
+  } else {
+    check("Ziehen: Ablage an einer Riegellinie – Zuordnung zur Linie", false, "keine Riegellinie in dieser Lage");
+  }
+
+  // Screenshot Drag & Drop
+  await pg.click("#tab-lage");
+  await pg.waitForTimeout(300);
+  await pg.evaluate(() => { document.querySelector("#manual-list").scrollIntoView(); document.querySelector(".maptools").style.visibility = "hidden"; });
+  await pg.mouse.move(5, 5);
+  await pg.waitForTimeout(700);
+  await pg.screenshot({ path: path.join(OUT, "screenshot-drag.png") });
+  check("Ziehen: Screenshot docs/screenshot-drag.png (deviceScaleFactor 2) erstellt", fs.existsSync(path.join(OUT, "screenshot-drag.png")));
+
+  // 11) Vorschläge neu berechnen: gesperrte Handstandorte bleiben stehen, Unterschiedstext
+  const before = await pg.evaluate(() => window.__wb.manual().store.all.map((r) => [r.id, +r.lat.toFixed(6), +r.lon.toFixed(6)]));
+  await pg.click("#btn-resuggest");
+  await pg.waitForTimeout(1500);
+  const after = await pg.evaluate(() => ({
+    pos: window.__wb.manual().store.all.map((r) => [r.id, +r.lat.toFixed(6), +r.lon.toFixed(6)]),
+    diff: document.querySelector("#sug-diff").innerText.replace(/\s+/g, " "),
+    locked: [...window.__wb.state.sugState.locked.keys()].filter((k) => k.startsWith("fahrzeug:")).length,
+  }));
+  check("Ziehen: „Vorschläge neu berechnen“ setzt gesperrte Handstandorte nicht um und nennt den Unterschied",
+    JSON.stringify(before) === JSON.stringify(after.pos) && after.locked >= 2 && /Von Hand gesetzte, gesperrte Fahrzeuge bleiben stehen/.test(after.diff),
+    after.diff.slice(0, 140));
+
+  // 12) Entfernen und Rückgängig
+  const undo = await pg.evaluate(async () => {
+    const vorher = window.__wb.manual().store.all.length;
+    const id = window.__wb.manual().store.all[0].id;
+    document.querySelector(`#manual-list [data-man-act="remove"][data-id="${id}"]`).click();
+    await new Promise((r) => setTimeout(r, 200));
+    const nach = window.__wb.manual().store.all.length;
+    document.querySelector('#manual-list [data-man-act="undo"]').click();
+    await new Promise((r) => setTimeout(r, 200));
+    return { vorher, nach, wieder: window.__wb.manual().store.all.length, proto: Protocol.all().some((e) => e.typ === "fahrzeug_entfernt"), undoProto: Protocol.all().some((e) => e.typ === "rueckgaengig") };
+  });
+  check("Ziehen: Entfernen und Rückgängig (flache Schnappschüsse, Tiefe 20) mit Protokolleinträgen",
+    undo.nach === undo.vorher - 1 && undo.wieder === undo.vorher && undo.proto && undo.undoProto, JSON.stringify(undo));
+  await c2.close();
+} catch (e) {
+  check("Testablauf Karten-Interaktion", false, e.message);
 }
 
 const explainable = consoleErrors.filter((t) => /ERR_BLOCKED_BY_CLIENT|Failed to load resource|net::ERR/.test(t));

@@ -45,6 +45,9 @@
     // Rückzugsflächen und Fluchtwege (0.7.0): Ergebnis von SafeArea.plan() und die verworfenen Flächen
     // (bleiben über Neuberechnungen hinweg erhalten, damit eine Entscheidung der Einsatzleitung Bestand hat).
     sa: null, saState: { dismissed: store.get("wb_sa_dismissed", []) },
+    // Karten-Interaktion (0.8.0): manuelle Windüberschreibung (Pfeil + Zeitplan) und die von Hand
+    // gesetzten Fahrzeuge (Controller aus VehicleDrag.attach).
+    windOv: Windrose.emptyOverride(), windCtl: null, manual: null,
   };
 
   // ---------------------------------------------------------------- Texte
@@ -58,6 +61,7 @@
     <li><b>Brennstoffkarte</b> aus OpenStreetMap kann veraltet, unvollständig oder falsch sein. Die Zuordnung zu nordamerikanischen Brennstoffmodellen (Anderson 13) ist eine Annahme und nicht mit Forst/Feuerwehr abgestimmt.</li>
     <li><b>Wetterdaten</b> sind Modell- oder Stationswerte, keine Messung am Brandort.</li>
     <li><b>Vereinfachtes Rothermel-Modell</b> (ohne Größenklassen-Gewichtung), Ellipsenform nach Anderson (1983), Rasterrechnung (25 m). Tote-Brennstoff-Feuchte aus einem einfachen Ansatz (Gleichgewichtsfeuchte + Regenzuschlag). Das Modell ist unvalidiert.</li>
+    <li><b>Manuelle Eingriffe auf der Karte</b> (ab 0.8.0): Der Windpfeil unten links setzt den synoptischen 10-m-Wind; das ist ein <b>vom Bediener gesetzter Eingangswert, keine Messung und keine Vorhersage</b>. Jede Überschreibung ist gekennzeichnet („*“ in der Wettertabelle, Vermerk in Protokoll und Export) und mit „Zurück auf echtes Wetter“ aufhebbar. Von Hand gesetzte Fahrzeuge werden mit derselben Prüfung bewertet wie die Vorschläge; das Platzieren bleibt immer erlaubt, die Warnung geht ins Protokoll. Rückgängig gilt nur für die von Hand gesetzten Fahrzeuge, nicht für Windänderungen und Linienanpassungen. Alle Zahlen der Bedienung (Rastung, Zuordnungsradius, Verlängerung, Verschiebung) sind Annahmen.</li>
     <li><b>Rückzugsflächen und Fluchtwege</b> (ab 0.7.0) sind Vorschläge aus Landnutzung und Gelände. <b>Es gibt keine belegte deutsche Vorgabe mit Zahlen</b> zur Größe eines Sicherheitsbereichs; die Dimensionierung stützt sich auf US-Literatur (Butler &amp; Cohen 1998, Butler 2014, Page &amp; Butler 2017). Laut Page &amp; Butler (2017) ist die Vierfach-Regel <b>eher zu klein</b>. Kein Straßenrouting (Raster 25 m), keine Prüfung von Rauch, Sicht und Hitze auf dem Weg, keine zeitabhängige Prüfung entlang des Weges. Siehe „Grenzen &amp; Quellen“.</li>
     <li><b>Vorschläge</b> berücksichtigen keine echten Fahrzeiten: Die Anfahrt wird aus der Luftlinie Wache–Einsatzstelle × Umwegfaktor ÷ Durchschnittsgeschwindigkeit + Ausrückzeit <b>geschätzt (kein Routing)</b>; Fahrzeuge ohne Wachenkoordinate werden nicht eingeplant. Rückzugswege und Rückzugsflächen werden ab 0.7.0 geprüft (eigener Abschnitt 6), feuerwehrinterne Sicherheitsregeln sind darüber hinaus nicht abgebildet. Riegel werden nur vorgeschlagen, wenn sie bei Einsatzbereitschaft außerhalb der „möglich“-Zone liegen; sonst erscheint „Keine geeignete Riegelstellung gefunden“.</li>
   </ul>`;
@@ -128,6 +132,40 @@
   const layerCtl = L.control.layers(baseLayers, {}, { collapsed: true, position: "topright" }).addTo(map);
   L.control.zoom({ position: "bottomleft" }).addTo(map);
   L.control.scale({ imperial: false, position: "bottomleft" }).addTo(map);
+  // Windpfeil (0.8.0) unten links ÜBER Zoom und Maßstab: Leaflet stellt in den unteren Ecken jedes
+  // neue Control vor die vorhandenen, der zuletzt hinzugefügte steht also oben. Die Werkzeugleiste
+  // oben links (.maptools mit #sx-box) und die Legende unten rechts bleiben unberührt.
+  const WindCtl = L.Control.extend({
+    options: { position: "bottomleft" },
+    onAdd() {
+      const div = L.DomUtil.create("div", "leaflet-control");
+      L.DomEvent.disableClickPropagation(div);
+      L.DomEvent.disableScrollPropagation(div);
+      S.windCtl = InteraktionUI.windControl({
+        parent: div, P,
+        getBase: () => (S.run && S.run.hours && S.run.hours[0]) || firstWeatherHour(),
+        onChange: (ov, meta) => {
+          S.windOv = ov;
+          Protocol.add("wind_manuell", Windrose.protocolEntry(ov, { anlass: meta && meta.grund, bedienung: meta && meta.quelle }));
+          refreshProtocol();
+          renderWx();
+          if (S.run) recalc.trigger(); // entprellt (PARAMS.interaktion.wind.debounceMs), laufende Rechnung wird abgebrochen
+        },
+        onReset: () => { S.windOv = Windrose.clearOverride(); },
+        onSchedule: (ov, apply) => windScheduleDialog(ov, apply),
+      });
+      S.windCtl.progress.onAbort(() => { recalc.cancel(); S.windCtl.progress.hide(); });
+      return div;
+    },
+  });
+  map.addControl(new WindCtl());
+  /** Erste Stunde der aktuellen Wetterreihe (Grundwert des Pfeils, auch ohne Prognose). */
+  function firstWeatherHour() {
+    try {
+      const prep = Weather.prepareHours(S.wx, Date.now(), Math.max(...P.horizonsH), S.overrides);
+      return prep.hours[0] || { windDirDeg: 0, windKmh: 0, gustKmh: null };
+    } catch { return { windDirDeg: 0, windKmh: 0, gustKmh: null }; }
+  }
   setupGoogle();
 
   async function setupGoogle() {
@@ -352,13 +390,21 @@
     if (prep.missing.length) parts.push(msg("warn", `Für ${prep.missing.length} Stunde(n) fehlen Werte; nächstliegender Wert wird verwendet.`));
     const ov = Object.keys(S.overrides);
     if (ov.length) parts.push(msg("", `Manuell überschrieben: ${ov.map((k) => labelOf(k)).join(", ")}.`));
+    // Windpfeil/Zeitplan (0.8.0): dieselbe Kennzeichnung wie das Bedienfeld („*“ je Stunde).
+    // Der Pfeil bekommt den ECHTEN Wert der ersten Stunde als Grundwert (vor der Überschreibung),
+    // damit er ohne Überschreibung das geladene Wetter zeigt.
+    if (S.windCtl && prep.hours[0]) S.windCtl.setBase(prep.hours[0]);
+    const windOv = Windrose.applyOverride(prep.hours, S.windOv, { holdAfterLast: true });
+    prep.hours = windOv.hours;
+    const windManual = windOv.info.manual;
+    if (windManual) parts.push(msg("warn", `<b>Wind manuell überschrieben</b> (Windpfeil unten links): ${esc(Windrose.overrideText(S.windOv))}. Mit „Zurück auf echtes Wetter“ aufheben.`));
     if (!keepStatus) $("wx-status").innerHTML = parts.join("");
     else $("wx-status").innerHTML += parts.join("");
     const t = $("wx-table");
     const cell = (r, k, d) => `<td class="num${r.overridden.includes(k) ? " ov" : ""}">${fmtNum(r[k], d)}${r.overridden.includes(k) ? "*" : ""}</td>`;
     t.innerHTML = `<thead><tr><th>Zeit</th><th class="num">Wind km/h</th><th class="num">aus °</th><th class="num">Böen</th><th class="num">°C</th><th class="num">rF %</th><th class="num">Regen 24 h</th></tr></thead><tbody>` +
       prep.hours.map((r) => `<tr><td>${fmtHour(r.t)}</td>${cell(r, "windKmh", 0)}${cell(r, "windDirDeg", 0)}${cell(r, "gustKmh", 0)}${cell(r, "tempC", 1)}${cell(r, "rh", 0)}${cell(r, "rain24", 1)}</tr>`).join("") +
-      `</tbody>` + (ov.length ? `<caption class="small muted" style="caption-side:bottom;text-align:left">* manuell überschrieben</caption>` : "");
+      `</tbody>` + (ov.length || windManual ? `<caption class="small muted" style="caption-side:bottom;text-align:left">* manuell überschrieben${windManual ? " (Wind: Pfeil/Zeitplan)" : ""}</caption>` : "");
     updateHeader();
   }
   function labelOf(k) {
@@ -459,6 +505,11 @@
     if (prep.incomplete) errors.push("Wetterdaten unvollständig: Wind, Windrichtung, Temperatur und rel. Feuchte werden benötigt (laden, Beispieldaten oder manuell eingeben).");
     if (errors.length) return { errors };
     let hours = prep.hours.map((r) => ({ ...r, rain24: r.rain24 ?? 0, rain72: r.rain72 ?? 0 }));
+    // Manuelle Windüberschreibung (Windpfeil + Zeitplan, 0.8.0). row.overridden ist dasselbe Feld,
+    // das die Wettertabelle schon mit „*“ kennzeichnet; zusätzlich steht row.windSource bereit.
+    const wind = Windrose.applyOverride(hours, S.windOv, { holdAfterLast: true });
+    hours = wind.hours;
+    if (wind.info.manual) warnings.push(`Wind manuell überschrieben: ${Windrose.overrideText(S.windOv)}.`);
     if (scenario) {
       hours = hours.map((r) => {
         const o = { ...r };
@@ -507,10 +558,13 @@
     if (!grid.elev) terrainWind = { aktiv: false, grund: "kein Geländemodell", option: false };
     else if (!tw.wind && !tw.moisture) terrainWind = { aktiv: false, grund: "ausgeschaltet", option: false };
     else terrainWind = { aktiv: true, wind: tw.wind, feuchte: tw.moisture, option: tw };
-    return { grid, ignition, hours, warnings, osmApplied, startTime: now, prep, terrain, terrainWind };
+    const h0 = hours[0] || {};
+    return { grid, ignition, hours, warnings, osmApplied, startTime: now, prep, terrain, terrainWind,
+      wind: wind.info, windOv: { ...S.windOv },
+      windSetting: { dirDeg: h0.windDirDeg, kmh: h0.windKmh, gustKmh: h0.gustKmh ?? null } };
   }
 
-  async function runForecast(scenario) {
+  async function runForecast(scenario, onProgress) {
     if (S.demPromise) await S.demPromise; // DGM-Ladevorgang abwarten (Datei lokal, kurz)
     const inp = buildInputs(scenario);
     const errBox = scenario ? $("sc-result") : $("run-errors");
@@ -522,10 +576,17 @@
     const setP = (d, t) => { bar.style.width = `${Math.round((d / t) * 100)}%`; ptext.textContent = `${scenario ? "Szenario B: " : ""}Ensemble-Lauf ${d} von ${t}`; };
     setP(0, P.ensemble.runs);
     await new Promise((r) => setTimeout(r, 30));
-    const result = await FireModel.runEnsemble({
-      grid: inp.grid, classList: CLASS_LIST, ignition: inp.ignition, weatherHours: inp.hours, P, terrain: inp.terrainWind.option,
-    }, async (d, t) => { setP(d, t); await new Promise((r) => setTimeout(r, 0)); });
-    prog.hidden = true;
+    let result;
+    try {
+      result = await FireModel.runEnsemble({
+        grid: inp.grid, classList: CLASS_LIST, ignition: inp.ignition, weatherHours: inp.hours, P, terrain: inp.terrainWind.option,
+      }, async (d, t) => {
+        setP(d, t);
+        // onProgress (entprellte Neuberechnung) wirft Windrose.abortError(), sobald eine neuere
+        // Eingabe vorliegt – die Ensemble-Schleife bricht dann nach EINEM Lauf ab.
+        if (onProgress) await onProgress(d, t); else await new Promise((r) => setTimeout(r, 0));
+      });
+    } finally { prog.hidden = true; }
     const metrics = FireModel.metrics(result, inp.grid, inp.ignition, P);
     const reach = {};
     if (inp.osmApplied) {
@@ -538,6 +599,9 @@
       modell: P.modelName, version: P.version, start: new Date(inp.startTime).toISOString(),
       wetterquelle: S.wx?.source || "manuell", wetter_abgerufen: S.wx ? new Date(S.wx.fetchedAt).toISOString() : null,
       ueberschrieben: S.overrides, szenario: scenario || null,
+      wind_manuell: Windrose.isManual(S.windOv), wind_text: Windrose.overrideText(S.windOv),
+      ueberschriebene_stunden: inp.wind ? inp.wind.overriddenHours + inp.wind.constantHours : 0,
+      konstante_stunden: inp.wind ? inp.wind.constantHours : 0,
       eingang_stunden: inp.hours.map((h) => ({ t: new Date(h.t).toISOString(), wind: h.windKmh, dir: h.windDirDeg, temp: h.tempC, rh: h.rh, rain24: h.rain24 })),
       brennstoff: S.osm ? `OSM (${S.osm.timestamp || "Stand unbekannt"})` : `einheitlich ${selFuel.value}`,
       gelaende: inp.terrain,
@@ -583,6 +647,82 @@
     } finally { $("btn-run").disabled = false; updateHeader(); }
   };
 
+  // ------------------------------------------------- Entprellte Neuberechnung nach Windänderung (0.8.0)
+  // Ersetzt „Prognose berechnen“ NICHT, sondern ergänzt es: nach ca. 300 ms Ruhe
+  // (PARAMS.interaktion.wind.debounceMs) wird neu gerechnet; eine laufende Rechnung bricht ab.
+  const recalc = InteraktionUI.createRecalc({
+    P,
+    run: (_a, api) => runForecast(null, api.onProgress),
+    onStart: () => { if (S.windCtl) S.windCtl.progress.show(0, P.ensemble.runs, "Neuberechnung (Wind geändert) …"); },
+    onProgress: (d, t) => { if (S.windCtl) S.windCtl.progress.show(d, t); },
+    onDone: (run) => {
+      if (S.windCtl) S.windCtl.progress.hide();
+      if (!run) return;
+      S.run = run; S.mapShows = "A";
+      renderOverlay(run); renderResults(run);
+      computeSuggestions(false);
+      renderFuel(); renderTwind(); renderVehicles();
+      if (S.runB) renderScenario();
+      updateHeader();
+    },
+    onAbort: () => { if (S.windCtl) S.windCtl.progress.hide(); },
+    onError: (e) => {
+      if (S.windCtl) S.windCtl.progress.hide();
+      $("run-errors").innerHTML = msg("err", `Fehler bei der Neuberechnung: ${esc(e.message)}`);
+      console.error(e);
+    },
+  });
+
+  // ------------------------------------------------- Windzeitplan (Stützstellen) – Dialog
+  function windScheduleDialog(ov, apply) {
+    const box = $("modal-wind");
+    let rows = Windrose.normalizeSchedule(ov && ov.schedule).map((e) => ({
+      ab: Windrose.formatClock(e.t), dirDeg: Math.round(e.dirDeg), kmh: e.kmh,
+      gustKmh: e.gustKmh === null ? "" : e.gustKmh,
+    }));
+    function draw() {
+      $("wsch-table").innerHTML = `<thead><tr><th>ab Uhrzeit</th><th class="num">Wind aus (°)</th><th class="num">Wind (km/h)</th><th class="num">Böen (km/h)</th><th></th></tr></thead><tbody>` +
+        (rows.length ? rows.map((r, k) => `<tr>
+          <td><input type="time" data-f="ab" data-k="${k}" value="${esc(r.ab)}" aria-label="Uhrzeit Stützstelle ${k + 1}"></td>
+          <td class="num"><input type="number" inputmode="numeric" min="0" max="360" style="width:80px" data-f="dirDeg" data-k="${k}" value="${esc(r.dirDeg)}" aria-label="Windrichtung Stützstelle ${k + 1}"></td>
+          <td class="num"><input type="number" inputmode="decimal" min="0" max="150" step="0.5" style="width:80px" data-f="kmh" data-k="${k}" value="${esc(r.kmh)}" aria-label="Windstärke Stützstelle ${k + 1}"></td>
+          <td class="num"><input type="number" inputmode="decimal" min="0" max="200" step="1" style="width:80px" data-f="gustKmh" data-k="${k}" value="${esc(r.gustKmh)}" aria-label="Böen Stützstelle ${k + 1}"></td>
+          <td><button class="btn small danger" type="button" data-del="${k}">Entfernen</button></td></tr>`).join("")
+          : `<tr><td colspan="5" class="muted">Noch keine Stützstelle. „Stützstelle hinzufügen“ legt eine an.</td></tr>`) + `</tbody>`;
+      $("wsch-table").querySelectorAll("input[data-f]").forEach((el) => el.addEventListener("change", () => {
+        rows[Number(el.dataset.k)][el.dataset.f] = el.value;
+      }));
+      $("wsch-table").querySelectorAll("button[data-del]").forEach((b) => b.addEventListener("click", () => {
+        rows.splice(Number(b.dataset.del), 1); draw();
+      }));
+    }
+    const base = (S.run && S.run.hours && S.run.hours[0]) || firstWeatherHour();
+    $("btn-wsch-add").onclick = () => {
+      const last = rows[rows.length - 1];
+      const t = new Date(Date.now() + (rows.length + 1) * 3600000);
+      rows.push({
+        ab: `${String(t.getHours()).padStart(2, "0")}:${String(t.getMinutes()).padStart(2, "0")}`,
+        dirDeg: Math.round(last ? Number(last.dirDeg) : (base.windDirDeg ?? 0)),
+        kmh: last ? Number(last.kmh) : Math.round(base.windKmh ?? 0), gustKmh: "",
+      });
+      draw();
+    };
+    $("btn-wsch-close").onclick = () => { box.hidden = true; };
+    $("btn-wsch-apply").onclick = () => {
+      const now = Date.now();
+      const entries = [];
+      for (const r of rows) {
+        const t = Windrose.parseClock(r.ab, now);
+        if (t === null) continue;
+        entries.push({ t, dirDeg: Number(r.dirDeg), kmh: Number(r.kmh), gustKmh: r.gustKmh === "" ? null : Number(r.gustKmh) });
+      }
+      box.hidden = true;
+      apply(entries);
+    };
+    draw();
+    box.hidden = false;
+  }
+
   // ---------------------------------------------------------------- Darstellung Prognose
   // "kontur": Isochronen je Horizont (Marching Squares, Chaikin-Glättung) – Standard
   // "raster": 25-m-Zellen ungeglättet (Umrisse entlang der Zellränder) – für Fachleute
@@ -613,7 +753,11 @@
     $("legend").dataset.mode = S.display;
     if (rerender) {
       const run = S.mapShows === "B" && S.runB ? S.runB : S.run;
-      if (run) { renderOverlay(run, true); Protocol.add("anzeige", { darstellung: S.display }); refreshProtocol(); }
+      if (run) {
+        if (S.mapShows === "AB" && S.runB) { renderOverlay(S.run, true); drawScenarioEdge(S.runB, "B"); drawScenarioEdge(S.run, "A"); }
+        else renderOverlay(run, true);
+        Protocol.add("anzeige", { darstellung: S.display }); refreshProtocol();
+      }
     }
   }
   document.querySelectorAll(".lg-btn").forEach((b) => b.addEventListener("click", () => setDisplay(b.dataset.mode)));
@@ -793,9 +937,34 @@
       <tbody>${rows}
       <tr><td>Hauptrichtung</td><td class="num">${A.metrics.mainDirDeg === null ? "–" : Math.round(A.metrics.mainDirDeg) + "° " + compass(A.metrics.mainDirDeg)}</td><td class="num">${B.metrics.mainDirDeg === null ? "–" : Math.round(B.metrics.mainDirDeg) + "° " + compass(B.metrics.mainDirDeg)}</td></tr>
       ${reachCmp("wohnbebauung", "Bebauung")}</tbody></table></div>
-      <div class="btnrow"><button class="btn${S.mapShows === "A" ? " primary" : ""}" id="btn-show-a" type="button">Karte: A zeigen</button><button class="btn${S.mapShows === "B" ? " primary" : ""}" id="btn-show-b" type="button">Karte: B zeigen</button></div>`;
-    $("btn-show-a").onclick = () => { S.mapShows = "A"; renderOverlay(S.run); renderScenario(); renderTwind(); updateHeader(); };
-    $("btn-show-b").onclick = () => { S.mapShows = "B"; renderOverlay(S.runB); renderScenario(); renderTwind(); updateHeader(); };
+      <div class="btnrow"><button class="btn${S.mapShows === "A" ? " primary" : ""}" id="btn-show-a" type="button">Karte: A zeigen</button><button class="btn${S.mapShows === "B" ? " primary" : ""}" id="btn-show-b" type="button">Karte: B zeigen</button></div>
+      <div id="sc-compare"></div>`;
+    $("btn-show-a").onclick = () => showScenario("A");
+    $("btn-show-b").onclick = () => showScenario("B");
+    // Kennzahlenvergleich des Interaktionsmoduls (0.8.0): Flächen, Richtung, Objekte, Differenzen,
+    // dazu „Karte: A und B“ – beide Konturen gleichzeitig, ohne Farbe unterscheidbar.
+    InteraktionUI.renderCompare($("sc-compare"), A, B, { onShow: (which) => showScenario(which) });
+  }
+  /** A, B oder beide auf der Karte zeigen. "AB" zeichnet A durchgezogen und B gestrichelt darüber. */
+  function showScenario(which) {
+    S.mapShows = which === "B" ? "B" : which === "AB" ? "AB" : "A";
+    if (S.mapShows === "AB" && S.run && S.runB) { renderOverlay(S.run); drawScenarioEdge(S.runB, "B"); drawScenarioEdge(S.run, "A"); }
+    else renderOverlay(S.mapShows === "B" ? S.runB : S.run);
+    renderScenario(); renderTwind(); updateHeader();
+  }
+  /** Äußere „möglich“-Kontur eines Laufs im Stil des Szenarios (Windrose.contourStyle). */
+  function drawScenarioEdge(run, which) {
+    if (!run) return;
+    const st = Windrose.contourStyle(which);
+    const g = run.grid, h = run.result.horizons.length - 1;
+    const layers = Contour.displayLayers(g.nx, g.ny, run.result, P, { mode: "kontur", ignition: run.ignition });
+    const rings = layers[h].possible.rings;
+    if (!rings.length) return;
+    const toLL = (r) => r.map(([x, y]) => g.proj.toLatLng(g.x0 + x * g.cell, g.y0 + y * g.cell));
+    L.polygon(rings.map(toLL), {
+      fill: false, color: st.color, weight: st.weight, dashArray: st.dashArray, opacity: 0.95,
+      interactive: false, className: `wb-ab wb-ab-${which.toLowerCase()}`,
+    }).addTo(overlayLayer).bindTooltip(`${st.label} – „möglich“ nach ${run.result.horizons[h]} h (${st.legend})`, { sticky: true });
   }
 
   // ---------------------------------------------------------------- Vorschläge
@@ -807,8 +976,21 @@
   function computeSuggestions(isRecompute) {
     const run = S.run;
     if (!run) return;
+    const manualBefore = S.manual ? S.manual.store.all : [];
     const osm = run.osmApplied ? { ...run.osmApplied, waterPoints: allWaterPoints() } : (allWaterPoints().length ? { waterPoints: allWaterPoints(), candidates: [], drivable: null, objects: null, _waterOnly: true } : null);
     const useOsm = osm && !osm._waterOnly ? osm : null;
+    // Von Hand gesetzte und gesperrte Fahrzeuge behalten ihren Standort (dieselbe Mechanik wie moveVehicle)
+    if (S.manual) {
+      for (const rec of S.manual.store.all) {
+        if (!rec.locked) continue;
+        const id = `fahrzeug:${rec.id}`;
+        S.sugState.locked.set(id, {
+          id, type: "fahrzeug", vehicleId: rec.id, lat: rec.lat, lon: rec.lon, locked: true, moved: true,
+          task: rec.task, vehicle: S.vehicles.find((v) => v.id === rec.id),
+          reason: "Von Hand gesetzt und gesperrt.",
+        });
+      }
+    }
     const old = S.sug;
     const res = Suggest.compute(run.grid, run.result, useOsm, run.ignition, S.vehicles, P, run.metrics.mainDirDeg, S.sugState, { stations: S.stations, maxAnfahrtMin: S.maxAnf, grundschutzOverride: S.gsOverride, grenzen: S.grenzen, teilMode: S.teilMode });
     updateTeilStatus(res.lineInfo.teil);
@@ -820,7 +1002,8 @@
     S.sug = res;
     $("btn-resuggest").disabled = false;
     const d = isRecompute ? Suggest.diff(old, res) : null;
-    $("sug-diff").innerHTML = d ? msg("", `Neu berechnet: ${d.added.length} neu, ${d.removed.length} entfallen, ${d.changed.length} geändert. Gesperrte/verschobene Elemente bleiben erhalten.${d.removed.length ? `<br>Entfallen: ${d.removed.map(esc).join(", ")}` : ""}`) : "";
+    const manDiff = isRecompute && S.manual ? VehicleDrag.diffPlacements(manualBefore, S.manual.store.all) : null;
+    $("sug-diff").innerHTML = d ? msg("", `Neu berechnet: ${d.added.length} neu, ${d.removed.length} entfallen, ${d.changed.length} geändert. Gesperrte/verschobene Elemente bleiben erhalten.${d.removed.length ? `<br>Entfallen: ${d.removed.map(esc).join(", ")}` : ""}${manDiff && manDiff.text ? `<br>${esc(manDiff.text)}` : ""}`) : "";
     Protocol.add(isRecompute ? "vorschlaege_neu" : "vorschlaege", {
       linien: res.lines.map((l) => ({ id: l.id, laenge_m: Math.round(l.lengthM), frueheste_ankunft_moeglich_min: Math.round(l.minArrivalMin), vorlauf_nach_bereitschaft_min: l.leadMin !== undefined ? Math.round(l.leadMin) : null, begruendung: l.reason, gesperrt: !!l.locked })),
       fahrzeuge: res.vehicles.map((v) => ({ id: v.id, aufgabe: v.task, lat: +v.lat.toFixed(6), lon: +v.lon.toFixed(6), begruendung: v.reason, gesperrt: !!v.locked, verschoben: !!v.moved, pflicht: !!v.pflicht, anfahrt_min_geschaetzt: v.anfahrt && v.anfahrt.ok ? Math.round(v.anfahrt.min) : null, zu_spaet_fuer: v.lateFor || null })),
@@ -970,6 +1153,80 @@
       refreshProtocol();
     },
     onFocus(a) { map.setView([a.lat, a.lon], Math.max(map.getZoom(), 15)); },
+  });
+
+  // ---------------------------------------------------------------- Fahrzeuge per Drag & Drop (0.8.0)
+  // Zieht man ein Fahrzeug aus der Liste (Reiter „Fahrzeuge“) oder von der Karte, prüft das Modul den
+  // Ablageort mit der VORHANDENEN Prüfung Suggest.checkPosition und passt – nur wenn es sicher bleibt –
+  // die zugeordnete Riegellinie an (Kriterium: Suggest.lineCellsOk, dieselbe Funktion wie in evalCells).
+  S.manual = VehicleDrag.attach({
+    map, P, listSelector: "#panel-fahrzeuge",
+    lineName: (l) => `R${(S.sug ? S.sug.lines.indexOf(l) : -1) + 1}`,
+    getState: () => ({
+      grid: S.run && S.run.grid, result: S.run && S.run.result, ctx: S.sugCtx,
+      lines: (S.sug && S.sug.lines) || [], waterPoints: allWaterPoints(),
+      vehicles: S.vehicles, stations: S.stations, teil: S.sug && S.sug.lineInfo ? S.sug.lineInfo.teil : null,
+    }),
+    onError: (text) => { $("veh-errors").innerHTML = msg("err", esc(text)); },
+    onDrop: (rec, chk, adj) => {
+      Protocol.add("fahrzeug_gesetzt", VehicleDrag.protocolEntry("fahrzeug_gesetzt", rec, chk, adj));
+      if (adj && adj.ok && adj.changed && S.sug) {
+        const l = S.sug.lines.find((q) => q.id === rec.lineId);
+        if (l) {
+          l.latlngs = adj.latlngs; l.xy = adj.xy; l.cells = adj.cells; l.lengthM = adj.lengthM;
+          // Angepasste Linie sperren, sonst erzeugt der nächste Suggest.compute sie aus den
+          // OSM-Kandidaten neu und die Anpassung ginge verloren (offener Punkt der Übergabe).
+          l.locked = true;
+          S.sugState.locked.set(l.id, l);
+          Protocol.add("vorschlag_sperre", { id: l.id, gesperrt: true, grund: "Linie an das von Hand gesetzte Fahrzeug angepasst" });
+          renderSuggestions();
+        }
+      }
+      if (S.sa) computeSafeAreas();
+      renderManualList();
+      refreshProtocol();
+    },
+    onRemove: (rec, grund) => {
+      Protocol.add("fahrzeug_entfernt", { fahrzeug: rec.label || rec.id, grund, von_hand: true });
+      S.sugState.locked.delete(`fahrzeug:${rec.id}`);
+      renderManualList(); refreshProtocol();
+    },
+    onLock: (rec) => { Protocol.add("fahrzeug_sperre", { fahrzeug: rec.label || rec.id, gesperrt: !!rec.locked }); renderManualList(); refreshProtocol(); },
+    onAfter: () => renderManualList(),
+  });
+
+  /** Liste der von Hand gesetzten Fahrzeuge unter den Einsatzvorschlägen (mit Sperre und Rückgängig). */
+  function renderManualList() {
+    const el = $("manual-list");
+    if (!el || !S.manual) return;
+    const all = S.manual.store.all;
+    if (!all.length) { el.innerHTML = ""; return; }
+    el.innerHTML = `<div class="sug moved" id="manual-box"><h3><span class="badge v">MAN</span> Von Hand gesetzte Fahrzeuge (${all.length})</h3>
+      <p class="muted small">Aus der Fahrzeugliste auf die Karte gezogen. Gesperrte Fahrzeuge werden von „Vorschläge neu berechnen“ nicht umgesetzt. Prüfung und Warnung wie bei den Vorschlägen.</p>
+      ${all.map((r) => `<div class="sug-sub${r.warn ? " moved" : ""}" data-man="${esc(r.id)}">
+        <h3><span class="badge v">${esc(r.label || r.id)}</span> ${esc(r.task || "von Hand gesetzt")} ${r.locked ? '<span class="flag w">gesperrt</span>' : ""}${r.warn ? '<span class="flag o">Warnung</span>' : ""}</h3>
+        <p class="small">${esc(r.checkShort || "")}</p>
+        ${r.warn ? `<div class="msg err alert-msg">${esc(r.warn)}</div>` : ""}
+        <div class="btnrow">
+          <button class="btn small" type="button" data-man-act="lock" data-id="${esc(r.id)}">${r.locked ? "Entsperren" : "Sperren"}</button>
+          <button class="btn small danger" type="button" data-man-act="remove" data-id="${esc(r.id)}">Entfernen</button>
+          <button class="btn small" type="button" data-man-act="zoom" data-id="${esc(r.id)}">Zeigen</button>
+        </div></div>`).join("")}
+      <div class="btnrow">
+        <button class="btn small" type="button" data-man-act="undo"${S.manual.store.canUndo ? "" : " disabled"}>Rückgängig</button>
+        <button class="btn small" type="button" data-man-act="redo"${S.manual.store.canRedo ? "" : " disabled"}>Wiederherstellen</button>
+      </div></div>`;
+  }
+  document.addEventListener("click", (e) => {
+    const b = e.target.closest && e.target.closest("[data-man-act]");
+    if (!b || !S.manual) return;
+    const id = b.dataset.id, act = b.dataset.manAct;
+    if (act === "lock") { const r = S.manual.store.get(id); S.manual.setLocked(id, !(r && r.locked)); }
+    else if (act === "remove") S.manual.remove(id, "über die Liste entfernt");
+    else if (act === "zoom") { const r = S.manual.store.get(id); if (r) map.setView([r.lat, r.lon], Math.max(map.getZoom(), 16)); }
+    else if (act === "undo") { S.manual.undo(); Protocol.add("rueckgaengig", { bereich: "von Hand gesetzte Fahrzeuge" }); refreshProtocol(); }
+    else if (act === "redo") { S.manual.redo(); Protocol.add("wiederherstellen", { bereich: "von Hand gesetzte Fahrzeuge" }); refreshProtocol(); }
+    renderManualList();
   });
 
   /**
@@ -1129,6 +1386,7 @@
     renderWater();
     renderStations();
     renderVehicles();
+    renderManualList();
   }
 
   function gsHtml(list, preview) {
@@ -1500,7 +1758,7 @@
         return `<tr data-vid="${esc(v.id)}">
         <td><input type="checkbox" class="veh-av" data-k="${k}" ${v.verfuegbar !== false ? "checked" : ""} aria-label="${esc(v.bezeichnung || v.id)} verfügbar" style="width:28px;height:28px"></td>
         <td><input type="checkbox" class="veh-pf" data-k="${k}" ${isPflicht(v) ? "checked" : ""} aria-label="${esc(v.bezeichnung || v.id)} Pflichtfahrzeug" style="width:28px;height:28px"></td>
-        <td><b>${esc(v.typ)}</b><br><span class="small muted">${esc(v.bezeichnung || "")}${v.einheit ? " · " + esc(v.einheit) : ""}${v.loeschfahrzeug === false ? " · kein Löschfahrzeug" : ""}</span>${v.quelle ? `<br><a class="small" href="${esc(v.quelle)}" target="_blank" rel="noopener">Quelle</a>` : ""}${v.quellentyp ? ` <span class="small muted">(${esc(v.quellentyp)})</span>` : ""}${/suchindex|websuche/i.test(String(v.zugriff || "")) ? ' <span class="flag a" title="Angaben aus Suchindex-Zusammenfassungen, Originalseiten nicht abrufbar">ungeprüft, aus Websuche</span>' : ""}</td>
+        <td><button type="button" class="wb-veh-handle" data-veh-id="${esc(v.id)}" aria-label="${esc(v.bezeichnung || v.typ)} auf die Karte ziehen" title="Auf die Karte ziehen (Standort von Hand setzen)">⠿</button> <b>${esc(v.typ)}</b><br><span class="small muted">${esc(v.bezeichnung || "")}${v.einheit ? " · " + esc(v.einheit) : ""}${v.loeschfahrzeug === false ? " · kein Löschfahrzeug" : ""}</span>${v.quelle ? `<br><a class="small" href="${esc(v.quelle)}" target="_blank" rel="noopener">Quelle</a>` : ""}${v.quellentyp ? ` <span class="small muted">(${esc(v.quellentyp)})</span>` : ""}${/suchindex|websuche/i.test(String(v.zugriff || "")) ? ' <span class="flag a" title="Angaben aus Suchindex-Zusammenfassungen, Originalseiten nicht abrufbar">ungeprüft, aus Websuche</span>' : ""}</td>
         <td>${esc(v.kommune || "–")}<br><span class="small muted">${esc(stName(v.wache))}</span></td>
         <td class="num">${anf}</td>
         <td class="num">${v.tank_l ?? "–"}<br>${flag(v.tank_quelle)}</td>
@@ -1514,6 +1772,13 @@
       Protocol.add("fahrzeug_verfuegbarkeit", { id: v.id, verfuegbar: v.verfuegbar, pflicht: isPflicht(v) }); refreshProtocol();
       if (!cb.checked && isPflicht(v)) $("veh-errors").innerHTML = msg("err", `ACHTUNG: Pflichtfahrzeug ${esc(v.bezeichnung || v.id)} ist nicht verfügbar und wird nicht eingeplant.`);
     }));
+    // Ziehgriffe anmelden (Maus, Touch und Stift über Pointer Events)
+    if (S.manual) {
+      t.querySelectorAll(".wb-veh-handle").forEach((el) => {
+        const v = S.vehicles.find((x) => x.id === el.dataset.vehId);
+        if (v) S.manual.bindListItem(el, { id: v.id, label: v.bezeichnung || v.typ, vehicle: v });
+      });
+    }
     t.querySelectorAll(".veh-pf").forEach((cb) => cb.addEventListener("change", () => {
       const v = S.vehicles[Number(cb.dataset.k)];
       v.pflicht = cb.checked;
@@ -1711,7 +1976,12 @@
   $("btn-geojson").onclick = () => {
     const feats = [];
     const meta = { modell: P.modelName, version: P.version, hinweis: "TESTVERSION – nicht für den Einsatz. Modellprognose, unvalidiert. Keine Handlungsanweisung." };
-    if (S.poly) feats.push({ type: "Feature", properties: { typ: "brandflaeche", ...meta }, geometry: { type: "Polygon", coordinates: [[...S.poly, S.poly[0]].map(([a, b]) => [b, a])] } });
+    if (S.poly) feats.push({ type: "Feature", properties: { typ: "brandflaeche", ...meta, ...Windrose.exportProps(S.windOv) }, geometry: { type: "Polygon", coordinates: [[...S.poly, S.poly[0]].map(([a, b]) => [b, a])] } });
+    if (S.manual) {
+      for (const rec of S.manual.store.all) {
+        feats.push({ type: "Feature", properties: { ...VehicleDrag.exportProps(rec, null), pruefung_text: rec.checkShort || null }, geometry: { type: "Point", coordinates: [rec.lon, rec.lat] } });
+      }
+    }
     const run = S.run;
     if (run) {
       const g = run.grid, r = run.result;
@@ -1980,7 +2250,8 @@
     const parts = [];
     if (S.wx?.kind === "sample") parts.push("Wetter: BEISPIELDATEN");
     else if (S.wx && Weather.ageHours(S.wx, Date.now()) > P.weather.maxAgeH) parts.push(`Wetter älter als ${P.weather.maxAgeH} h`);
-    if (S.run) parts.push(`Prognose ${S.mapShows === "B" ? "Szenario B" : ""} vom ${fmtTime(S.run.finishedAt)}`);
+    if (S.run) parts.push(`Prognose ${S.mapShows === "B" ? "Szenario B" : S.mapShows === "AB" ? "A und B" : ""} vom ${fmtTime(S.run.finishedAt)}`);
+    if (Windrose.isManual(S.windOv)) parts.push("Wind MANUELL überschrieben");
     if (S.tileErrors) parts.push("Kartenhintergrund lädt nicht (Netz/Dienst)");
     $("hdr-status").textContent = parts.join(" · ");
   }
@@ -2026,7 +2297,7 @@
   };
 
   setDisplay(S.display, false);
-  drawPoly(); renderWx(); refreshProtocol(); loadVehicles(false); renderWater(); updateHeader();
+  drawPoly(); renderWx(); refreshProtocol(); loadVehicles(false); renderWater(); renderManualList(); updateHeader();
   loadGrenzen().then(() => updateTeilStatus());
   initDem();
   S.demPromise.then(syncTwControls);
@@ -2069,6 +2340,13 @@
     waterInput,
     waterTab(on) { onWaterTab(on !== false); },
     safearea() { return S.sa; },
+    wind() { return S.windCtl; },
+    windOverride() { return S.windOv; },
+    setWindOverride(ov) { S.windOv = ov || Windrose.emptyOverride(); if (S.windCtl) S.windCtl.set(S.windOv); renderWx(); },
+    recalc() { return recalc; },
+    manual() { return S.manual; },
+    scheduleDialog(ov, apply) { windScheduleDialog(ov || S.windOv, apply || ((e) => { S.windOv = Windrose.setSchedule(S.windOv, e); renderWx(); })); },
+    showScenario,
     safeareaUi: saUi,
     rpLayer,
     setRpLayer(on) { if (on) map.addLayer(rpLayer); else map.removeLayer(rpLayer); },

@@ -1,0 +1,123 @@
+/* Karten-Interaktion: Windpfeil, Ziehen von Fahrzeugen, Szenario-Vergleich A/B.
+   Nutzt die Farbvariablen aus css/app.css (--ink, --surface, --line, --accent, --focus, --tap).
+   Dark/Light über dieselbe Mechanik (data-theme bzw. prefers-color-scheme); eigene Farben sind
+   nur dort gesetzt, wo app.css keine Variable anbietet. Große Touch-Ziele (Tablet, Handschuhe). */
+
+/* Falls diese Datei ohne css/app.css geladen wird (Demo): Ersatzwerte. */
+.wb-wind, .wb-drag-ghost, .wb-drag-hint { --tap: 52px; }
+
+/* ------------------------------------------------------------------ Windpfeil */
+.wb-wind {
+  background: var(--surface, #fff); color: var(--ink, #111820);
+  border: 1px solid var(--line, #c3ccd5); border-radius: 6px;
+  padding: 8px 10px; display: grid; gap: 6px; width: 212px;
+  font-size: 13px; line-height: 1.35;
+}
+.wb-wind.manual { border: 2px solid var(--accent, #b3261e); }
+/* Zwei feste Zeilen: die Kennzeichnung erscheint/verschwindet, ohne das Element zu verschieben
+   (sonst wandert der Drehpunkt des Pfeils mitten im Ziehen). */
+.wb-wind-head { display: grid; gap: 2px; justify-items: start; }
+.wb-wind-flag {
+  background: var(--accent, #b3261e); color: var(--accent-ink, #fff);
+  font-weight: 800; font-size: 11px; padding: 2px 6px; border-radius: 4px; letter-spacing: .02em;
+}
+.wb-wind-flag[data-on="0"] { visibility: hidden; }
+.wb-wind-dial { display: flex; justify-content: center; }
+.wb-wind-svg { touch-action: none; cursor: grab; max-width: 100%; height: auto; }
+.wb-wind-svg.dragging { cursor: grabbing; }
+.wb-wind-svg:focus-visible { outline: 3px solid var(--focus, #0b4f8a); outline-offset: 2px; border-radius: 50%; }
+.wb-wind-ring { fill: color-mix(in srgb, var(--ink, #111820) 6%, transparent); stroke: var(--line, #c3ccd5); stroke-width: 1.5; }
+.wb-wind-tick { stroke: var(--muted, #4a5662); stroke-width: 2; }
+.wb-wind-n { fill: var(--muted, #4a5662); font-size: 13px; font-weight: 700; }
+.wb-wind-shaft { stroke: var(--ink, #111820); stroke-width: 7; stroke-linecap: round; }
+.wb-wind-headtri { fill: var(--accent, #b3261e); stroke: var(--ink, #111820); stroke-width: 1.5; }
+.wb-wind-knob { fill: transparent; stroke: var(--accent, #b3261e); stroke-width: 2; stroke-dasharray: 3 4; }
+.wb-wind-svg.dragging .wb-wind-knob { fill: color-mix(in srgb, var(--accent, #b3261e) 18%, transparent); }
+.wb-wind-speed { display: grid; grid-template-columns: 1fr auto; gap: 2px 8px; align-items: center; font-weight: 600; }
+.wb-wind-speed input[type="range"] { grid-column: 1 / -1; width: 100%; height: var(--tap); accent-color: var(--accent, #b3261e); touch-action: none; }
+.wb-wind-speed output { font-variant-numeric: tabular-nums; font-weight: 700; }
+.wb-wind-check { display: flex; gap: 6px; align-items: center; min-height: 32px; }
+.wb-wind-check input { width: 22px; height: 22px; }
+/* zwei Zeilen fest reservieren: das Bedienelement sitzt unten links, jede Höhenänderung würde
+   den Drehpunkt des Pfeils nach oben wandern lassen (mitten im Ziehen) */
+.wb-wind-label { margin: 0; font-weight: 700; font-variant-numeric: tabular-nums; min-height: 2.7em; }
+.wb-wind.manual .wb-wind-label::after { content: " *"; color: var(--accent, #b3261e); }
+.wb-wind-btns { display: flex; gap: 6px; flex-wrap: wrap; }
+.wb-wind-btns .btn { min-height: 40px; }
+.wb-wind-note { margin: 0; font-size: 11px; color: var(--muted, #4a5662); }
+.wb-wind-progress { display: grid; grid-template-columns: 1fr auto; gap: 4px 8px; align-items: center; }
+.wb-wind-progress .bar { grid-column: 1 / -1; height: 8px; background: var(--info, #0b4f8a); border-radius: 4px; width: 0; transition: width .15s linear; }
+.wb-wind-progress .ptext { font-size: 12px; font-variant-numeric: tabular-nums; }
+
+/* Als Leaflet-Control unten links; auf schmalen Geräten schmaler. */
+.leaflet-control .wb-wind { box-shadow: 0 1px 5px rgba(0, 0, 0, .4); }
+@media (max-width: 520px) {
+  .wb-wind { width: 176px; font-size: 12px; }
+}
+/* INTEGRATION 0.8.0: In der App ist die Karte nur rund 700 px hoch und unten links stehen zusätzlich
+   Maßstab und Zoomknöpfe. Ohne Begrenzung wächst das Bedienelement über den oberen Kartenrand hinaus
+   und verdeckt die Werkzeugleiste mit dem Suchfeld. Deshalb kleineres Pfeilfeld, kompaktere Zeilen und
+   eine Höhenschranke mit eigenem Rollbalken (die Bedienung bleibt vollständig erreichbar). */
+.leaflet-control .wb-wind { max-height: calc(100vh - 290px); overflow-y: auto; overscroll-behavior: contain; }
+.leaflet-control .wb-wind .wb-wind-svg { width: 132px; height: auto; }
+.leaflet-control .wb-wind .wb-wind-check { min-height: 26px; font-size: 12px; }
+.leaflet-control .wb-wind .wb-wind-label { min-height: 2.5em; }
+.leaflet-control .wb-wind .wb-wind-note { font-size: 10.5px; line-height: 1.3; }
+
+/* ------------------------------------------------------------------ Ziehen von Fahrzeugen */
+.wb-veh-handle {
+  touch-action: none; cursor: grab; min-height: var(--tap); min-width: var(--tap);
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px;
+  border: 2px solid var(--ink, #111820); border-radius: 6px; background: var(--surface, #fff);
+  font-weight: 700; padding: 0 12px;
+}
+.wb-veh-handle:active { cursor: grabbing; }
+.wb-veh-handle:focus-visible { outline: 3px solid var(--focus, #0b4f8a); outline-offset: 2px; }
+
+.wb-drag-ghost {
+  position: fixed; z-index: 2000; transform: translate(-50%, -50%); pointer-events: none;
+  background: var(--surface, #fff); color: var(--ink, #111820);
+  border: 2px solid var(--ink, #111820); border-radius: 6px; padding: 6px 12px;
+  font-weight: 800; box-shadow: 0 2px 10px rgba(0, 0, 0, .35); white-space: nowrap;
+}
+.wb-drag-ghost.over-map { border-color: var(--ok, #1d6b3a); }
+.wb-drag-ghost.over-list { border-color: var(--alert, #9c1c13); text-decoration: line-through; }
+
+.wb-drag-hint {
+  position: absolute; z-index: 900; left: 12px; bottom: 12px; max-width: min(640px, calc(100% - 24px));
+  background: var(--surface, #fff); color: var(--ink, #111820);
+  border: 2px solid var(--ink, #111820); border-radius: 6px; padding: 8px 12px;
+  font-weight: 600; font-size: 14px; pointer-events: none;
+}
+
+.wb-guide-label {
+  background: var(--surface, #fff); color: var(--ink, #111820); border: 1px solid var(--ink, #111820);
+  border-radius: 4px; padding: 1px 5px; font-size: 12px; font-weight: 700; white-space: nowrap;
+}
+.wb-guide-label.water { border-color: var(--info, #0b4f8a); color: var(--info, #0b4f8a); }
+
+/* Marker der von Hand gesetzten Fahrzeuge (ergänzt .veh-marker aus css/app.css) */
+.veh-marker.manual { border-style: solid; }
+.veh-marker.manual .lockmark { margin-right: 3px; }
+.veh-marker.manual .warnmark { margin-left: 3px; }
+.veh-marker.manual.warn {
+  background: var(--warn-bg, #ffd84d); color: var(--warn-ink, #1a1400);
+  border: 2px solid var(--alert, #9c1c13);
+}
+.wb-veh-warn {
+  border-left: 6px solid var(--alert, #9c1c13); padding-left: 10px; font-weight: 600;
+}
+
+/* ------------------------------------------------------------------ Szenario A/B */
+.wb-ab-legend { display: grid; gap: 4px; margin: 6px 0; font-size: 13px; }
+.wb-ab { display: flex; align-items: center; gap: 8px; }
+.wb-ab i { display: inline-block; width: 34px; border-top-width: 3.5px; }
+.wb-ab.a i { border-top-color: #0b4f8a; }
+.wb-ab.b i { border-top-color: #b3261e; }
+.wb-ab-a { stroke-dasharray: none; }
+.wb-ab-b { stroke-dasharray: 10 7; }
+
+/* Reduzierte Bewegung respektieren */
+@media (prefers-reduced-motion: reduce) {
+  .wb-wind-progress .bar { transition: none; }
+}

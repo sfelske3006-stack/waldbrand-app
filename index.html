@@ -8,10 +8,10 @@
 <script>
   // Zentrale Version und Dateiliste (Cache-Busting). Alle Pfade RELATIV (läuft auch unter einem Unterpfad,
   // z. B. GitHub Pages /waldbrand-app/). WB_VERSION muss PARAMS.version entsprechen (Test prüft das).
-  window.WB_VERSION = "0.7.0-prototyp";
+  window.WB_VERSION = "0.8.0-prototyp";
   window.WB_ASSET = function (p) { return p + (p.indexOf("?") < 0 ? "?" : "&") + "v=" + encodeURIComponent(window.WB_VERSION); };
-  window.WB_CSS = ["vendor/leaflet/leaflet.css", "css/app.css", "css/search.css", "css/water.css", "css/safearea.css"];
-  window.WB_JS = ["vendor/leaflet/leaflet.js", "config.js", "js/params.js", "js/grid.js", "js/dem.js", "js/terrain.js", "js/model.js", "js/contour.js", "js/weather.js", "js/osm.js", "js/dispatch.js", "js/suggest.js", "js/protocol.js", "js/search.js", "js/search-ui.js", "js/water-params.js", "js/water.js", "js/water-ui.js", "js/safearea.js", "js/safearea-ui.js", "js/app.js"];
+  window.WB_CSS = ["vendor/leaflet/leaflet.css", "css/app.css", "css/search.css", "css/water.css", "css/safearea.css", "css/interaktion.css"];
+  window.WB_JS = ["vendor/leaflet/leaflet.js", "config.js", "js/params.js", "js/interaktion-params.js", "js/grid.js", "js/dem.js", "js/terrain.js", "js/model.js", "js/contour.js", "js/weather.js", "js/osm.js", "js/dispatch.js", "js/suggest.js", "js/protocol.js", "js/search.js", "js/search-ui.js", "js/water-params.js", "js/water.js", "js/water-ui.js", "js/safearea.js", "js/safearea-ui.js", "js/windrose.js", "js/vehicle-drag.js", "js/interaktion-ui.js", "js/app.js"];
   for (var i = 0; i < window.WB_CSS.length; i++) document.write('<link rel="stylesheet" href="' + window.WB_ASSET(window.WB_CSS[i]) + '">');
 </script>
 <!--/WB-LOADER-->
@@ -180,6 +180,8 @@
           <button id="btn-resuggest" class="btn" type="button" disabled>Vorschläge neu berechnen</button>
           <div id="sug-diff" class="status"></div>
           <div id="suggestions"></div>
+          <!-- Von Hand gesetzte Fahrzeuge (0.8.0, js/vehicle-drag.js): Ziehen aus dem Reiter „Fahrzeuge“ -->
+          <div id="manual-list"></div>
         </section>
 
         <!-- Rückzugsflächen und Fluchtwege (0.7.0, js/safearea.js + js/safearea-ui.js). Bewusst KEIN eigener
@@ -294,6 +296,22 @@
     <div id="ack-text"></div>
     <label class="check big"><input type="checkbox" id="chk-ack"> Ich habe die Modellgrenzen gelesen. Die App ersetzt keine Lageerkundung und keine Entscheidung der Einsatzleitung.</label>
     <button id="btn-ack" class="btn primary big" type="button" disabled>Bestätigen und starten</button>
+  </div>
+</div>
+
+<div id="modal-wind" class="modal" role="dialog" aria-modal="true" aria-labelledby="wsch-title" hidden>
+  <div class="modal-box">
+    <h2 id="wsch-title">Windzeitplan</h2>
+    <p class="muted small">Stützstellen für den Wind: ab der angegebenen Uhrzeit gilt der eingetragene Wert, dazwischen wird
+      linear interpoliert (Richtung über den kürzeren Winkelweg). Vor der ersten Stützstelle bleibt das echte Wetter bzw. die
+      Einstellung des Pfeils. Nach der letzten Stützstelle wird deren Wert gehalten (Annahme). Böen leer = aus dem echten Wetter
+      abgeleitet. <b>Keine Messung, keine Vorhersage – vom Bediener gesetzte Werte.</b></p>
+    <div class="tablewrap"><table id="wsch-table" class="data"></table></div>
+    <div class="btnrow">
+      <button id="btn-wsch-add" class="btn" type="button">Stützstelle hinzufügen</button>
+      <button id="btn-wsch-apply" class="btn primary" type="button">Übernehmen</button>
+      <button id="btn-wsch-close" class="btn" type="button">Abbrechen</button>
+    </div>
   </div>
 </div>
 
