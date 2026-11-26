@@ -158,6 +158,8 @@
 
   function setMode(m) {
     S.mode = m;
+    // „Becken hinzufügen“ (Wassermodul) und die Kartenmodi hier schließen sich gegenseitig aus
+    if (m && waterUI && waterUI.addMode) waterUI.setAddMode(false);
     $("btn-draw").classList.toggle("active", m === "poly");
     $("btn-point").classList.toggle("active", m === "point");
     $("btn-addwater").classList.toggle("active", m === "water");
@@ -229,7 +231,7 @@
       store.set("wb_water_manual", S.manualWater);
       Protocol.add("entnahmestelle", { aktion: "hinzugefügt", ...w });
       setMode(null);
-      renderWater(); refreshProtocol();
+      renderWater(); refreshProtocol(); updateWater();
     }
   });
 
@@ -798,6 +800,7 @@
     });
     refreshProtocol();
     renderSuggestions();
+    updateWater();
   }
   $("btn-resuggest").onclick = () => computeSuggestions(true);
 
@@ -902,6 +905,9 @@
    * behalten und die übrigen Label ausweichen.
    */
   const LABEL_SEL = ".veh-marker,.veh-group,.line-label,.ready-label,.hz-label";
+  // feste Marker, denen die Beschriftungen ausweichen (Wassermodul: Becken, Entnahmestellen, Abnehmer, Pumpen).
+  // .wveh bleibt bewusst draußen: Wasserfahrzeuge bewegen sich im Zeitverlauf, eine Entzerrung je Frame wäre teuer.
+  const FIXED_SEL = ".vx-marker,.water-marker,.wbasin,.wsrc,.wcons,.wpump";
   let declutterPending = false;
   function declutterLabels() {
     const els = [...document.querySelectorAll(`#map ${LABEL_SEL.split(",").join(",#map ")}`)];
@@ -912,7 +918,7 @@
       .filter((it) => it.r.width > 0 && it.r.height > 0)
       .sort((a, b) => a.rank - b.rank || a.r.top - b.r.top);
     // feste Hindernisse (nicht verschiebbar): Stützpunkte der Brandfläche, Entnahmestellen
-    const placed = [...document.querySelectorAll("#map .vx-marker, #map .water-marker")]
+    const placed = [...document.querySelectorAll(`#map ${FIXED_SEL.split(",").join(",#map ")}`)]
       .map((el) => el.getBoundingClientRect()).filter((r) => r.width > 0)
       .map((r) => ({ left: r.left, right: r.right, top: r.top, bottom: r.bottom }));
     const hits = (r) => placed.some((q) => r.left < q.right + 2 && r.right > q.left - 2 && r.top < q.bottom + 2 && r.bottom > q.top - 2);
@@ -1094,9 +1100,210 @@
       S.waterEdits[id] = ed;
       store.set("wb_water_edits", S.waterEdits);
       Protocol.add("entnahmestelle", { id, aenderung: ed });
-      map.closePopup(); renderWater(); refreshProtocol();
+      map.closePopup(); renderWater(); refreshProtocol(); updateWater();
     }));
   });
+
+  // ---------------------------------------------------------------- Wasserversorgung (Modul 0.6.0)
+  // Rechenkern js/water.js, Oberfläche js/water-ui.js, Parameter PARAMS.wasser (js/water-params.js).
+  // SIMULATION MIT ANNAHMEN, KEINE EINSATZPLANUNG (eigener Hinweis im Reiter).
+  let waterUI = null;        // erst nach der ersten Vorschlagsrechnung erzeugt (die Ebenen hängen sich an die Karte)
+  let waterUnmet = null;     // Defizit der letzten Rechnung (für den Protokolleintrag wasser_becken)
+  let waterNoteLogged = false;
+  let waterSourcesSwapped = false;
+
+  // Abnehmer mit Löschwasserbedarf: Fahrzeugaufgaben aus suggest.js -> Bedarfsart des Wassermoduls.
+  // Riegel umfasst die Auffanglinie der zweiten Bereitschaftsstufe und Verstärkungen (taskKind "Riegel").
+  // ANNAHME: Flankensicherung gibt Wasser wie eine Riegelstellung ab (zu prüfen, siehe docs/assumptions.md).
+  // Wasserversorgung/Pendelverkehr und Bereitstellungsraum sind KEINE Abnehmer.
+  const WATER_CONSUMER = { Riegel: "Riegel", Flanke: "Riegel", Objektschutz: "Objektschutz" };
+
+  /**
+   * Adapter App -> Modul: baut die Eingabe für Water.run() aus dem aktuellen Lagebild.
+   * Alle Zeiten in Minuten nach Alarm/Prognosebeginn (wie im übrigen Lagebild).
+   */
+  function waterInput() {
+    const run = S.run, sug = S.sug;
+    if (!run || !sug) return null;
+    const g = run.grid;
+    // 1) Abnehmer aus den Fahrzeugvorschlägen, jeder mit seiner eigenen Bereitschaftszeit (readyMin)
+    const consumers = sug.vehicles.filter((v) => WATER_CONSUMER[v.taskKind]).map((v) => ({
+      id: v.vehicleId || v.id,
+      label: `${v.vehicle.bezeichnung || v.vehicle.typ} – ${v.task}`,
+      lat: v.lat, lon: v.lon,
+      readyMin: Math.max(0, Math.round(v.readyMin || 0)),
+      tankL: v.vehicle.tank_l || 0,
+      kind: WATER_CONSUMER[v.taskKind],
+    }));
+    // 2) Entnahmestellen: vorhandene Punkte der App (OSM + manuell + Bearbeitungen/Verifizierung).
+    //    Ohne OSM-Daten bleibt die Liste leer – es wird KEINE Entnahmestelle angenommen (Hinweis im Reiter).
+    const sources = allWaterPoints();
+    // 3) Fahrzeuge mit geschätzter Anfahrt zum Brandschwerpunkt (Luftlinie × Umwegfaktor, kein Routing)
+    const stMap = Dispatch.stationMap(S.stations);
+    const [fLat, fLon] = sug.dispatch.firePoint;
+    const vehicles = S.vehicles.filter((v) => v.verfuegbar !== false).map((v) => {
+      const e = Dispatch.estimate(v, stMap, fLat, fLon, P);
+      const o = Dispatch.origin(v, stMap);
+      return {
+        ...v, anfahrtMin: e.ok ? e.min : null, anfahrtText: e.ok ? e.text : `unbekannt (${e.reason})`,
+        originLat: o.missing ? null : o.lat, originLon: o.missing ? null : o.lon,
+      };
+    });
+    // 4) Ausschlüsse (Vorgabe Auftraggeber). Fahrzeuge im Bereitstellungsraum und die Vorschläge
+    //    „Wasserversorgung“ bleiben verfügbar – sie sind Reserve bzw. für genau diese Aufgabe gedacht.
+    //    Fahrzeuge der Kommune Neunkirchen-Seelscheid schließt das Modul selbst aus (PARAMS.wasser).
+    const exclude = {
+      pflichtIds: sug.dispatch.pflicht || [],
+      grundschutzIds: currentGrundschutz().list.map((a) => a.vehicle && a.vehicle.id).filter(Boolean),
+      assignedIds: sug.vehicles.filter((v) => WATER_CONSUMER[v.taskKind]).map((v) => v.vehicleId).filter(Boolean),
+    };
+    // 5) Befahrbare Wege aus dem OSM-Raster (1 = Straße, 2 = Wald-/Wirtschaftsweg). Ohne OSM: keine
+    //    Befahrbarkeitsprüfung (Becken-Standorte und Zugänge sind dann ungeprüft).
+    let roads = null, roadCells = 0;
+    const drv = run.osmApplied && run.osmApplied.drivable;
+    if (drv) {
+      const pts = [];
+      for (let k = 0; k < drv.length; k++) {
+        if (!drv[k]) continue;
+        const [lat, lon] = Grid.cellLatLng(g, k);
+        pts.push({ lat, lon, kind: drv[k] });
+      }
+      roadCells = pts.length;
+      roads = pts.length ? Water.roadNet(null, { points: pts, cellM: 200 }) : null;
+    }
+    // 6) Gelände (DGM 25 m) für das Höhenprofil der Förderstrecke
+    const terrain = S.dem ? { elevation: (lat, lon) => Dem.sample(S.dem, lat, lon) } : null;
+    // 7) Gefahrenzone: Zeitpunkt, zu dem die „möglich“-Zone eine Zelle erreicht (Becken-Standortprüfung)
+    const tP = Suggest.possibleTimes(run.result, P);
+    const hazard = {
+      center: { lat: fLat, lon: fLon },
+      possibleMinAt(lat, lon) {
+        const [x, y] = g.proj.toXY(lat, lon);
+        const k = Grid.cellOf(g, x, y);
+        return k < 0 ? Infinity : tP[k];
+      },
+    };
+    return { consumers, sources, vehicles, exclude, roads, terrain, hazard, basins: null, meta: { roadCells, osm: !!drv, dem: !!S.dem } };
+  }
+
+  /** Hinweis über dem Modul: fehlende Prognose, fehlende OSM-Daten, fehlende Entnahmestellen. */
+  function renderWaterHint(input) {
+    const host = $("wasser-hinweis");
+    if (!host) return;
+    const out = [];
+    if (!S.run || !S.sug) {
+      host.innerHTML = msg("warn", "Noch keine Prognose: erst im Reiter „Lage“ <b>Prognose berechnen</b> (Schritt 4). Die Wasserversorgung wird aus den Fahrzeugvorschlägen, den Entnahmestellen und dem Gelände abgeleitet.");
+      return;
+    }
+    if (!input || !input.consumers.length) out.push(msg("warn", "Keine Abnehmer: Es sind keine Fahrzeuge für Riegel/Auffanglinie, Flanke oder Objektschutz vorgeschlagen (z. B. keine geeignete Riegelstellung). Ohne Abnehmer gibt es keinen Wasserbedarf zu versorgen."));
+    if (input && !input.meta.osm) {
+      out.push(msg("err", "<b>Keine OSM-Daten geladen.</b> Deshalb: <b>keine Entnahmestellen aus OpenStreetMap</b> (Hydranten, Gewässer, Löschwasserbehälter), <b>keine Prüfung der Befahrbarkeit</b> für Beckenstandorte und Zugänge und keine Wald-/Wirtschaftswege im Pendelweg. Es werden <b>keine Entnahmestellen angenommen</b>. Entweder im Reiter „Lage“ (Schritt 3) <b>OSM-Daten laden</b> oder Entnahmestellen mit „Entnahmestelle setzen“ von Hand erfassen."));
+    } else if (input && !input.sources.length) {
+      out.push(msg("err", "<b>Keine Entnahmestelle in den Daten.</b> In den geladenen OSM-Daten ist im Rechengebiet keine Entnahmestelle enthalten und es wurde keine von Hand erfasst. Pendelverkehr und Förderstrecke sind damit nicht berechenbar – Entnahmestellen vor Ort klären und mit „Entnahmestelle setzen“ erfassen (Löschwasserkataster, siehe docs/assumptions.md)."));
+    }
+    if (input && input.meta.osm && !input.meta.roadCells) out.push(msg("warn", "OSM-Daten enthalten keine befahrbaren Wege im Rechengebiet: Befahrbarkeit der Beckenstandorte nicht geprüft."));
+    if (input && !input.meta.dem) out.push(msg("warn", "Kein Geländemodell: Höhenunterschiede der Förderstrecke werden nicht geprüft (Pumpenzahl kann zu niedrig sein)."));
+    host.innerHTML = out.join("");
+  }
+
+  /** WaterUI einmalig erzeugen, Ebenen in den Ebenenschalter hängen, Protokoll anbinden. */
+  function ensureWaterUI() {
+    if (waterUI) return waterUI;
+    waterUI = WaterUI.create({ map, L, W: P.wasser, panel: $("wasser-panel") });
+    layerCtl.addOverlay(waterUI.layers.basins, "Pufferbecken (Wasser)");
+    layerCtl.addOverlay(waterUI.layers.hoses, "Schlauchleitungen (Wasser)");
+    layerCtl.addOverlay(waterUI.layers.routes, "Pendelrouten (Luftlinie)");
+    layerCtl.addOverlay(waterUI.layers.vehicles, "Wasserfahrzeuge (Zeitverlauf)");
+    layerCtl.addOverlay(waterUI.layers.sources, "Wasser: Entnahmestellen + Abnehmer (Modul)");
+    // Doppelte Darstellung vermeiden: die Modul-Ebene zeigt dieselben Punkte wie „Wasserentnahmestellen“
+    // (dort liegt das Bearbeiten/Verifizieren). Sie wird erst beim Öffnen des Reiters eingeschaltet.
+    map.removeLayer(waterUI.layers.sources);
+    // Kartenmodus entflechten: „Becken hinzufügen“ beendet „Entnahmestelle setzen“ (und umgekehrt, siehe setMode)
+    const addBtn = $("wasser-panel").querySelector("#w-add");
+    if (addBtn) addBtn.addEventListener("click", () => { if (S.mode) setMode(null); });
+    waterUI.on("recompute", (res) => {
+      const unmet = Math.round(res.sim.kpi.unmetLpm);
+      if (res.change) {
+        Protocol.add("wasser_becken", {
+          aktion: res.change.aktion, id: res.change.id,
+          lat: res.change.lat === null || res.change.lat === undefined ? null : +res.change.lat.toFixed(6),
+          lon: res.change.lon === null || res.change.lon === undefined ? null : +res.change.lon.toFixed(6),
+          becken_gesamt: res.plan.basins.length,
+          defizit_vorher_lpm: waterUnmet, defizit_nachher_lpm: unmet,
+        });
+      }
+      const sum = Water.summary(res.plan, res.sim);
+      // Ausschluss- und Reserveliste nur gezählt ins Protokoll (bei >100 Fahrzeugen sonst mehrere kB je Eintrag,
+      // und jede Beckenänderung schreibt einen Eintrag). Die vollständigen Listen stehen im Reiter und im Export.
+      const ex = sum.ausgeschlossen || [];
+      const byReason = {};
+      for (const e of ex) byReason[e.reason] = (byReason[e.reason] || 0) + 1;
+      sum.ausgeschlossen = { anzahl: ex.length, nach_grund: byReason };
+      const reserve = sum.fahrzeuge.filter((v) => v.rolle === "reserve");
+      sum.fahrzeuge = sum.fahrzeuge.filter((v) => v.rolle !== "reserve");
+      sum.fahrzeuge_reserve = { anzahl: reserve.length, hinweis: "geeignet, aber nicht benötigt (Liste im Reiter „Wasser“)" };
+      Protocol.add("wasser_plan", {
+        grund: res.why, becken: res.plan.basins.length,
+        reservestandorte: res.plan.basins.filter((b) => b.reserve).map((b) => b.id),
+        entnahmestellen: res.plan.sources.length,
+        pendelfahrzeuge: res.plan.vehicles.filter((v) => v.role === "pendel").length,
+        pumpenfahrzeuge: res.plan.vehicles.filter((v) => v.role === "pumpe" || v.role === "verstaerker").length,
+        abnehmer: res.plan.consumers.length,
+        bedarf_lpm: sum.kennzahlen.bedarf_lpm, lieferung_lpm: sum.kennzahlen.lieferung_lpm,
+        defizit_lpm: sum.kennzahlen.defizit_lpm, deckung_pct: sum.kennzahlen.deckung_pct,
+        erstes_leerlaufen_min: (res.sim.basins.filter((b) => b.firstEmptyMin !== null).sort((a, b) => a.firstEmptyMin - b.firstEmptyMin)[0] || {}).firstEmptyMin ?? null,
+        osm: !!(S.run && S.run.osmApplied), gelaendemodell: !!S.dem,
+        nachplanungen: res.iterations, rechenzeit_ms: Math.round(res.ms),
+        ...sum,
+      });
+      waterUnmet = unmet;
+      refreshProtocol();
+    });
+    return waterUI;
+  }
+
+  /** Nach jeder Vorschlagsrechnung: Eingabe neu setzen (rechnet sofort) oder Hinweis zeigen. */
+  function updateWater() {
+    const input = waterInput();
+    renderWaterHint(input);
+    if (!input || !input.consumers.length) return;
+    try {
+      ensureWaterUI().setInput(input);
+    } catch (e) {
+      $("wasser-hinweis").innerHTML = msg("err", `Wassermodul nicht gerechnet (${esc(e.message)}).`);
+      console.error(e);
+    }
+  }
+
+  /** Reiter „Wasser“ geöffnet: Annahmen protokollieren, Diagramme/Karte neu zeichnen, Ebenen umschalten. */
+  function onWaterTab(active) {
+    if (!active) {
+      if (waterUI && waterSourcesSwapped) {
+        map.removeLayer(waterUI.layers.sources);
+        if (!map.hasLayer(waterLayer)) map.addLayer(waterLayer);
+        waterSourcesSwapped = false;
+      }
+      return;
+    }
+    if (!waterNoteLogged) {
+      waterNoteLogged = true;
+      Protocol.add("wasser_annahmen", {
+        hinweis: P.wasser.hinweis, parameterversion: P.wasser.version, app_version: P.version,
+        grundlagen: "Fahrwege Luftlinie × Umwegfaktor (kein Routing), Ergiebigkeiten/Zeiten sind Annahmen, nur ein Fahrzeug speist gleichzeitig in ein Becken ein (größter Engpass im Modell)",
+        quelle: "docs/assumptions.md, Abschnitt Wasserversorgung",
+      });
+      refreshProtocol();
+    }
+    if (waterUI) {
+      if (!waterSourcesSwapped) {
+        map.addLayer(waterUI.layers.sources);
+        if (map.hasLayer(waterLayer)) map.removeLayer(waterLayer);
+        waterSourcesSwapped = true;
+      }
+      waterUI.redraw();
+    }
+    scheduleDeclutter();
+  }
 
   // ---------------------------------------------------------------- Fahrzeuge
   async function loadVehicles(forceBundled) {
@@ -1416,8 +1623,67 @@
       const st = S.stations.find((x) => x.name === a.geraetehaus || x.id === a.geraetehaus);
       feats.push({ type: "Feature", properties: { typ: "grundschutz", ...a }, geometry: st && Dispatch.hasCoord(st) ? { type: "Point", coordinates: [Number(st.lon), Number(st.lat)] } : null });
     }
-    allWaterPoints().forEach((w) => feats.push({ type: "Feature", properties: { typ: "entnahmestelle", art: w.kind, quelle: w.source, verifiziert: !!w.verified }, geometry: { type: "Point", coordinates: [w.lon, w.lat] } }));
-    Protocol.add("export", { format: "GeoJSON", features: feats.length }); refreshProtocol();
+    // Entnahmestellen: zusätzlich die Einstufung des Wassermoduls, damit im Export sichtbar bleibt,
+    // welche Ergiebigkeit eine Annahme ist (classifySource ist eine reine Funktion, auch ohne Wasser-Reiter nutzbar).
+    allWaterPoints().forEach((w) => {
+      let c = null;
+      try { c = Water.classifySource(w, P.wasser); } catch { c = null; }
+      feats.push({ type: "Feature", properties: {
+        typ: "entnahmestelle", art: w.kind, quelle: w.source, verifiziert: !!w.verified,
+        einstufung: c ? c.typ : null, bezeichnung: c ? c.label : null,
+        ergiebigkeit_lpm: c && c.capLpm !== null && c.capLpm !== undefined ? Math.round(c.capLpm) : null,
+        grundlage: c ? (c.capWhy || c.statusWhy || null) : null,
+        annahme_ohne_beleg: c && c.annahmen && c.annahmen.length ? c.annahmen.join(", ") : null,
+        beruecksichtigt: c ? c.usable : null, hinweis_modul: P.wasser.hinweis,
+      }, geometry: { type: "Point", coordinates: [w.lon, w.lat] } });
+    });
+    // Wassermodul: Pufferbecken, Schlauchleitungen (Förderstrecken) und Pendelrouten (LUFTLINIEN!)
+    let nWasser = 0;
+    if (waterUI && waterUI.result) {
+      const { plan, sim } = waterUI.result;
+      const W = P.wasser;
+      plan.basins.forEach((b) => {
+        const r = sim.basins.find((x) => x.id === b.id) || {};
+        feats.push({ type: "Feature", properties: {
+          typ: "pufferbecken", id: b.id, manuell: !!b.manual,
+          rolle: b.reserve ? "Reservestandort (kein Abnehmer zugeordnet, nicht eingeplant)" : "eingeplant",
+          volumen_l: W.becken.volumenL, bedarf_lpm: Math.round(b.demandLpm), versorgung: b.supply.kind,
+          abnehmer: (b.consumerIds || []).join(", "), erstes_leerlaufen_min: r.firstEmptyMin ?? null,
+          standort: b.siteNote || null, sicherheit: b.safety ? b.safety.text : null, hinweis: W.hinweis,
+        }, geometry: { type: "Point", coordinates: [b.lon, b.lat] } });
+        nWasser++;
+      });
+      plan.basins.filter((b) => b.supply && b.supply.hose).forEach((b) => {
+        const src = plan.sources.find((x) => x.id === b.supply.sourceId);
+        if (!src) return;
+        const h = b.supply.hose;
+        feats.push({ type: "Feature", properties: {
+          typ: "schlauchleitung", becken: b.id, entnahmestelle: src.id, laenge_m: Math.round(h.lengthM),
+          foerderstrom_lpm: Math.round(h.flowLpm), pumpen: h.pumps, verstaerker: h.boosters,
+          hoehe_m: Math.round(h.dhMaxM), aufbau_min: Math.round(h.setupMin),
+          geometrie: "LUFTLINIE Entnahmestelle–Becken, kein Schlauchverlauf", hinweis: W.hinweis,
+        }, geometry: { type: "LineString", coordinates: [[src.lon, src.lat], [b.lon, b.lat]] } });
+        nWasser++;
+      });
+      WaterUI.routesFromSim(plan, sim).forEach((r) => {
+        feats.push({ type: "Feature", properties: {
+          typ: "pendelroute", entnahmestelle: r.source.id, becken: r.basin.id, fahrten: r.trips,
+          fahrzeuge: [...r.vehicles].join(", "),
+          geometrie: "LUFTLINIE, KEIN Fahrweg (Fahrzeit = Luftlinie × Umwegfaktor, kein Routing)", hinweis: W.hinweis,
+        }, geometry: { type: "LineString", coordinates: [[r.source.lon, r.source.lat], [r.basin.lon, r.basin.lat]] } });
+        nWasser++;
+      });
+      plan.consumers.forEach((c) => {
+        feats.push({ type: "Feature", properties: {
+          typ: "wasserabnehmer", id: c.id, bezeichnung: c.label, art: c.kind, bedarf_lpm: Math.round(c.demandLpm),
+          ab_min: c.readyMin, becken: c.basinId, abstand_becken_m: c.basinDistM === undefined ? null : Math.round(c.basinDistM), hinweis: W.hinweis,
+        }, geometry: { type: "Point", coordinates: [c.lon, c.lat] } });
+        nWasser++;
+      });
+    }
+    Protocol.add("export", { format: "GeoJSON", features: feats.length });
+    if (nWasser) Protocol.add("wasser_export", { format: "GeoJSON", features: nWasser, hinweis: "Pendelrouten und Schlauchleitungen sind Luftlinien, keine Wege" });
+    refreshProtocol();
     openExport("lage.geojson", JSON.stringify({ type: "FeatureCollection", features: feats }));
   };
 
@@ -1555,7 +1821,7 @@
   // Kartenebene Rettungspunkte (lädt die Daten erst beim Einschalten; Nummern weichen vorhandenen Label aus)
   const rpLayer = SearchUI.rettungspunkteLayer(map, {
     // Nummern weichen allen vorhandenen Kartenbeschriftungen und festen Markern aus (sonst verdecken sie Lageinformation)
-    minZoom: 13, labelZoom: 14, obstacleSelector: `${LABEL_SEL},.st-group,.gs-marker,.vx-marker,.water-marker,.gps-marker`,
+    minZoom: 13, labelZoom: 14, obstacleSelector: `${LABEL_SEL},${FIXED_SEL},.st-group,.gs-marker,.gps-marker,.wveh`,
     onWarn: (t) => { renderSearchSources(); $("hdr-status").textContent = t; },
   });
   if (searchUsable) layerCtl.addOverlay(rpLayer, "Rettungspunkte (KWF, ab Zoom 13)");
@@ -1589,6 +1855,7 @@
     document.querySelectorAll(".tab").forEach((x) => x.setAttribute("aria-selected", x === t ? "true" : "false"));
     document.querySelectorAll(".tabpanel").forEach((p) => { p.hidden = p.id !== `panel-${t.dataset.tab}`; });
     store.set("wb_tab", t.dataset.tab);
+    onWaterTab(t.dataset.tab === "wasser");
   }));
   const savedTheme = store.get("wb_theme", null);
   if (savedTheme) document.documentElement.setAttribute("data-theme", savedTheme);
@@ -1596,6 +1863,7 @@
     const cur = document.documentElement.getAttribute("data-theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
     const nxt = cur === "dark" ? "light" : "dark";
     document.documentElement.setAttribute("data-theme", nxt); store.set("wb_theme", nxt);
+    if (waterUI) waterUI.redraw();
   };
 
   // ---------------------------------------------------------------- Start
@@ -1660,6 +1928,9 @@
     grenzenReady() { return S.grenzen; },
     setVehicles(data) { applyVehicleData(data, "Testdaten (synthetisch)"); saveVehicles(); },
     search: searchUI,
+    water() { return waterUI; },
+    waterInput,
+    waterTab(on) { onWaterTab(on !== false); },
     rpLayer,
     setRpLayer(on) { if (on) map.addLayer(rpLayer); else map.removeLayer(rpLayer); },
     map,

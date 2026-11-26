@@ -8,10 +8,10 @@
 <script>
   // Zentrale Version und Dateiliste (Cache-Busting). Alle Pfade RELATIV (läuft auch unter einem Unterpfad,
   // z. B. GitHub Pages /waldbrand-app/). WB_VERSION muss PARAMS.version entsprechen (Test prüft das).
-  window.WB_VERSION = "0.5.0-prototyp";
+  window.WB_VERSION = "0.6.0-prototyp";
   window.WB_ASSET = function (p) { return p + (p.indexOf("?") < 0 ? "?" : "&") + "v=" + encodeURIComponent(window.WB_VERSION); };
-  window.WB_CSS = ["vendor/leaflet/leaflet.css", "css/app.css", "css/search.css"];
-  window.WB_JS = ["vendor/leaflet/leaflet.js", "config.js", "js/params.js", "js/grid.js", "js/dem.js", "js/terrain.js", "js/model.js", "js/contour.js", "js/weather.js", "js/osm.js", "js/dispatch.js", "js/suggest.js", "js/protocol.js", "js/search.js", "js/search-ui.js", "js/app.js"];
+  window.WB_CSS = ["vendor/leaflet/leaflet.css", "css/app.css", "css/search.css", "css/water.css"];
+  window.WB_JS = ["vendor/leaflet/leaflet.js", "config.js", "js/params.js", "js/grid.js", "js/dem.js", "js/terrain.js", "js/model.js", "js/contour.js", "js/weather.js", "js/osm.js", "js/dispatch.js", "js/suggest.js", "js/protocol.js", "js/search.js", "js/search-ui.js", "js/water-params.js", "js/water.js", "js/water-ui.js", "js/app.js"];
   for (var i = 0; i < window.WB_CSS.length; i++) document.write('<link rel="stylesheet" href="' + window.WB_ASSET(window.WB_CSS[i]) + '">');
 </script>
 <!--/WB-LOADER-->
@@ -80,6 +80,7 @@
       <nav class="tabs" role="tablist">
         <button role="tab" class="tab" data-tab="lage" aria-selected="true" id="tab-lage">Lage</button>
         <button role="tab" class="tab" data-tab="fahrzeuge" aria-selected="false" id="tab-fahrzeuge">Fahrzeuge</button>
+        <button role="tab" class="tab" data-tab="wasser" aria-selected="false" id="tab-wasser">Wasser</button>
         <button role="tab" class="tab" data-tab="protokoll" aria-selected="false" id="tab-protokoll">Protokoll</button>
         <button role="tab" class="tab" data-tab="info" aria-selected="false" id="tab-info">Grenzen &amp; Quellen</button>
       </nav>
@@ -213,6 +214,16 @@
         <section class="card">
           <h2>Wachen / Gerätehäuser</h2>
           <div id="stations"></div>
+        </section>
+      </div>
+
+      <div class="tabpanel" id="panel-wasser" hidden>
+        <section class="card">
+          <h2>Wasserversorgung (Simulation)</h2>
+          <!-- Inhalt kommt aus js/water-ui.js (WaterUI.create -> #wasser-panel); der Hinweis darüber wird
+               von js/app.js gefüllt (keine Prognose/Vorschläge, keine OSM-Daten, keine Entnahmestellen). -->
+          <div id="wasser-hinweis" role="status" aria-live="polite"></div>
+          <div id="wasser-panel"></div>
         </section>
       </div>
 

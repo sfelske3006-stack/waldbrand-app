@@ -1,6 +1,8 @@
 # Annahmen und Parameter
 
-Alle Werte stehen versioniert in `js/params.js` (Version `0.5.0-prototyp`). Jede Zeile ist eine **Annahme**, bis sie fachlich bestätigt ist.
+Alle Werte stehen versioniert in `js/params.js` (Version `0.6.0-prototyp`); die Werte der Wasserversorgung in
+`js/water-params.js` (`PARAMS.wasser`, siehe Abschnitt „Neu in 0.6.0“). Jede Zeile ist eine **Annahme**, bis sie
+fachlich bestätigt ist.
 
 | Bereich | Parameter | Wert | Status |
 |---|---|---|---|
@@ -196,3 +198,166 @@ Lagebeurteilung beeinflussen können:
 | Rettungspunkte: Darstellung | Marker ab Zoom 13, Nummer ab Zoom 14; Nummern, die andere Kartenbeschriftungen überdecken würden, werden ausgeblendet (Marker und Popup bleiben erreichbar). Dadurch sind bei dichter Lage **nicht alle Nummern gleichzeitig lesbar**. | Annahme (Anzeige) |
 | Online-Suche | Nur auf ausdrückliche Aktion, höchstens 1 Anfrage/s, `bounded=1` auf das Gebiet, keine Weitergabe personenbezogener Daten (kein `email`-Parameter gesetzt). Der eingegebene Suchtext verlässt dabei das Gerät – darauf weist die Listenzeile hin. | Festlegung, Nutzungsbedingungen **zu prüfen** |
 | Datenschutz | Suchindex und Rettungspunkte liegen offline im Projekt; ohne Online-Suche verlässt kein Suchtext das Gerät. Jede Auswahl wird lokal im Sitzungsprotokoll vermerkt (Hash-Kette). | Festlegung |
+
+## Neu in 0.6.0 (Wasserversorgung)
+
+**Simulation mit Annahmen, keine Einsatzplanung.** Alle Werte stehen in `js/water-params.js` (`PARAMS.wasser`,
+Parameterversion `0.1.0-entwurf`). **Nichts davon ist validiert**: kein Abgleich mit einem Löschwasserkataster, keine
+Pumpenkennlinien, keine Ortskenntnis. Kennzeichnung wie im Modul: `[V]` Vorgabe Auftraggeber, `[App]` aus den
+bestehenden App-Parametern übernommen (dort selbst Annahme), `[F]` Faustwert aus der Feuerwehrausbildung
+(**Primärquelle nicht eingesehen**), `[P]` physikalisch begründet, `[A]` Annahme ohne belegte Quelle.
+
+### Zeit und Verfahren
+
+| Parameter | Wert | Status | Bemerkung |
+|---|---|---|---|
+| `horizonMin` | 360 min | `[V]` | Prognosezeitraum 6 h wie im übrigen Lagebild |
+| `dtMin` | 1 min | `[V]` | Warteschlangen rücken zu Beginn des nächsten Schrittes nach, Diskretisierungsfehler ≤ 1 min je Vorgang |
+| Fahrwege | Luftlinie × Umwegfaktor | `[App]` | **kein Routing**, keine Steigungen, Engstellen, Wendeprobleme |
+| Determinismus | keine Zufallszahlen | – | gleiche Eingabe ⇒ gleiches Ergebnis (durch Test abgesichert) |
+
+### Wasserbedarf der Abnehmer (`bedarf`)
+
+| Parameter | Wert | Status | Bemerkung |
+|---|---|---|---|
+| Riegelstellung je Fahrzeug | 2 C-Rohre × 150 l/min = 300 l/min | `[A]` | Auftrag nennt 100–200 l/min je Rohr; 150 l/min als Mittelwert. **Zu prüfen:** tatsächliche Rohranzahl je Fahrzeug |
+| Objektschutz je Fahrzeug | 2 × 100 l/min = 200 l/min | `[A]` | **zu prüfen** |
+| Flankensicherung | wie Riegelstellung (300 l/min) | `[A]` | Festlegung der Integration 0.6.0, **mit der Feuerwehr zu prüfen** |
+| Wenderohr (`mode: "wenderohr"`) | 800 l/min | `[A]` | in der App derzeit nicht gesetzt |
+| `einsatzAnteil` | 1,0 | `[A]` | durchgehende Wasserabgabe, konservativ; realistisch kleiner (Pausen, Umsetzen) – **festlegen** |
+| Tanknachfüllung des Abnehmers | 400 l/min, erst ab 50 % Beckenfüllung | `[A]` | damit der Tank des Abnehmers das Becken nicht leert |
+| `maxAbstandBeckenM` | 400 m | `[A]` | nur Hinweis in der Oberfläche, keine Rechengröße |
+| Beginn des Bedarfs | ab der **Bereitschaftszeit des jeweiligen Fahrzeugs** (`readyMin` aus `js/suggest.js`) | `[App]` | Auffanglinie der zweiten Bereitschaftsstufe liefert dadurch automatisch spätere Abnehmer |
+
+### Entnahmestellen (`quellen`)
+
+| Parameter | Wert | Status | Bemerkung |
+|---|---|---|---|
+| Hydrant ohne Angabe | 800 l/min | `[A]` | entspricht dem kleinsten Löschwasserbedarfswert (48 m³/h) der Tabelle in **DVGW W 405**; das ist der Bedarf eines Versorgungsgebiets, **keine Leistungszusage je Hydrant**. Normtext nicht eingesehen. **Zu prüfen: Löschwasserkataster / Wasserversorger** |
+| Hydrant nach Durchmesser | ≤ 80 mm: 600; ≤ 100: 800; ≤ 150: 1.200; sonst 1.600 l/min | `[A]` | grobe Staffel ohne Quelle, **zu prüfen** |
+| Hydrant: OSM-Tags | `flow_rate`, `fire_hydrant:flow_capacity`, `…:flow_rate`, `flow_capacity` (m³/h und l/s umgerechnet) | – | gelten als **ungeprüft** |
+| Füllplätze je Hydrant | 1 gleichzeitig | `[A]` | ein Standrohr; Doppelstandrohr **zu prüfen** |
+| Rüstzeit Hydrant | 3 min je Füllung | `[A]` | Standrohr setzen, kuppeln, abkuppeln |
+| Offenes Gewässer: Füllrate | Nennförderstrom × 0,5 | `[A]` | Saughöhe, Saugleitung, Tankfüllleitung. **Zu prüfen** |
+| Offenes Gewässer: gleichzeitig | 2 Fahrzeuge | `[A]` | setzt zwei nutzbare Saugstellen voraus – vor Ort selten gegeben |
+| Rüstzeit offenes Gewässer | 6 min je Füllung | `[A]` | |
+| Zuschlag „unsicheres“ Gewässer | 10 min bei der Auswahl | `[A]` | Steuergröße, keine physikalische Größe |
+| Löschwasserteich/-behälter ohne Tag | 100 m³ | `[A]` | **zu prüfen**, Kataster |
+| Gewässer „ausreichend“ ab | 5.000 m² Fläche; Fluss = ausreichend, Bach = unsicher | `[A]` | Wasserführung im Sommer unbekannt, reine Typzuordnung. Die App liefert für Gewässerflächen **keine Fläche** mit (`js/osm.js` setzt nur den Mittelpunkt) – sie werden deshalb als „unsicher, Größe unbekannt“ eingestuft |
+| Gewässer verworfen unter | 300 m² | `[A]` | |
+| Zugang zum Gewässer | befahrbarer Weg ≤ 30 m | `[A]` | Uferbeschaffenheit, Saughöhe, Wenden **nicht** geprüft |
+| `maxPendelM` | 8.000 m Luftlinie | `[A]` | weiter entfernte Entnahmestellen werden nicht angefahren |
+| Manuell gesetzte Stelle ohne Typ | wie Hydrant ohne Angabe (800 l/min) | `[A]` | in der Oberfläche als Annahme gekennzeichnet |
+
+**Grundsätzlich:** Entnahmestellen aus OpenStreetMap sind **ungeprüft** (Lage, Existenz, Ergiebigkeit). Die Oberfläche
+kennzeichnet sie (gestrichelter Rand, „?“, Tabellenspalte). Verifiziert sind nur die in der App bestätigten Punkte.
+**Ohne OSM-Daten werden keine Entnahmestellen angenommen**; der Reiter weist darauf hin.
+
+### Schlauchleitung / Förderstrecke (`schlauch`)
+
+| Parameter | Wert | Status | Bemerkung |
+|---|---|---|---|
+| Grenze Schlauch ↔ Pendelverkehr | 600 m Schlauchweg | `[V/A]` | im Auftrag als Beispiel genannt, konfigurierbar |
+| Umwegfaktor Schlauchweg | 1,2 | `[App]` | wie `suggestions` |
+| Druckverlust B-Leitung | 1,0 bar je 100 m bei 800 l/min, quadratisch mit Q | `[F]` | Ausbildungsfaustwert, Primärquelle nicht eingesehen; Schlauchalter/-typ unberücksichtigt |
+| max. Förderstrom je Leitung | 1.200 l/min | `[A]` | eine B-Leitung; zwei parallele Leitungen **nicht** modelliert |
+| Auslegungsreserve | Bedarf × 1,25, mindestens 400 l/min | `[A]` | |
+| Pumpenausgangsdruck | 8 bar | `[F/A]` | **keine Pumpenkennlinie**, fester Wert je Fahrzeug |
+| Mindesteingangsdruck | 1,5 bar | `[F]` | |
+| Höhendruck | 0,1 bar je m | `[P]` | 10 m Wassersäule ≈ 0,98 bar |
+| Höhenprofil | DGM 25 m, Schritt 25 m entlang der Luftlinie, höchster Punkt maßgebend | – | DGM1 NRW, Geobasis NRW, dl-de/zero-2-0; der echte Schlauchweg kann anders verlaufen. Ohne DGM wird die Höhe **nicht** geprüft |
+| Aufbauzeit | 10 min + 2 min je 100 m | `[A]` | hängt an Personal und Gelände |
+| Pumpenstandorte | gleichmäßig verteilt | `[A]` | Befahrbarkeit der Standorte **nicht** geprüft |
+
+### Pendelverkehr (`pendel`)
+
+| Parameter | Wert | Status | Bemerkung |
+|---|---|---|---|
+| Umwegfaktor Fahrweg | 1,3 | `[App]` | wie `suggest.waterText` |
+| Geschwindigkeit Straße / Waldweg | 25 / 10 km/h | `[App]` / `[A]` | langsamer Anteil = Abstand zur nächsten Straße. **Zu prüfen** |
+| Füllrate am Hydranten | min(Pumpe, Ergiebigkeit), höchstens 1.600 l/min | `[A]` | max. 2 B-Leitungen |
+| Füllrate ohne Pumpe (TW/LTW) | 800 l/min | `[A]` | **zu prüfen** – für die Großtanker entscheidend |
+| Entleeren ins Becken | 1.600 l/min (ohne Pumpe 800) | `[A]` | Auftrag nennt 1.600–2.000 l/min |
+| Rüstzeit am Becken | 2 min je Entleerung | `[A]` | |
+| Anfahrt mit vollem Tank | ja | `[A]` | Fahrzeuge entleeren zuerst ins Becken |
+| max. Anfahrt | 90 min | `[A]` | Großtanker werden trotz langer Anfahrt bevorzugt |
+| Großtanker ab | 8.000 l oder Typ `TW`/`LTW`/`WLF` | `[A]`/`[V]` | bevorzugte Auswahl (Auftrag: Großtanker bevorzugen) |
+| TLF ab | 2.400 l oder Typ `TLF`/`PTLF` | `[A]` | |
+| Reservefaktor der Planung | 1,15 | `[A]` | |
+| Beckenwechsel nach | 3 min Warten | `[A]` | |
+| Nachplanung | max. 6 Durchläufe, ab 5 % ungedecktem Bedarf | `[A]` | nur Verbesserungen werden übernommen |
+
+### Pufferbecken (`becken`)
+
+| Parameter | Wert | Status | Bemerkung |
+|---|---|---|---|
+| Volumen | 5.000 l | `[V]` | Faltbehälter laut Auftrag |
+| **Einspeisestellen je Becken** | **1** | **`[A]`** | **Größter Engpass im Modell**: Im Entwurfsszenario des Moduls entfielen dadurch ca. 23 % der Einsatzzeit der Pendelfahrzeuge auf Wartezeit am Becken. Sind zwei gleichzeitige Einspeisungen möglich, ändert sich das Ergebnis deutlich. **Vor weiterer Modellarbeit mit der Feuerwehr klären.** |
+| Aufbauzeit | 5 min ab Eintreffen des ersten zugeordneten Fahrzeugs | `[A]` | |
+| Becken je Gruppe | Bedarf / 600 l/min, aufgerundet, höchstens 4 | `[A]` | reine Dimensionierungsregel |
+| **Becken ohne Abnehmer** | als **„Reservestandort“** gekennzeichnet, **nicht eingeplant** | Festlegung 0.6.0 | Die Dimensionierungsregel kann mehr Becken erzeugen, als die Zuordnung „Abnehmer → nächstes Becken“ nutzt. Solche Becken erhalten keine Versorgung und keine Pendelfahrzeuge, erscheinen gestrichelt auf der Karte, mit eigenem Hinweis in der Liste und `rolle` im Export. **Ob sie aufgebaut werden, entscheidet die Einsatzleitung** (vorher wurden sie stillschweigend mitgeplant) |
+| Abnehmer-Cluster | 400 m | `[A]` | |
+| Standort | 80 m hinter dem Abnehmerschwerpunkt (vom Brand weg), Suchradius 600 m, Mindestabstand 20 m zwischen Becken | `[A]` | |
+| Sicherheitsabstand zur „möglich“-Zone | 100 m, Zeitbezug 6 h | `[A]` | Ersatzkriterium, wenn kein Standort außerhalb liegt: Zone darf den Standort frühestens 120 min nach Bereitschaft erreichen |
+| Standortbewertung Waldweg | 50 m Strafmaß gegenüber Straße | `[A]` | |
+| Untergrund, Platzbedarf, Gefälle | **nicht geprüft** | – | ein Faltbehälter braucht eine ebene Fläche – die Simulation kennt sie nicht |
+
+### Fahrzeugauswahl und Ausschlüsse (`fahrzeuge`)
+
+| Regel | Status | Bemerkung |
+|---|---|---|
+| Fahrzeuge der Kommune Neunkirchen-Seelscheid ausgeschlossen | `[V]` | eigene Kräfte für Riegel/Objektschutz/Grundschutz |
+| Pflichtfahrzeuge (`se-hlf20`, `se-lfkats`, `se-lf20`) ausgeschlossen | `[V]` | aus `PARAMS.pflichtFahrzeuge` |
+| Grundschutzfahrzeuge an den Gerätehäusern ausgeschlossen | `[V]` | aus `suggest.grundschutz` |
+| Abnehmer selbst (Riegel, Auffanglinie, Flanke, Objektschutz) ausgeschlossen | `[A]` | ein Fahrzeug hat eine Aufgabe |
+| Fahrzeuge im **Bereitstellungsraum** und mit der Vorschlagsaufgabe **„Wasserversorgung“** bleiben verfügbar | Festlegung 0.6.0 | Sie sind Reserve bzw. genau für diese Aufgabe gedacht. Folge: Die Fahrzeugliste des Wassermoduls kann von den Vorschlägen im Reiter „Lage“ abweichen (dort „Wasserversorgung/Pendelverkehr“ als grobe Abschätzung, hier die gerechnete Zuteilung). **Mit der Feuerwehr abzustimmen** |
+| Typen ohne Löschwasser (`ELW, KdoW, MTF, MTW, DLK, DL, GW, RW`) ausgeschlossen | `[App]` | wie `suggestions.noWaterTypes` |
+| Tankvolumen unbekannt oder 0, Anfahrt nicht schätzbar, Anfahrt > 90 min | `[A]` | Ausschluss mit Begründung im Reiter |
+| Anfahrtszeiten | `[App]` | aus `js/dispatch.js` (Ausrückzeit + Luftlinie × Umwegfaktor ÷ Geschwindigkeit), **kein Routing** |
+| Besatzung / Atemschutz / Ablösung nach 6 h | **nicht modelliert** | – |
+
+### Engpassdiagnose (`diagnose`)
+
+| Parameter | Wert | Status |
+|---|---|---|
+| Entnahmestelle „überlastet“ | ≥ 90 % belegt **und** Ø Wartezeit > 5 min je Füllung | `[A]` |
+| Engpass allgemein | Pendelfahrzeuge warten > 25 % ihrer Einsatzzeit | `[A]` |
+| Hinweis Becken | Ø Wartezeit je Fahrzeug > 10 min | `[A]` |
+| eingeschwungener Zustand | mindestens die letzten 60 min des Zeitraums | `[A]` |
+| Empfehlung „zusätzlich X Tanker“ | Defizit / mittlere Lieferung je eingesetztem Pendelfahrzeug | `[A]`, lineare Hochrechnung, gilt nur ohne Engpass an Quelle/Becken |
+
+### Oberfläche
+
+| Festlegung | Status | Bemerkung |
+|---|---|---|
+| Zeitregler 0–6 h, Schritt 1 min | `[V]` | entspricht `dtMin`/`horizonMin` |
+| Geschwindigkeit 1× / 10× / 60× bezogen auf Echtzeit | `[A]` | 60× = 1 h Simulation je Minute; Position zwischen zwei Minutenwerten **linear** interpoliert |
+| Füllstandsanzeige | Prozent des 5.000-l-Beckens, blinkender roter Rand bei leerem Becken | – | |
+| Schlauchleitung durchgezogen, Pendelroute gestrichelt | `[V]` | Pendelrouten sind **Luftlinien** zwischen tatsächlich genutzter Entnahmestelle und Becken, aus der Simulation abgeleitet |
+| Symbole | H = Hydrant (eckig), ≈ = offenes Gewässer (rund), T = Behälter/Teich (gefüllt), ? = Typ offen (gepunktet) | `[A]` | kein genormtes taktisches Zeichen (**zu prüfen:** Darstellung nach FwDV/DV 102 gewünscht?) |
+| Bedienelemente ≥ 52 px (`--tap`), Dark/Light wie `css/app.css` | `[App]` | Tablet mit Handschuhen |
+
+### Offene Fragen an die Feuerwehr / den Auftraggeber (Wasserversorgung)
+
+1. **Löschwasserkataster:** Gibt es eine geprüfte Liste von Entnahmestellen mit Ergiebigkeit (Hydranten, Teiche,
+   Saugstellen)? Dann ersetzt sie die OSM-Annahmen vollständig.
+2. **Hydrantenergiebigkeit:** Welche Werte darf man im Gemeindegebiet ansetzen (800 l/min ist eine grobe Annahme)?
+   Zusagen des Wasserversorgers, auch zur gleichzeitigen Entnahme an mehreren Hydranten?
+3. **Füllrate der Großtanker ohne eigene Pumpe** (TW 17000, LTW 14000) am Hydranten und an der Saugstelle?
+4. **Entleeren ins Faltbecken:** 1.600 l/min realistisch? **Wie viele Fahrzeuge können gleichzeitig einspeisen
+   (derzeit 1)?** Das bestimmt den größten Engpass im Modell.
+5. **Wasserbedarf je Riegelfahrzeug:** 2 Rohre à 150 l/min durchgehend – oder mit welchem Einsatzanteil? Zählt die
+   Flankensicherung wie eine Riegelstellung (derzeit ja)?
+6. **Anzahl verfügbarer Faltbehälter (5.000 l) im Kreis** und wer sie bringt – bisher wird angenommen, dass an jedem
+   geplanten Standort einer verfügbar ist. Sollen Reservestandorte ohne Abnehmer überhaupt ausgewiesen werden?
+7. **Standortkriterien für Becken:** Mindestfläche, Gefälle, Abstand zum Riegel, Räumungsvorlauf – derzeit nur 100 m
+   Abstand zur „möglich“-Zone und ein befahrbarer Weg.
+8. **Grenze Schlauchleitung ↔ Pendelverkehr:** 600 m sinnvoll? Wie viele B-Leitungen und Verstärkerpumpen stehen zur
+   Verfügung?
+9. **Pendelgeschwindigkeit** 25 km/h Straße / 10 km/h Waldweg – passt das zu den Erfahrungswerten?
+10. **Darstellung:** Sollen die Symbole taktischen Zeichen folgen? Welche Angaben gehören in Ausdruck und Export für
+    die Einsatzleitung?
+11. **Ablösung/Betriebsdauer:** Was passiert nach 6 h – soll die Simulation Ablösezyklen abbilden?
+12. **Fahrzeugzuteilung:** Dürfen Fahrzeuge aus dem Bereitstellungsraum für die Wasserversorgung verplant werden
+    (derzeit ja)? Soll die Vorschlagsaufgabe „Wasserversorgung“ im Reiter „Lage“ durch die gerechnete Zuteilung des
+    Wassermoduls ersetzt werden?

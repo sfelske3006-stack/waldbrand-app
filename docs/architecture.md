@@ -76,6 +76,68 @@ Auswahl → Karte (Marker oder Rechteck) + Ergebniskarte mit Quelle → optional
 **Laufzeit** (Node, gesamter Index): unter 100 ms je Anfrage (Test), typisch 5–20 ms. Index laden und aufbereiten im Browser
 ca. 0,3–0,6 s (einmalig, beim ersten Fokus); die Eingabe ist mit 120 ms entprellt.
 
+## Wasserversorgung (0.6.0)
+
+Simulation mit Annahmen, keine Einsatzplanung. Rechenkern `js/water.js` (DOM-frei, deterministisch), Oberfläche
+`js/water-ui.js`, Parameter `js/water-params.js` (`PARAMS.wasser`), Stile `css/water.css`.
+
+**Entwurfsentscheidungen**
+
+| Thema | Gewählt | Alternativen | Begründung |
+|---|---|---|---|
+| Parameter | eigene Datei `js/water-params.js`, hängt `PARAMS.wasser` ein, wenn `PARAMS` existiert | Block in `js/params.js` | Das Modul wurde parallel zur Ortssuche entwickelt; eine eigene Datei vermeidet Konflikte in `js/params.js` und hält die ca. 140 Zeilen Wasserparameter samt Herkunftskennzeichen [A]/[F]/[P]/[V]/[App] zusammen. `PARAMS.wasser` ist trotzdem überall verfügbar. |
+| Zeitmodell | eigene zeitdiskrete Simulation, 1 min, 6 h, deterministisch (keine Zufallszahlen, feste Sortierreihenfolgen) | ereignisdiskrete Simulation, analytische Umlaufrechnung | Warteschlangen an Entnahmestelle und Becken, Beckenfüllstand und Animation brauchen einen Zeitverlauf. 361 Schritte × wenige Dutzend Fahrzeuge rechnen in ca. 10–150 ms, damit ist Neurechnen beim Ziehen eines Beckens möglich. Determinismus ist durch Test abgesichert. |
+| Wege | Luftlinie × Umwegfaktor (1,3 Fahrt, 1,2 Schlauch), Geschwindigkeit nach Wegtyp aus dem OSM-Raster | Routing (OSRM/Valhalla), Dijkstra auf dem `drivable`-Raster | Dieselbe Festlegung wie bei der Anfahrtsschätzung (kein Routing-Dienst im Prototyp). Das `drivable`-Raster liefert nur, **ob** ein Punkt an Straße oder Waldweg liegt (Abstand zur nächsten Straße bestimmt den langsamen Anteil). Ein Routing wäre Phase 2 und würde das Modell nicht ändern, nur die Fahrzeiten. |
+| Wegenetz | `Water.roadNet(null, {points})` aus den befahrbaren Zellen des bestehenden OSM-Rasters (1 = Straße, 2 = Wald-/Wirtschaftsweg), Nachbarschaftssuche über ein 200-m-Gitter | eigene Overpass-Abfrage für Wege | Die App hat die Daten bereits; eine zweite Abfrage wäre doppelte Last und könnte abweichen. Typisch einige hundert bis wenige tausend Punkte (Test: 860). |
+| Becken | Dimensionierung aus dem Bedarf je Abnehmergruppe, Standortwahl per Bewertung (Abstand zum Zielpunkt hinter den Abnehmern, Wegtyp, Sicherheitsabstand zur „möglich“-Zone) | feste Zahl, nur manuell | Die automatische Planung soll einen Startpunkt liefern, den die Einsatzleitung verschiebt. Becken, die die Regel erzeugt, denen aber kein Abnehmer zugeordnet ist, werden als **Reservestandort** gekennzeichnet und nicht eingeplant (sonst würden sie stillschweigend Fahrzeuge binden). |
+| Diagramme | Canvas, offscreen gezeichnet, bei Zeitänderung nur Cursor neu | SVG, Diagrammbibliothek | Keine zusätzliche Abhängigkeit; bei 60-facher Abspielgeschwindigkeit bleibt die Anzeige flüssig (nur der Cursor wird neu gesetzt). |
+| Animation | Position linear zwischen den Minutenwerten interpoliert (`Water.vehicleAt`) | Zustand nur je Minute | Ruhigere Bewegung ohne zusätzliche Simulationsschritte. |
+| Entzerrung der Beschriftung | Becken, Entnahmestellen, Abnehmer und Pumpen sind **feste Hindernisse** in `declutterLabels()`; die Fahrzeugmarker (`.wveh`) bleiben ausgenommen | alle Wassermarker mitentzerren | Die Wasserfahrzeuge bewegen sich im Zeitverlauf; eine Entzerrung je Frame wäre teuer und würde flackern. `declutterLabels` verschiebt per `style.transform` – bei Leaflet-Tooltips ist `transform` die Position (Falle, siehe Suche). |
+| Doppelte Entnahmestellen-Ebene | Beim Öffnen des Reiters wird die Modul-Ebene ein- und die App-Ebene „Wasserentnahmestellen“ ausgeschaltet, beim Verlassen zurück | beide gleichzeitig, eine ganz entfernen | Es sind dieselben Punkte in zwei Darstellungen. Die App-Ebene trägt das Bearbeiten/Verifizieren und bleibt deshalb erhalten; die Modul-Ebene zeigt Typ, Ergiebigkeit und „ungeprüft“. |
+
+**Nicht übernommen (bewusst):** Die eigenständige Entwurfsdemo des Moduls (`demo.html`, `js/water-demo.js`) und die
+beiden Smoke-Skripte liegen **nicht** im Repository. Gründe: Die Demo arbeitet mit einem **frei erfundenen** Szenario
+(Abnehmer, Entnahmestellen, Anfahrtszeiten) – auf GitHub Pages veröffentlicht könnte das für eine echte Lage gehalten
+werden; sie bräuchte zusätzlich eigene Kopien von Leaflet, DGM und `js/dem.js` oder angepasste Pfade; und `js/app.js`
+enthält mit `waterInput()` denselben Ablauf mit echten Daten. Der Loader-Test (`tests/model.test.mjs`) verlangt
+ohnehin für **jede** Datei in `js/` einen Eintrag in `window.WB_JS` – `js/water-demo.js` dürfte dort nicht liegen.
+Die 20 Prüfungen aus `tests/e2e-wasser.mjs` sind, soweit sie sich auf die echte App übertragen lassen, in
+`tests/e2e.mjs` aufgegangen (Abschnitt „Wasserversorgung“, 19 Prüfungen inklusive zweier Prüfungen ohne OSM-Daten und
+einer unter dem GitHub-Pages-Unterpfad).
+
+**Schnittstellen**
+
+- `Water.planSupply(input)` → `plan`, `Water.simulate(plan)` → `sim`, `Water.run(input)` → `{plan, sim, iterations, log}`
+  (Nachplanung bei Defizit: mehr Pendelfahrzeuge bzw. ein zusätzliches Becken, höchstens 6 Durchläufe, nur Verbesserungen).
+- `input = {W: PARAMS.wasser, consumers[{id, label, lat, lon, readyMin, tankL, kind, mode?, demandLpm?}],
+  sources[Punktformat der App], vehicles[{…, anfahrtMin, originLat, originLon}], exclude{pflichtIds, grundschutzIds,
+  assignedIds, ids}, basins: null | [{id, lat, lon}], roads: Water.roadNet(…) | null, terrain: {elevation(lat, lon)} | null,
+  hazard: {center, possibleMinAt(lat, lon)} | null}`.
+- `plan`: `basins[{id, lat, lon, manual, reserve, demandLpm, consumerIds, supply{kind, sourceId, hose}, safety, siteNote}]`,
+  `sources` (eingestuft, `capLpm`, `capWhy`, `annahmen[]`, `verified`), `vehicles[{id, role: pendel|pumpe|verstaerker|reserve, …}]`,
+  `excluded[{id, label, reason}]`, `notes[]`, `warnings[]`.
+- `sim`: je Becken Zeitreihen (`level`, `inflow`, `inflowHose`, `outflow`), je Fahrzeug `state`/`lat`/`lon`/`load`,
+  je Entnahmestelle Auslastung, Füllungen, Wartezeit, Restvolumen; `kpi` (Bedarf, Lieferung, Defizit, Deckung, Warteanteile),
+  `diagnosis[{level, text}]`, `bottleneck`.
+- `Water.summary(plan, sim)` → zeitreihenfreie Zusammenfassung für Protokoll und Export.
+- `WaterUI.create({map, L, W, panel})` → `{layers{sources, hoses, routes, basins, vehicles}, setInput, recompute, setTime,
+  play, pause, setSpeed, setAddMode, addBasin, moveBasin, deleteBasin, redraw, fitBounds, on("recompute"), result, time}`.
+- Verdrahtung in `js/app.js`: `waterInput()` baut die Eingabe aus `S.run`, `S.sug`, `S.vehicles`, `S.stations`, `S.dem` und
+  `allWaterPoints()`; `updateWater()` läuft nach jeder Vorschlagsrechnung und nach jeder Änderung an den Entnahmestellen;
+  `ensureWaterUI()` erzeugt die Oberfläche einmalig und hängt die Ebenen in den Ebenenschalter; `onWaterTab()` protokolliert
+  beim ersten Öffnen die Annahmen und zeichnet neu. Beim Theme-Wechsel `waterUI.redraw()` (die Canvas-Diagramme lesen die
+  CSS-Variablen).
+
+**Datenfluss Wasser**: Vorschläge (Riegel/Auffanglinie/Flanke/Objektschutz mit `readyMin`) → Abnehmer mit Bedarf →
+Gruppierung (400 m) → Becken dimensionieren und verorten (Wegenetz + „möglich“-Zone aus der Prognose) → Abnehmer dem
+nächsten Becken zuordnen → je Becken Förderstrecke prüfen (Länge, Reibung, Höhe aus dem DGM, freie Pumpen) sonst
+Pendelverkehr → Fahrzeuge auswählen (Ausschlüsse, Großtanker zuerst) → 1-min-Simulation mit Warteschlangen →
+Kennzahlen, Engpassdiagnose, Nachplanung → Karte, Diagramme, Tabellen, Protokoll (`wasser_plan`), Export.
+
+**Laufzeit** (gemessen im Browser-Test, Chromium in der Sandbox): Planung + Simulation für 13 Abnehmer, 10 Becken,
+2 Entnahmestellen und 33 geeignete Fahrzeuge ca. 120 ms inklusive 6 Nachplanungen; Neurechnen beim Verschieben eines
+Beckens ca. 15 ms. Unit-Test „Performance“: 20 Fahrzeuge, 8 Abnehmer, 6 h in 1-min-Schritten unter 200 ms.
+
 ## Laufzeit (gemessen im Test, Chromium in der Sandbox)
 
 0.4.0 mit Geländewind (Node, 24 + 1 Läufe, 400 × 400 Zellen, hügeliges Gelände): 0,5–1,1 s (ohne Geländewind 0,13–0,42 s); Vorbereitung der Geländefelder ca. 70–90 ms je Raster. Im Browser-E2E ca. 0,7–0,8 s je Prognose.

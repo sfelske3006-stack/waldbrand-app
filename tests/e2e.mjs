@@ -756,6 +756,21 @@ try {
   check("Unterpfad: Ortssuche lädt data/suche-index.json und data/rettungspunkte-kwf.json relativ und findet die Adresse",
     subHit.trim() === "Zum Wirbel 12a" && subIdx.length === 2 && subIdx.every((u) => u.startsWith(PREFIX)) && outside.length === 0 && notFound.length === 0 && subErr.length === 0,
     subIdx.join(", "));
+  // Wassermodul unter dem Unterpfad: css/water.css und js/water*.js werden relativ geladen, der Reiter rechnet
+  await pg.click("#tab-wasser");
+  await pg.waitForTimeout(400);
+  const subW = await pg.evaluate(() => {
+    const ui = window.__wb.water();
+    return { has: typeof window.Water === "object" && typeof window.WaterUI === "object",
+      css: !!getComputedStyle(document.documentElement).getPropertyValue("--w-level").trim(),
+      panel: document.getElementById("wasser-panel").innerText.length,
+      hint: document.getElementById("wasser-hinweis").innerText.replace(/\s+/g, " ").slice(0, 80),
+      basins: ui && ui.result ? ui.result.plan.basins.length : null };
+  });
+  const subFiles = served2.filter((u) => /water/.test(u));
+  check("Unterpfad: Wassermodul (js/water*.js, css/water.css) relativ geladen, Reiter „Wasser“ nutzbar",
+    subW.has && subW.css && subFiles.length === 4 && subFiles.every((u) => u.startsWith(PREFIX)) && (subW.panel > 200 || /Keine/.test(subW.hint)) && outside.length === 0 && notFound.length === 0 && subErr.length === 0,
+    `${subFiles.length} Dateien: ${subFiles.join(", ")}; Becken ${subW.basins}; Hinweis: ${subW.hint}`);
   await c.close();
   sub.close();
 } catch (e) {
@@ -813,6 +828,290 @@ try {
   await pg.context().close();
 } catch (e) {
   check("Testablauf ohne DGM", false, e.message);
+}
+
+// ---------------------------------------------------------------- Wasserversorgung (Modul, 0.6.0)
+// Lage wie beim Konturen-Screenshot (hügeliges Gelände, synthetische OSM-Daten mit Hydrant und Teich):
+// erzeugt Riegel- und Objektschutzfahrzeuge, also Abnehmer mit Wasserbedarf.
+try {
+  const { hillOsm } = await import("./synth-osm.mjs");
+  const c2 = await browser.newContext({ viewport: { width: 1400, height: 950 }, deviceScaleFactor: 2 });
+  const pg = await c2.newPage();
+  pg.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text()); });
+  pg.on("pageerror", (e) => consoleErrors.push("PAGEERROR " + e.message));
+  await pg.route("**/*", (route) => { const u = new URL(route.request().url()); if (u.hostname === "localhost") return route.continue(); blocked.add(u.hostname); return route.abort("blockedbyclient"); });
+  await ack(pg);
+  await pg.evaluate(() => window.__wb.demReady());
+  const lat0 = 50.8045, lon0 = 7.3405, r = 60;
+  const pts = Array.from({ length: 12 }, (_, k) => [lat0 + (r / 111195) * Math.cos((k / 12) * 2 * Math.PI), lon0 + (r / (111195 * Math.cos((lat0 * Math.PI) / 180))) * Math.sin((k / 12) * 2 * Math.PI)]);
+  await pg.evaluate((p) => window.__wb.setPolygon(p), pts);
+  const osmJson = hillOsm(lat0, lon0);
+  await pg.evaluate((j) => window.__wb.injectOsm(j, "Testdaten (synthetisch)"), osmJson);
+  await pg.click("#btn-wx-sample");
+  await pg.click("#wx-override summary");
+  for (const [k, v] of [["windKmh", "12"], ["windDirDeg", "225"], ["tempC", "27"], ["rh", "30"]]) { await pg.fill(`#ov-${k}`, v); await pg.locator(`#ov-${k}`).dispatchEvent("change"); }
+  await pg.check("#chk-shade");
+  await pg.click("#btn-run");
+  await pg.waitForFunction(() => document.querySelector("#suggestions")?.innerText.length > 0, null, { timeout: 60000 });
+
+  // 1) Reiter „Wasser“ erscheint und zeigt den Pflichthinweis des Moduls
+  await pg.click("#tab-wasser");
+  await pg.waitForSelector("#w-kpi table", { timeout: 20000 });
+  const tabOk = await pg.evaluate(() => ({
+    selected: document.getElementById("tab-wasser").getAttribute("aria-selected"),
+    visible: !document.getElementById("panel-wasser").hidden,
+    disclaimer: document.querySelector("#wasser-panel .w-disclaimer").innerText.replace(/\s+/g, " "),
+    hint: document.getElementById("wasser-hinweis").innerText,
+  }));
+  check("Wasser: Reiter erscheint mit Pflichthinweis „Simulation mit Annahmen, keine Einsatzplanung“",
+    tabOk.selected === "true" && tabOk.visible && /Simulation mit Annahmen, keine Einsatzplanung/.test(tabOk.disclaimer) && !tabOk.hint.trim(),
+    tabOk.disclaimer.slice(0, 90));
+
+  // 2) Plan und Simulation gerechnet; Abnehmer stammen aus den Fahrzeugaufgaben
+  const w1 = await pg.evaluate(() => {
+    const ui = window.__wb.water(), r = ui.result, s = window.__wb.state.sug;
+    const wanted = s.vehicles.filter((v) => ["Riegel", "Flanke", "Objektschutz"].includes(v.taskKind));
+    return {
+      basins: r.plan.basins.length, reserve: r.plan.basins.filter((b) => b.reserve).map((b) => b.id),
+      consumers: r.plan.consumers.length, wanted: wanted.length, kinds: [...new Set(wanted.map((v) => v.taskKind))],
+      readyMins: [...new Set(r.plan.consumers.map((c) => c.readyMin))].sort((a, b) => a - b),
+      sources: r.plan.sources.length, unverified: r.plan.sources.filter((x) => !x.verified).length,
+      pendel: r.plan.vehicles.filter((v) => v.role === "pendel").length,
+      kpi: r.sim.kpi, ms: r.ms, it: r.iterations,
+      kpiText: document.getElementById("w-kpi").innerText.replace(/\s+/g, " "),
+      diag: document.querySelectorAll("#w-diag li").length,
+      charts: document.querySelectorAll("#wasser-panel canvas.w-chart").length,
+      markers: { basin: document.querySelectorAll("#map .wbasin").length, src: document.querySelectorAll("#map .wsrc").length, cons: document.querySelectorAll("#map .wcons").length, veh: document.querySelectorAll("#map .wveh").length, route: document.querySelectorAll("#map path.w-route").length },
+    };
+  });
+  check("Wasser: Simulation rechnet (Becken, Entnahmestellen, Pendelfahrzeuge, Kennzahlen)",
+    w1.basins >= 1 && w1.sources >= 1 && w1.pendel >= 1 && w1.kpi.demandLpm > 0 && w1.ms < 2000 &&
+    /Bedarf/.test(w1.kpiText) && /Lieferung/.test(w1.kpiText) && /Defizit/.test(w1.kpiText) && /erstes Leerlaufen/.test(w1.kpiText),
+    `${w1.basins} Becken, ${w1.sources} Entnahmestellen, ${w1.pendel} Pendelfahrzeuge, Bedarf ${Math.round(w1.kpi.demandLpm)} l/min, Deckung ${w1.kpi.coveragePct.toFixed(0)} %, ${w1.ms.toFixed(0)} ms, ${w1.it} Nachplanung(en)`);
+  check("Wasser: Abnehmer sind genau die Fahrzeuge für Riegel/Auffanglinie, Flanke, Objektschutz (je eigene Bereitschaftszeit)",
+    w1.consumers === w1.wanted && w1.consumers >= 1 && w1.readyMins.length >= 1 && w1.readyMins.every((m) => m >= 0),
+    `${w1.consumers} Abnehmer (${w1.kinds.join(", ")}), Bereitschaft ${w1.readyMins.join("/")} min`);
+  check("Wasser: Kartenebenen und Diagramme (Becken, Entnahmestellen, Abnehmer, Fahrzeuge, Pendelrouten)",
+    w1.markers.basin === w1.basins && w1.markers.src >= 1 && w1.markers.cons >= 1 && w1.markers.veh >= 1 && w1.charts === w1.basins,
+    JSON.stringify(w1.markers) + `, ${w1.charts} Diagramme`);
+  check("Wasser: ungeprüfte Entnahmestellen (OSM) gekennzeichnet",
+    w1.unverified >= 1 && (await pg.locator("#map .wsrc.unverified").count()) >= 1 && /ungeprüft/.test(await pg.locator("#w-srctable").innerText()),
+    `${w1.unverified} von ${w1.sources} ungeprüft`);
+  check("Wasser: Becken ohne Abnehmer werden als Reservestandort gekennzeichnet, nicht eingeplant",
+    await pg.evaluate(() => {
+      const r = window.__wb.water().result;
+      const bad = r.plan.basins.filter((b) => (b.demandLpm === 0) !== !!b.reserve);
+      const planned = r.plan.basins.filter((b) => b.reserve && (b.shuttleTarget || b.supply.kind !== "keine"));
+      const tagged = [...document.querySelectorAll("#wasser-panel .w-basinhead")].filter((e) => /Reservestandort/.test(e.innerText)).length;
+      return bad.length === 0 && planned.length === 0 && tagged === r.plan.basins.filter((b) => b.reserve).length;
+    }), w1.reserve.length ? `Reservestandorte: ${w1.reserve.join(", ")}` : "in dieser Lage kein Becken ohne Abnehmer");
+
+  // 3) Zeitregler: Fahrzeuge und Füllstände bewegen sich
+  const snap = () => pg.evaluate(() => ({
+    clock: document.getElementById("w-clock").textContent,
+    veh: [...document.querySelectorAll("#map .leaflet-marker-icon")].filter((e) => e.querySelector(".wveh")).map((e) => e.style.transform),
+    fills: [...document.querySelectorAll("#map .wbasin .fill")].map((e) => e.style.height),
+    states: [...document.querySelectorAll("#map .wveh")].map((e) => e.className),
+  }));
+  await pg.evaluate(() => window.__wb.water().setTime(60));
+  const sA = await snap();
+  await pg.evaluate(() => window.__wb.water().setTime(180));
+  const sB = await snap();
+  check("Wasser: Zeitregler bewegt Fahrzeuge und ändert Füllstände (Uhr 1:00 h -> 3:00 h)",
+    sA.clock === "1:00 h" && sB.clock === "3:00 h" && JSON.stringify(sA.veh) !== JSON.stringify(sB.veh) && JSON.stringify(sA.fills) !== JSON.stringify(sB.fills) && new Set([...sA.states, ...sB.states]).size > 1,
+    `${sA.veh.length} Fahrzeugmarker, Füllstände ${sA.fills.join("/")} -> ${sB.fills.join("/")}`);
+  // Abspielen bei 60x und Pause
+  await pg.evaluate(() => { const u = window.__wb.water(); u.setTime(100); u.setSpeed(60); u.play(); });
+  await pg.waitForTimeout(2500);
+  const tPlay = await pg.evaluate(() => Number(document.getElementById("w-clock").getAttribute("data-min")));
+  await pg.evaluate(() => window.__wb.water().pause());
+  await pg.waitForTimeout(700);
+  const tPause = await pg.evaluate(() => Number(document.getElementById("w-clock").getAttribute("data-min")));
+  await pg.waitForTimeout(600);
+  const tPause2 = await pg.evaluate(() => Number(document.getElementById("w-clock").getAttribute("data-min")));
+  check("Wasser: Abspielen (60×) läuft, Pause hält an", tPlay > 100 && tPause === tPause2, `nach 2,5 s bei ${tPlay} min, nach Pause konstant ${tPause} min`);
+
+  // 4) Ausschlüsse: Pflichtfahrzeuge, Grundschutz, eigene Kommune, Abnehmer selbst
+  const ex = await pg.evaluate(() => {
+    const r = window.__wb.water().result, s = window.__wb.state;
+    const byId = new Map(r.plan.excluded.map((e) => [e.id, e.reason]));
+    const gs = s.sug.grundschutz.filter((a) => a.vehicle).map((a) => a.vehicle.id);
+    const planned = r.plan.vehicles.filter((v) => v.role !== "reserve").map((v) => v.id);
+    const nks = s.vehicles.filter((v) => v.kommune === "Neunkirchen-Seelscheid").map((v) => v.id);
+    return {
+      pflicht: s.sug.dispatch.pflicht, gs, n: r.plan.excluded.length,
+      pflichtReasons: s.sug.dispatch.pflicht.map((id) => byId.get(id) || null),
+      gsReasons: gs.map((id) => byId.get(id) || null),
+      nksAll: nks.every((id) => byId.has(id)), nksN: nks.length,
+      consumerIds: r.plan.consumers.map((c) => c.id),
+      consumerExcluded: r.plan.consumers.every((c) => byId.has(c.id)),
+      inPlan: planned.filter((id) => [...s.sug.dispatch.pflicht, ...gs, ...nks].includes(id)),
+      panel: document.getElementById("w-excluded").innerText.slice(0, 160),
+    };
+  });
+  check("Wasser: Pflicht-, Grundschutz- und Neunkirchen-Seelscheider Fahrzeuge sind ausgeschlossen und begründet",
+    ex.pflichtReasons.every((t) => t && /Pflichtfahrzeug|eigenen Kommune/.test(t)) &&
+    ex.gsReasons.every((t) => t && /Grundschutz|eigenen Kommune/.test(t)) &&
+    ex.nksAll && ex.consumerExcluded && ex.inPlan.length === 0 && /nicht für die Wasserversorgung/.test(ex.panel),
+    `${ex.n} ausgeschlossen (Pflicht ${ex.pflicht.join(", ")}, Grundschutz ${ex.gs.join(", ")}, ${ex.nksN} Fahrzeuge der eigenen Kommune), Abnehmer ${ex.consumerIds.length} nicht doppelt verplant`);
+
+  // 5) Becken verschieben rechnet neu und wird protokolliert
+  const mv = await pg.evaluate(() => {
+    const ui = window.__wb.water();
+    const b0 = ui.result.plan.basins[0];
+    const before = { id: b0.id, lat: b0.lat, lon: b0.lon, unmet: ui.result.sim.kpi.unmetLpm, cov: ui.result.sim.kpi.coveragePct };
+    const t0 = performance.now();
+    ui.moveBasin(b0.id, b0.lat - 0.0040, b0.lon - 0.0055); // ca. 550 m nach Südwesten
+    const ms = performance.now() - t0;
+    const r2 = ui.result, b1 = r2.plan.basins.find((x) => x.id === before.id);
+    const pe = Protocol.all().filter((e) => e.typ === "wasser_becken").pop();
+    return { before, after: { lat: b1.lat, manual: b1.manual, unmet: r2.sim.kpi.unmetLpm, cov: r2.sim.kpi.coveragePct, calc: r2.ms }, ms,
+      proto: pe ? pe.daten : null, verify: Protocol.verify().ok, plans: Protocol.all().filter((e) => e.typ === "wasser_plan").length };
+  });
+  check("Wasser: Becken verschieben rechnet neu (manuell markiert, Protokolleintrag, Kette intakt)",
+    Math.abs(mv.after.lat - mv.before.lat) > 1e-4 && mv.after.manual === true && mv.after.calc < 2000 && mv.verify &&
+    mv.proto && mv.proto.aktion === "verschoben" && mv.proto.id === mv.before.id && mv.proto.defizit_nachher_lpm === Math.round(mv.after.unmet),
+    `Deckung ${mv.before.cov.toFixed(0)} % -> ${mv.after.cov.toFixed(0)} %, Defizit ${Math.round(mv.before.unmet)} -> ${Math.round(mv.after.unmet)} l/min, Neuberechnung ${mv.after.calc.toFixed(0)} ms, ${mv.plans} Protokolleinträge wasser_plan`);
+  // Becken hinzufügen/löschen
+  const ad = await pg.evaluate(() => {
+    const ui = window.__wb.water();
+    const n0 = ui.result.plan.basins.length, b = ui.result.plan.basins[0];
+    ui.addBasin(b.lat + 0.0012, b.lon + 0.0016);
+    const n1 = ui.result.plan.basins.length;
+    const last = ui.result.plan.basins[ui.result.plan.basins.length - 1];
+    ui.deleteBasin(last.id);
+    return { n0, n1, n2: ui.result.plan.basins.length, ok: !!ui.result.sim };
+  });
+  check("Wasser: Becken hinzufügen und löschen bleibt rechenbar", ad.n1 === ad.n0 + 1 && ad.n2 === ad.n0 && ad.ok, JSON.stringify(ad));
+  await pg.evaluate(() => window.__wb.water().setInput(window.__wb.waterInput())); // wieder automatische Becken
+
+  // 6) Protokoll und GeoJSON-Export
+  const px = await pg.evaluate(() => {
+    const types = Protocol.all().map((e) => e.typ);
+    const plan = Protocol.all().filter((e) => e.typ === "wasser_plan").pop();
+    const ann = Protocol.all().find((e) => e.typ === "wasser_annahmen");
+    return { annahmen: !!ann, annText: ann ? JSON.stringify(ann.daten).slice(0, 120) : "", plan: plan ? plan.daten : null,
+      size: plan ? JSON.stringify(plan.daten).length : 0, verify: Protocol.verify(), types: [...new Set(types)].filter((t) => t.startsWith("wasser")) };
+  });
+  check("Wasser: Protokoll mit wasser_annahmen und wasser_plan (Kennzahlen, Diagnose), Kette intakt",
+    px.annahmen && px.plan && px.plan.bedarf_lpm > 0 && px.plan.diagnose.length >= 1 && typeof px.plan.deckung_pct === "number" && px.verify.ok && px.size < 12000,
+    `${px.types.join(", ")}; Eintrag ${px.size} Byte; ${px.verify.count} Einträge`);
+  await pg.click("#tab-protokoll");
+  await pg.click("#btn-geojson");
+  const gjw = JSON.parse(await pg.locator("#exp-text").inputValue());
+  const byTyp = (t) => gjw.features.filter((f) => f.properties.typ === t);
+  const srcF = byTyp("entnahmestelle");
+  check("Wasser: GeoJSON-Export mit Pufferbecken, Abnehmern, Pendelrouten und eingestuften Entnahmestellen",
+    byTyp("pufferbecken").length >= 1 && byTyp("wasserabnehmer").length >= 1 &&
+    (byTyp("pendelroute").length + byTyp("schlauchleitung").length) >= 1 &&
+    byTyp("pendelroute").every((f) => /LUFTLINIE/.test(f.properties.geometrie)) &&
+    srcF.every((f) => "ergiebigkeit_lpm" in f.properties && "grundlage" in f.properties),
+    `${byTyp("pufferbecken").length} Becken, ${byTyp("wasserabnehmer").length} Abnehmer, ${byTyp("pendelroute").length} Pendelrouten, ${byTyp("schlauchleitung").length} Schlauchleitungen, ${srcF.length} Entnahmestellen`);
+  await pg.click("#btn-exp-close");
+  await pg.click("#tab-wasser");
+
+  // 7) Keine überlappenden Beschriftungen: entzerrte Label weichen den Wassermarkern aus
+  await pg.evaluate(() => {
+    const s = window.__wb.state, r = window.__wb.water().result, p = [...s.poly];
+    for (const l of s.sug.lines) p.push(...l.latlngs);
+    for (const v of s.sug.vehicles) p.push([v.lat, v.lon]);
+    for (const b of r.plan.basins) p.push([b.lat, b.lon]);
+    for (const x of r.plan.sources) p.push([x.lat, x.lon]);
+    window.__wb.map.fitBounds(L.latLngBounds(p).pad(0.15), { animate: false });
+  });
+  await pg.waitForTimeout(1200);
+  const ovW = await pg.evaluate(() => {
+    const rect = (sel) => [...document.querySelectorAll(sel)].map((e) => e.getBoundingClientRect()).filter((r) => r.width > 2 && r.height > 2);
+    const labels = rect("#map .veh-marker,#map .veh-group,#map .line-label,#map .ready-label,#map .hz-label");
+    const fixed = rect("#map .wbasin,#map .wsrc,#map .wcons,#map .water-marker,#map .vx-marker");
+    const hit = (a, b) => Math.min(a.right, b.right) - Math.max(a.left, b.left) > 2 && Math.min(a.bottom, b.bottom) - Math.max(a.top, b.top) > 2;
+    let n = 0;
+    for (const a of labels) for (const b of fixed) if (hit(a, b)) n++;
+    for (let i = 0; i < labels.length; i++) for (let j = i + 1; j < labels.length; j++) if (hit(labels[i], labels[j])) n++;
+    return { labels: labels.length, fixed: fixed.length, overlaps: n };
+  });
+  check("Wasser: Kartenbeschriftungen überdecken die Wassermarker (Becken, Entnahmestellen, Abnehmer) nicht",
+    ovW.overlaps === 0, `${ovW.labels} Label, ${ovW.fixed} Wasser-/Festmarker, ${ovW.overlaps} Überdeckungen`);
+
+  // 8) Screenshot aus der echten App (nicht aus der Demo)
+  await pg.evaluate(() => { window.__wb.water().setTime(150); });
+  await pg.evaluate(() => {
+    document.querySelector(".panel").scrollTop = 0; // Pflichthinweis des Moduls im Bild lassen
+    document.querySelector("#legend").style.visibility = "hidden";
+    document.querySelector(".maptools").style.visibility = "hidden";
+    const cap = document.createElement("div");
+    cap.className = "maphint"; cap.style.top = "12px"; cap.style.bottom = "auto"; cap.style.left = "12px"; cap.style.zIndex = "900";
+    cap.textContent = "Test-Lage (hügeliges Gelände, synthetische OSM-Daten: Hydrant und Teich erfunden), Beispielwetter Wind 12 km/h aus SW; Zeitpunkt 2:30 h – Becken mit Füllstand, Pendelrouten (Luftlinien), Fahrzeuge im Zeitverlauf";
+    document.querySelector(".mapwrap").appendChild(cap);
+  });
+  await pg.waitForTimeout(900);
+  await pg.screenshot({ path: path.join(OUT, "screenshot-wasser.png") });
+  check("Wasser: Screenshot docs/screenshot-wasser.png (deviceScaleFactor 2) erstellt", fs.existsSync(path.join(OUT, "screenshot-wasser.png")));
+
+  // 9) Tablet-Hochformat: keine Querscrollung, große Bedienelemente
+  await pg.setViewportSize({ width: 834, height: 1112 });
+  await pg.waitForTimeout(600);
+  const tab = await pg.evaluate(() => ({
+    overflow: document.documentElement.scrollWidth - window.innerWidth,
+    play: document.getElementById("w-play").getBoundingClientRect().height,
+    add: document.getElementById("w-add").getBoundingClientRect().height,
+  }));
+  check("Wasser: Tablet-Hochformat ohne horizontales Scrollen, Bedienelemente ≥ 44 px",
+    tab.overflow <= 1 && tab.play >= 44 && tab.add >= 44, `Überhang ${tab.overflow} px, Start-Taste ${tab.play.toFixed(0)} px, „Becken hinzufügen“ ${tab.add.toFixed(0)} px`);
+  await c2.close();
+} catch (e) {
+  check("Testablauf Wasserversorgung", false, e.message);
+}
+
+// Wasserversorgung OHNE OSM-Daten (wie beim Nutzer, wenn Overpass nicht erreichbar): klarer Hinweis,
+// KEINE erfundenen Entnahmestellen, Modul rechnet trotzdem (Becken ohne Versorgung).
+try {
+  const pg = await newPage();
+  await ack(pg);
+  await pg.evaluate(() => window.__wb.demReady());
+  await pg.waitForFunction(() => !!window.__wb.grenzenReady(), null, { timeout: 15000 });
+  const lat0 = 50.8705, lon0 = 7.3120, r = 60;
+  const pts = Array.from({ length: 12 }, (_, k) => [lat0 + (r / 111195) * Math.cos((k / 12) * 2 * Math.PI), lon0 + (r / (111195 * Math.cos((lat0 * Math.PI) / 180))) * Math.sin((k / 12) * 2 * Math.PI)]);
+  await pg.evaluate((p) => window.__wb.setPolygon(p), pts);
+  await pg.click("#btn-wx-sample");
+  await pg.click("#wx-override summary");
+  for (const [k, v] of [["windKmh", "12"], ["windDirDeg", "225"], ["tempC", "27"], ["rh", "30"]]) { await pg.fill(`#ov-${k}`, v); await pg.locator(`#ov-${k}`).dispatchEvent("change"); }
+  await pg.selectOption("#sel-fuel", "mischwald");
+  await pg.click("#btn-run");
+  await pg.waitForFunction(() => document.querySelector("#suggestions")?.innerText.length > 0, null, { timeout: 60000 });
+  await pg.click("#tab-wasser");
+  await pg.waitForTimeout(400);
+  const noOsm = await pg.evaluate(() => {
+    const ui = window.__wb.water(), r = ui && ui.result;
+    return {
+      hint: document.getElementById("wasser-hinweis").innerText.replace(/\s+/g, " "),
+      srcMarkers: document.querySelectorAll("#map .wsrc").length,
+      sources: r ? r.plan.sources.length : null, basins: r ? r.plan.basins.length : null,
+      warn: r ? r.plan.warnings.concat(r.sim.diagnosis.map((d) => d.text)) : [],
+      pendel: r ? r.plan.vehicles.filter((v) => v.role === "pendel").length : null,
+      siteNotes: r ? [...new Set(r.plan.basins.map((b) => b.siteNote))] : [],
+    };
+  });
+  check("Wasser ohne OSM-Daten: klarer Hinweis, keine erfundenen Entnahmestellen, Befahrbarkeit ungeprüft",
+    /Keine OSM-Daten geladen/.test(noOsm.hint) && /keine Entnahmestellen angenommen/.test(noOsm.hint) &&
+    noOsm.sources === 0 && noOsm.srcMarkers === 0 && noOsm.pendel === 0 && noOsm.basins >= 1 &&
+    noOsm.warn.some((t) => /Keine Entnahmestelle/.test(t)) && noOsm.siteNotes.some((t) => /Befahrbarkeit nicht geprüft/.test(t)),
+    `${noOsm.basins} Becken, ${noOsm.sources} Entnahmestellen, Warnung: ${(noOsm.warn.find((t) => /Keine Entnahmestelle/.test(t)) || "").slice(0, 90)}`);
+  // Entnahmestelle von Hand setzen -> Plan rechnet damit (Degradation ist behebbar)
+  const manual = await pg.evaluate(() => {
+    const s = window.__wb.state;
+    const c = s.poly.reduce((a, p) => [a[0] + p[0] / s.poly.length, a[1] + p[1] / s.poly.length], [0, 0]);
+    s.manualWater.push({ id: "manuell/test", lat: c[0] - 0.012, lon: c[1] - 0.010, kind: "manuell erfasst", source: "manuell", verified: true });
+    window.__wb.water().setInput(window.__wb.waterInput());
+    const r = window.__wb.water().result;
+    return { sources: r.plan.sources.length, typ: r.plan.sources[0].typ, cap: r.plan.sources[0].capLpm, why: r.plan.sources[0].capWhy, pendel: r.plan.vehicles.filter((v) => v.role === "pendel").length };
+  });
+  check("Wasser ohne OSM: von Hand erfasste Entnahmestelle wird als Annahme eingestuft und versorgt den Plan",
+    manual.sources === 1 && manual.cap > 0 && /ANNAHME/.test(manual.why) && manual.pendel >= 1,
+    `${manual.typ}, ${manual.cap} l/min (${manual.why}), ${manual.pendel} Pendelfahrzeug(e)`);
+  await pg.context().close();
+} catch (e) {
+  check("Testablauf Wasser ohne OSM", false, e.message);
 }
 
 const explainable = consoleErrors.filter((t) => /ERR_BLOCKED_BY_CLIENT|Failed to load resource|net::ERR/.test(t));

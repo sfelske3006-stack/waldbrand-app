@@ -1,11 +1,11 @@
 {
   "name": "waldbrand-lagebild-nks",
-  "version": "0.5.0-prototyp",
+  "version": "0.6.0-prototyp",
   "private": true,
   "description": "Prototyp Entscheidungshilfe Vegetations-/Waldbrand Neunkirchen-Seelscheid (unvalidiert)",
   "scripts": {
     "start": "python3 -m http.server 8080",
-    "test": "node --test tests/model.test.mjs tests/search.test.mjs",
+    "test": "node --test tests/model.test.mjs tests/search.test.mjs tests/water.test.mjs",
     "e2e": "node tests/e2e.mjs",
     "build:vorschau": "node tools/build-artifact.mjs"
   },

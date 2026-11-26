@@ -1,10 +1,10 @@
-# Waldbrand-Lagebild Neunkirchen-Seelscheid (Prototyp, Version 0.5.0-prototyp)
+# Waldbrand-Lagebild Neunkirchen-Seelscheid (Prototyp, Version 0.6.0-prototyp)
 
 > **TESTVERSION – nicht für den Einsatz.** **Modellprognose, unvalidiert. Keine Handlungsanweisung. Entscheidung und Verantwortung liegen bei der Einsatzleitung.**
 
 Veröffentlicht (Test) unter <https://sfelske3006-stack.github.io/waldbrand-app/> (GitHub Pages, Unterpfad `/waldbrand-app/`; alle Pfade relativ).
 
-Browser-App für Einsatzleiter bei Vegetations- und Waldbränden: Brandfläche einzeichnen, Wetter laden oder vor Ort eingeben, Ausbreitung für 1/2/4/6 h mit Unsicherheitsband berechnen, einfache Vorschläge für Riegelstellungen und Fahrzeugstandorte. Die gesamte Rechnung läuft im Browser, ein Server ist nicht nötig.
+Browser-App für Einsatzleiter bei Vegetations- und Waldbränden: Brandfläche einzeichnen, Wetter laden oder vor Ort eingeben, Ausbreitung für 1/2/4/6 h mit Unsicherheitsband berechnen, einfache Vorschläge für Riegelstellungen und Fahrzeugstandorte, dazu eine Simulation der Löschwasserversorgung (Pufferbecken, Förderstrecke, Pendelverkehr). Die gesamte Rechnung läuft im Browser, ein Server ist nicht nötig.
 
 ## Start
 
@@ -18,12 +18,12 @@ Dann im Browser `http://localhost:8080` öffnen. Ein statischer Server ist nöti
 Tests:
 
 ```bash
-npm test          # Unit- und Szenariotests: Berechnungskern (model.test.mjs) und Ortssuche (search.test.mjs), node --test
-npm run e2e       # Browser-Test mit Playwright/Chromium, Screenshots nach docs/ (u. a. screenshot-konturen.png, screenshot-raster.png, screenshot-fahrzeuge.png, screenshot-suche.png)
+npm test          # Unit- und Szenariotests: Berechnungskern (model.test.mjs), Ortssuche (search.test.mjs), Wasserversorgung (water.test.mjs), node --test
+npm run e2e       # Browser-Test mit Playwright/Chromium, Screenshots nach docs/ (u. a. screenshot-konturen.png, screenshot-raster.png, screenshot-fahrzeuge.png, screenshot-suche.png, screenshot-wasser.png)
 npm run build:vorschau   # Einzeldatei-Vorschau dist/vorschau.html (für die Artifact-Seite)
 ```
 
-Stand 0.5.0: 78 Unit-/Szenariotests und 89 Browser-Tests, alle bestanden.
+Stand 0.6.0: 101 Unit-/Szenariotests (78 Modell/Suche + 23 Wasserversorgung) und 108 Browser-Tests, alle bestanden.
 
 `npm run e2e` prüft zusätzlich den Betrieb unter einem Unterpfad (statischer Server unter `/waldbrand-app/` wie GitHub Pages), das Cache-Busting (`?v=<Version>` an allen eigenen Skripten, CSS- und Datendateien) und erzeugt `docs/screenshot-gelaendewind.png`.
 
@@ -58,8 +58,22 @@ Google Maps (optional): In `config.js` `googleMapsApiKey` eintragen. Erst dann e
    **Pflichtfahrzeuge** (Vorgabe Auftraggeber): HLF 20, LF 20 und LF KatS des LZ Seelscheid werden bei jedem Einsatz vorrangig eingebunden (unabhängig von der Anfahrtsgrenze, Sicherheitsregeln gelten weiter); ohne sichere Aufgabe „Pflichtfahrzeug – bereitgestellt“ im Bereitstellungsraum mit Begründung. Häkchen „Pflicht“ je Fahrzeug in der Fahrzeugliste.
    **Grundschutz** (Vorgabe Auftraggeber): je ein wasserführendes Fahrzeug aus einer Nachbarkommune an den Gerätehäusern Neunkirchen und Seelscheid (bevorzugt HLF/LF, dann TLF/MLF/TSF-W, kürzeste geschätzte Anfahrt zum Gerätehaus; Annahme), manuell tauschbar, auf der Karte („GS“), in Liste, Protokoll und Export. **Ab 0.4.2** wird der Grundschutz direkt nach den Einsatzaufgaben und VOR Verstärkung, Flanke und Bereitstellungsraum vergeben; ein Grundschutzfahrzeug steht am Gerätehaus und nie im Bereitstellungsraum.
    **Geländewind** (Abschnitt 3, Schalter „Geländewind: an/aus“): lokaler Wind und Feuchte je Zelle aus dem DGM, Ebene „Geländewind“ mit Pfeilen (alle 250 m, Farbe = Faktor lokal/synoptisch). Aus = Rechnung wie 0.3.0 (bitgenau, Test).
-7. **Szenario B** (z. B. „Wind aus 270°“) neben A vergleichen.
-8. **Protokoll**: lokale Hash-Kette (SHA-256), Export als JSON und GeoJSON, Drucken/PDF über den Browser.
+7. **Wasserversorgung (Reiter „Wasser“, neu in 0.6.0)**: Aus den Fahrzeugvorschlägen (Riegel, Auffanglinie, Flanke, Objektschutz), den Entnahmestellen, dem Wegenetz und dem Gelände wird eine **Simulation** der Löschwasserversorgung über 6 h gerechnet: Pufferbecken (Faltbehälter 5.000 l), Förderstrecken bis 600 m Schlauchweg, sonst Pendelverkehr. Zeitregler mit Abspielen (1× / 10× / 60×) bewegt Fahrzeuge und Füllstände, je Becken ein Diagramm (Füllstand, Zufluss, Verbrauch). Becken lassen sich auf der Karte verschieben, hinzufügen und löschen – es wird jedes Mal neu gerechnet. Details: Abschnitt „Wasserversorgung“.
+8. **Szenario B** (z. B. „Wind aus 270°“) neben A vergleichen.
+9. **Protokoll**: lokale Hash-Kette (SHA-256), Export als JSON und GeoJSON, Drucken/PDF über den Browser.
+
+## Änderungen in Version 0.6.0
+
+**Wasserversorgung** (neu, eigener Reiter „Wasser“, siehe Abschnitt „Wasserversorgung“): Planung und zeitdiskrete Simulation
+(1-min-Schritte, 6 h) der Löschwasserversorgung für die vorgeschlagenen Riegel-, Flanken- und Objektschutzfahrzeuge:
+Pufferbecken (Faltbehälter), Förderstrecke mit Druckverlust und Höhenprofil aus dem DGM oder Pendelverkehr mit Warteschlangen
+an Entnahmestelle und Becken, Engpassdiagnose im Klartext, Kennzahlen (Bedarf, Lieferung, Defizit, erstes Leerlaufen),
+Kartenebenen (Becken mit Füllstand, Schlauchleitungen, Pendelrouten, Fahrzeuge im Zeitverlauf), Zeitregler mit Animation.
+Protokolleinträge `wasser_annahmen`, `wasser_plan`, `wasser_becken`, `wasser_export`; GeoJSON um `pufferbecken`,
+`schlauchleitung`, `pendelroute`, `wasserabnehmer` und die Einstufung der Entnahmestellen erweitert.
+Neu: `js/water.js`, `js/water-params.js`, `js/water-ui.js`, `css/water.css`, `tests/water.test.mjs`.
+**Alle Zahlen des Moduls sind Annahmen** (`PARAMS.wasser`, [docs/assumptions.md](docs/assumptions.md)); es ist eine
+**Simulation mit Annahmen, keine Einsatzplanung**.
 
 ## Änderungen in Version 0.5.0
 
@@ -163,6 +177,95 @@ prüfen – der Test „Einbindung: Pflicht-Attribution …“ vergleicht sie mi
   (z. B. „50 7“) gelten nicht als Koordinate, sondern als Text.
 - Die Suche kennt **keine Brandfläche und keine Prognose**; sie dient nur dem Finden und Zentrieren.
 
+## Wasserversorgung
+
+> **Simulation mit Annahmen, keine Einsatzplanung.** Jede Zahl des Moduls ist eine Annahme, solange sie nicht mit der
+> Feuerwehr, dem Kreis bzw. dem Wasserversorger abgestimmt ist. Es gibt **kein Routing** (alle Wege sind Luftlinien mit
+> Umwegfaktor), **keine Pumpenkennlinien**, **kein Personal- und Ablösekonzept** und **keinen Abgleich mit einem
+> Löschwasserkataster.**
+
+![Reiter „Wasser“ mit Becken, Pendelrouten und Zeitregler](docs/screenshot-wasser.png)
+
+### Bedienung
+
+1. Prognose rechnen (Schritt 4) – daraus entstehen die Einsatzvorschläge und damit die **Abnehmer** mit Wasserbedarf.
+2. Reiter **„Wasser“** öffnen. Oben steht der Pflichthinweis des Moduls, darunter Zeitverlauf, Becken, Kennzahlen,
+   Engpassdiagnose und die Fahrzeugtabelle. Fehlen Grundlagen (keine Prognose, keine OSM-Daten, keine Entnahmestelle,
+   kein Geländemodell), steht das als Hinweis **über** dem Modul – es werden keine Daten erfunden.
+3. **Zeitregler** (0–6 h, 1-min-Schritte): Schieber ziehen oder „Start“ mit 1× / 10× / 60× (bezogen auf Echtzeit;
+   60× = 1 Stunde Simulation je Minute). Fahrzeuge bewegen sich auf der Karte, Becken zeigen ihren Füllstand in Prozent
+   (roter, blinkender Rand = leer), die Diagramme einen Zeitcursor.
+4. **Becken bearbeiten**: „Becken hinzufügen“ und dann auf die Karte tippen, Becken ziehen (verschieben) oder im
+   Marker-Menü löschen. Jede Änderung rechnet den Plan neu (wenige Millisekunden) und wird protokolliert
+   (`wasser_becken` mit Defizit vorher/nachher). „Automatisch neu setzen“ verwirft die manuellen Becken.
+5. **Kartenebenen** (Ebenenschalter rechts oben): „Pufferbecken (Wasser)“, „Schlauchleitungen (Wasser)“,
+   „Pendelrouten (Luftlinie)“, „Wasserfahrzeuge (Zeitverlauf)“ und „Wasser: Entnahmestellen + Abnehmer (Modul)“.
+   Die Modul-Ebene der Entnahmestellen wird beim Öffnen des Reiters eingeschaltet und ersetzt dabei die Ebene
+   „Wasserentnahmestellen“ der App (dieselben Punkte, dort liegt das Bearbeiten/Verifizieren); beim Verlassen des
+   Reiters wird zurückgeschaltet.
+6. **Entnahmestellen** kommen aus denselben Punkten wie bisher: OSM (ungeprüft, gestrichelter Rand und „?“) plus die
+   von Hand gesetzten (Werkzeug „Entnahmestelle setzen“, als verifiziert markiert). Symbole: eckig = Hydrant,
+   rund = offenes Gewässer/Saugstelle, gefüllt = Behälter/Teich, gepunktet = Typ offen.
+7. **Export/Ausdruck**: Der GeoJSON-Export enthält zusätzlich `pufferbecken`, `schlauchleitung`, `pendelroute`,
+   `wasserabnehmer` und bei jeder `entnahmestelle` die Einstufung des Moduls (`ergiebigkeit_lpm`, `grundlage`,
+   `annahme_ohne_beleg`). Schlauchleitungen und Pendelrouten sind im Export ausdrücklich als **Luftlinien** markiert.
+   Im Ausdruck werden die Bedienelemente der Zeitachse ausgeblendet, Kennzahlen und Diagnose bleiben.
+
+### Modellansatz
+
+- **Abnehmer**: jedes vorgeschlagene Fahrzeug mit Löschaufgabe (Riegel, Auffanglinie und Verstärkung → `Riegel`,
+  Flankensicherung, Objektschutz) mit **seiner eigenen Bereitschaftszeit**; der Bedarf beginnt erst ab dieser Zeit.
+  Bedarf je Fahrzeug: Riegel/Flanke 2 × 150 l/min, Objektschutz 2 × 100 l/min (Annahmen).
+- **Pufferbecken**: Abnehmer innerhalb von 400 m bilden eine Gruppe; je Gruppe Bedarf / 600 l/min Becken (höchstens 4),
+  Standort 80 m hinter dem Schwerpunkt vom Brand weg, auf einem befahrbaren Weg (OSM), mit 100 m Abstand zur
+  „möglich“-Zone des Prognosezeitraums. Volumen 5.000 l (Faltbehälter, Vorgabe).
+- **Versorgung je Becken**: bis 600 m Schlauchweg (Luftlinie × 1,2) eine **Förderstrecke** – Druckbedarf aus Reibung
+  (ca. 1 bar je 100 m bei 800 l/min, quadratisch mit dem Durchfluss) und Höhe (0,1 bar je Meter, höchster Punkt aus dem
+  DGM 25 m), Pumpen gleichmäßig verteilt, 8 bar Ausgangsdruck, 1,5 bar Mindesteingangsdruck. Sonst (oder zusätzlich)
+  **Pendelverkehr**.
+- **Pendelverkehr**: Umlauf = Anfahrt + Füllen + Fahrt + Entleeren + Rüst- und Wartezeiten; 25 km/h auf der Straße,
+  10 km/h auf Wald-/Wirtschaftswegen, Umwegfaktor 1,3. Warteschlangen (FIFO) an der Entnahmestelle (ein Füllplatz je
+  Hydrant, zwei an offenen Gewässern) **und am Becken (nur eine Einspeisestelle, siehe Annahmen)**.
+- **Fahrzeugauswahl**: Großtanker zuerst (TW/LTW/WLF oder ≥ 8.000 l), dann TLF, dann sonstige; innerhalb nach
+  geschätzter Lieferleistung, dann Anfahrt. **Ausgeschlossen** (Vorgabe Auftraggeber): Fahrzeuge der Kommune
+  Neunkirchen-Seelscheid, Pflichtfahrzeuge, Grundschutzfahrzeuge an den Gerätehäusern, Fahrzeuge ohne Löschwasser oder
+  ohne bekannten Tank, Anfahrt über 90 min – und die Abnehmer selbst. Jeder Ausschluss steht mit Grund im Reiter.
+  Fahrzeuge im Bereitstellungsraum und die Vorschläge „Wasserversorgung“ bleiben verfügbar (Festlegung 0.6.0).
+- **Simulation**: 1-min-Schritte über 6 h, deterministisch (keine Zufallszahlen). Ergebnis: Füllstand, Zufluss und
+  Verbrauch je Becken, Zustand und Ladung je Fahrzeug, Auslastung und Wartezeiten je Entnahmestelle, Kennzahlen im
+  eingeschwungenen Zustand (letzte 60 min) und eine Engpassdiagnose im Klartext („Entnahmestelle X überlastet“,
+  „zusätzlich 2 Tanker“). Bleibt ein Defizit, plant das Modul bis zu 6-mal nach (mehr Pendelfahrzeuge bzw. ein
+  zusätzliches Becken) und übernimmt nur Verbesserungen.
+
+### Annahmen (Auswahl) und Grenzen
+
+Vollständig mit Herkunft und Prüfstatus in [docs/assumptions.md](docs/assumptions.md), Abschnitt „Wasserversorgung“;
+jede Zahl steht in `js/water-params.js` (`PARAMS.wasser`).
+
+- **Nur ein Fahrzeug kann gleichzeitig in ein Becken einspeisen** (`becken.maxEntleerer: 1`). Das ist eine **Annahme**
+  und im Modell der **größte Engpass**: Im Entwurfsszenario des Moduls entfielen dadurch rund 23 % der Einsatzzeit der
+  Pendelfahrzeuge auf Wartezeit am Becken. Sind in der Praxis zwei Einspeisestellen möglich, ändert sich das Ergebnis
+  deutlich. **Vor weiterer Modellarbeit mit der Feuerwehr klären.**
+- **Becken ohne Abnehmer**: Die Dimensionierungsregel (Bedarf / 600 l/min je Gruppe) kann mehr Becken erzeugen, als die
+  Zuordnung „Abnehmer → nächstes Becken“ nutzt. Solche Becken werden **nicht stillschweigend eingeplant**, sondern als
+  **„Reservestandort“** gekennzeichnet (gestrichelt auf der Karte, eigener Hinweis in der Liste, `rolle` im Export);
+  sie bekommen keine Versorgung und keine Pendelfahrzeuge. Ob sie aufgebaut werden, entscheidet die Einsatzleitung.
+- **Ergiebigkeit der Entnahmestellen**: Hydrant ohne Angabe 800 l/min, nach Durchmesser gestaffelt 600–1.600 l/min;
+  Löschteich/-behälter ohne Angabe 100 m³; offene Gewässer nach Fläche/Typ als „ausreichend“ oder „unsicher“
+  eingestuft. Alles Annahmen ohne Löschwasserkataster; OSM-Punkte sind **ungeprüft** (Lage, Existenz, Ergiebigkeit).
+- **Keine Wege, nur Luftlinien**: Pendelrouten und Schlauchleitungen auf Karte und im Export sind Luftlinien; die
+  Fahrzeit ist Luftlinie × 1,3 ÷ Geschwindigkeit. Steigungen, Engstellen, Wenden und Gegenverkehr fehlen.
+- **Ohne OSM-Daten** rechnet das Modul weiter, aber: keine Entnahmestellen (es werden **keine erfunden**), keine
+  Befahrbarkeitsprüfung der Beckenstandorte, keine Wald-/Wirtschaftswege. Der Reiter sagt das deutlich und verweist auf
+  „OSM-Daten laden“ bzw. „Entnahmestelle setzen“. **Ohne Geländemodell** wird die Höhe der Förderstrecke nicht geprüft.
+- **Nicht modelliert**: Pumpenkennlinien (fest 8 bar), zwei parallele B-Leitungen, Besatzung/Atemschutz/Ablösung nach
+  6 h, Verfügbarkeit und Transport der Faltbehälter, Untergrund und Platzbedarf am Beckenstandort, Wasserentnahme aus
+  dem Netz mit Rückwirkung auf die Versorgung, Löschmittelzusätze.
+- **Offene Fragen an die Feuerwehr** (Auszug, vollständig in docs/assumptions.md): Löschwasserkataster und
+  Hydrantenergiebigkeit, Füllrate der Großtanker ohne eigene Pumpe, Entleerrate und Zahl der Einspeisestellen je
+  Becken, Wasserbedarf und Einsatzanteil je Riegelfahrzeug, Zahl verfügbarer Faltbehälter, Standortkriterien,
+  Grenze Schlauch/Pendelverkehr, Pendelgeschwindigkeiten, Darstellung nach taktischen Zeichen, Ablösung nach 6 h.
+
 ## Änderungen in Version 0.4.2
 
 Anlass: Rückfrage der Einsatzleitung „Warum sind nur zwei Fahrzeuge an der Front und so viele wasserführende Fahrzeuge im Bereitstellungsraum?“ Analyse und Belege in `docs/assumptions.md` (Abschnitt „Neu in 0.4.2“).
@@ -209,16 +312,20 @@ Reines HTML/CSS/JavaScript ohne Build-Schritt, Leaflet 1.9.4 lokal unter `vendor
 | `js/dispatch.js` | Anfahrtsschätzung, Bereitschaft (Vorgabe eigene Wehr), Gemeindeteil, Import-Normalisierung, Filter/Sortierung, Marker-Gruppierung. |
 | `js/suggest.js` | Riegel- und Fahrzeugvorschläge, Pflichtfahrzeuge, Grundschutz, Positionsprüfung, Differenz bei Neuberechnung. |
 | `js/protocol.js` | Sitzungsprotokoll mit SHA-256-Hash-Kette. |
+| `js/water.js` | Wasserversorgung (Rechenkern, DOM-frei, deterministisch): Entnahmestellen einstufen, Becken dimensionieren und verorten, Förderstrecke auslegen (Reibung, Höhe, Pumpen), Pendelverkehr planen, 1-min-Simulation mit Warteschlangen, Kennzahlen und Engpassdiagnose, Zusammenfassung für Protokoll/Export. |
+| `js/water-params.js` | Parameterblock `PARAMS.wasser` (eigene Datei, ändert `js/params.js` nicht). Jede Zahl eine Annahme, Herkunft im Kommentar ([A] [F] [P] [V] [App]). |
+| `js/water-ui.js` | Oberfläche der Wasserversorgung: Leaflet-Ebenen (Becken mit Füllstand, Schlauch, Pendelrouten, Fahrzeuge), Zeitregler mit Animation, Canvas-Diagramme ohne Zusatzbibliothek, Kennzahlen-/Entnahmestellen-/Fahrzeugtabellen. |
+| `css/water.css` | Stile der Wasserversorgung (Präfix `w-`, `wbasin`, `wsrc`, `wveh`), nutzt die Tokens aus `css/app.css`. |
 | `js/search.js` | Ortssuche: Index laden (lazy), Bewertung/Ranking, Hausnummern, Rettungspunkt-Nummern, Koordinatenparser (Grad/UTM, Krüger-Reihen ohne proj4), Online-Abfrage (Nominatim, gedrosselt), Quellenvermerke. Ohne Abhängigkeiten, auch unter Node (Tests). |
 | `js/search-ui.js` | Bedienung der Suche (Leaflet): Combobox/Listbox, Tastatur, Ergebniskarte, Marker/Rechtecke, Kartenebene „Rettungspunkte“ mit Nummern-Entzerrung. |
 | `css/search.css` | Stile der Suche (Präfix `sx-`), nutzt die Tokens aus `css/app.css` (Tag-/Nachtmodus). |
-| `js/app.js` | UI, verdrahtet auch die Suche (Zündpunkt, Protokoll, Ebene, Quellenangaben). |
+| `js/app.js` | UI, verdrahtet auch die Suche (Zündpunkt, Protokoll, Ebene, Quellenangaben) und die Wasserversorgung (Adapter `waterInput()`, Reiter, Ebenen, Protokoll, Export). |
 | `data/fahrzeuge.json` | Fahrzeug- und Wachendaten Rhein-Sieg-Kreis (schema 2), editierbar, Quelle/Quellentyp je Eintrag (ca. 220 KB). |
 | `data/gemeindeteile.json` | Gemarkungen Neunkirchen-Seelscheid (ALKIS) mit Zuordnung zu den Gemeindeteilen (ca. 50 KB). |
 | `data/dgm25.bin`, `data/dgm25.json` | Geländemodell 25 m (Int16, Dezimeter) mit Metadaten (Quelle, Stand, Lizenz, Raster). |
 | `data/suche-index.json` | Offline-Suchindex: 7 Kommunen, 306 Ortslagen, 3.223 Straßen, 62.152 Adressen (ca. 860 KB, delta-kodierte Mikrograd). Wird erst beim ersten Fokus im Suchfeld geladen. |
 | `data/rettungspunkte-kwf.json` | KWF-Rettungspunkte v2.21 (Stand 10/2026), Gebietsausschnitt 655 Punkte, Attribute unverändert (ca. 98 KB). |
-| `tests/` | Unit-/Szenariotests (`model.test.mjs`, `search.test.mjs`), Browser-Test (`e2e.mjs`), synthetische OSM-Testdaten (`synth-osm.mjs`, keine echten Daten), Stichproben aus den Rohdaten (`fixtures/`). |
+| `tests/` | Unit-/Szenariotests (`model.test.mjs`, `search.test.mjs`, `water.test.mjs`), Browser-Test (`e2e.mjs`), synthetische OSM-Testdaten (`synth-osm.mjs`, keine echten Daten), Stichproben aus den Rohdaten (`fixtures/`). |
 | `tools/build-artifact.mjs` | Erzeugt die Einzeldatei-Vorschau. |
 | `tools/build-dgm.py` | Erzeugt `data/dgm25.*` aus dem DGM1 NRW. |
 | `tools/build-suche.py` | Erzeugt `data/suche-index.json` aus gebref, Basis-DLM und DVG1 (pyproj, pyshp). |
@@ -273,6 +380,7 @@ Reines HTML/CSS/JavaScript ohne Build-Schritt, Leaflet 1.9.4 lokal unter `vendor
 - **Raster** 25 m, Gebiet 10 × 10 km um den Brandschwerpunkt. Wege schmaler als eine Zelle werden nicht als Barriere gerechnet (konservativ), Straßen ab „residential“ und Flüsse schon (optimistisch).
 - **Ensemble**: 24 Läufe, Windrichtung ±25°, Windstärke ×0,75–1,35, Tote-Brennstoff-Feuchte ±2 %-Punkte, gleichverteilt; „wahrscheinlich“ ≥ 50 %, „möglich“ ≥ 10 % der Läufe.
 - **Vorschläge**: Riegel nur, wenn zum Prüfzeitpunkt (früheste Bereitschaft eines Löschfahrzeugs + Mindest-Wirkzeit 30 min; bis 0.3.0 pauschal 30 + 45 + 30 = 105 min) vollständig außerhalb der „möglich“-Zone (≥ 50 m Abstand), quer (≥ 45°) und vor der Front; Bewertung heuristisch (Barrieretyp, Vorlauf, Länge, Schutzwirkung, Lage, Abdeckung der Frontbreite). Fahrzeugstandorte: „möglich“-Front frühestens 60 min nach Bereitschaft, kein Lauf vor der Bereitschaft, ≥ 100 m vom 1-h-Bereich. Anfahrt anderer Kommunen ist eine **entfernungsbasierte Schätzung** (kein Routing), keine Rückzugswege.
+- **Wasserversorgung** (0.6.0, Reiter „Wasser“): Simulation mit Annahmen, keine Einsatzplanung. Keine Routen (Luftlinie × 1,3), keine Pumpenkennlinien (fest 8 bar), kein Löschwasserkataster (Ergiebigkeiten sind Annahmen, OSM-Punkte ungeprüft), **nur eine Einspeisestelle je Becken** (Annahme, größter Engpass im Modell), kein Personal-/Ablöseplan über 6 h hinaus, Untergrund und Platzbedarf der Faltbehälter nicht geprüft. Becken ohne zugeordneten Abnehmer werden als „Reservestandort“ gekennzeichnet und nicht eingeplant. Ohne OSM-Daten keine Entnahmestellen (es werden keine erfunden) und keine Befahrbarkeitsprüfung.
 - **Darstellung**: Konturen sind eine Glättung des 25-m-Rasters. Flächenabweichung zur Rasterfläche in den Tests ≤ 3 % für Flächen ab 100 Zellen (6,25 ha); bei sehr kleinen Flächen (wenige Zellen) bis ca. 35 %, dann zeigt die Legende einen Hinweis (Rasteransicht prüfen).
 
 Alle Annahmen mit Werten: [docs/assumptions.md](docs/assumptions.md).
@@ -283,8 +391,8 @@ Die Grenze der früheren Gemeinden Neunkirchen und Seelscheid (Zusammenschluss 1
 
 ## Nicht umgesetzt
 
-- Routing und echte Anfahrtszeiten (OSRM/Valhalla/GraphHopper), fahrzeugtypabhängige Wegeinschränkungen. Anfahrt nur entfernungsbasiert geschätzt. Pendelverkehr nur grob über Luftlinie × 1,3 und angenommene 25 km/h.
-- Vollständige Wasserversorgungslogik (Entnahmemengen, Schlauchlängen nach Höhenprofil, Verstärkerpumpen). Umgesetzt sind nur: OSM-Entnahmestellen „nicht verifiziert“, manuelles Hinzufügen/Verifizieren/Löschen, nächstgelegene Stelle je Fahrzeug mit grober Abschätzung.
+- Routing und echte Anfahrtszeiten (OSRM/Valhalla/GraphHopper), fahrzeugtypabhängige Wegeinschränkungen. Anfahrt nur entfernungsbasiert geschätzt; auch der Pendelverkehr der Wasserversorgung rechnet mit Luftlinie × 1,3 und angenommenen Geschwindigkeiten (25 km/h Straße, 10 km/h Waldweg).
+- Wasserversorgung **ab 0.6.0 simuliert** (Becken, Förderstrecke mit Höhenprofil und Verstärkerpumpen, Pendelverkehr mit Warteschlangen, Engpassdiagnose), aber **ohne** Löschwasserkataster, Pumpenkennlinien, zwei parallele B-Leitungen, Personal-/Ablöseplan, Verfügbarkeit und Transport der Faltbehälter und ohne Rückwirkung der Entnahme auf das Trinkwassernetz. Die Zahl der Einspeisestellen je Becken (derzeit 1) ist unbestätigt.
 - Offline/PWA (Service Worker, Kachel-Cache, vorab gepacktes Datenpaket). Vorbereitet: keine CDN-Abhängigkeit, Rechnung clientseitig, letzte Wetterdaten im lokalen Speicher, Geländemodell und Schummerung als lokale Datei (`data/dgm25.*`).
 - ATKIS/Forstdaten, CORINE. Vektorielle Wind-Hang-Kombination. Massenkonsistentes Windfeld (WindNinja, Phase 3).
 - DWD Open Data und DWD-Waldbrandgefahrenindex; automatischer Quellen-Fallback zwischen zwei Wetterquellen.
@@ -301,7 +409,7 @@ Die Grenze der früheren Gemeinden Neunkirchen und Seelscheid (Zusammenschluss 1
 2. Brennstoffzuordnung: Wer von Forst/Feuerwehr prüft sie (Wald und Holz NRW)? Gibt es Baumarten-/Bestandsdaten?
 3. Fahrzeugliste: Bestätigung der von ffnkse.de übernommenen Daten, echte Tankvolumen/Pumpenleistungen, Funkrufnamen, Maße, Gewichte, Geländegängigkeit, Wachenkoordinaten.
 4. Feuerwehrinterne Sicherheitsabstände und Rückzugsregeln (derzeit Annahmen: Anfahrt fremder Kommunen geschätzt (Umweg 1,4, 50 km/h, 7 min Ausrücken), Aufbau Riegel 45 min, Mindest-Wirkzeit 30 min, Fahrzeugpuffer 60 min, Abstände 50/100 m, 300 m Linienabschnitt je Fahrzeug).
-5. Hydrantenplan/Löschwasserkonzept, Teich-/Zisternenverzeichnis nutzbar?
+5. Hydrantenplan/Löschwasserkonzept, Teich-/Zisternenverzeichnis nutzbar? Dazu die Fragen des Wassermoduls (0.6.0): **Wie viele Fahrzeuge können gleichzeitig in ein Faltbecken einspeisen (derzeit 1 angenommen, größter Engpass)?** Welche Hydrantenergiebigkeit darf angesetzt werden (derzeit 800 l/min)? Füllrate der Großtanker ohne eigene Pumpe? Entleerrate ins Becken (derzeit 1.600 l/min)? Wasserbedarf und Einsatzanteil je Riegelfahrzeug (derzeit 2 × 150 l/min durchgehend)? Zahl verfügbarer Faltbehälter (5.000 l) und wer sie bringt? Standortkriterien für Becken? Grenze Schlauchleitung/Pendelverkehr (derzeit 600 m)? Pendelgeschwindigkeiten 25/10 km/h? Sollen die Symbole taktischen Zeichen folgen? Ablösezyklen nach 6 h abbilden? (Vollständig in docs/assumptions.md.)
 6. Nutzungsbedingungen Open-Meteo und Overpass für den Einsatz; Betrieb eigener Instanzen? Geobasis-NRW-Dienste: URLs/Layer sind geprüft; Lizenzbedingungen der DTK (Geobasis-NRW-PDF) und Lizenzangabe des DGM1-Katalogeintrags bestätigen.
 7. Google Maps gewünscht? Wer trägt Key und Kosten?
 8. Zielgeräte, Browser, Netzabdeckung; ist Offline-Betrieb (PWA) für Phase 2 Pflicht?

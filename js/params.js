@@ -8,7 +8,7 @@
   const TPA = 0.0459137; // 1 ton/acre (US short ton) in lb/ft²
 
   const PARAMS = {
-    version: "0.5.0-prototyp",
+    version: "0.6.0-prototyp",
     modelName: "Rothermel-1972-Raster-MTT (vereinfachte Eigenimplementierung)",
 
     // Prognosehorizonte in Stunden (Spezifikation 2.3)
