@@ -8,10 +8,10 @@
 <script>
   // Zentrale Version und Dateiliste (Cache-Busting). Alle Pfade RELATIV (läuft auch unter einem Unterpfad,
   // z. B. GitHub Pages /waldbrand-app/). WB_VERSION muss PARAMS.version entsprechen (Test prüft das).
-  window.WB_VERSION = "0.6.0-prototyp";
+  window.WB_VERSION = "0.7.0-prototyp";
   window.WB_ASSET = function (p) { return p + (p.indexOf("?") < 0 ? "?" : "&") + "v=" + encodeURIComponent(window.WB_VERSION); };
-  window.WB_CSS = ["vendor/leaflet/leaflet.css", "css/app.css", "css/search.css", "css/water.css"];
-  window.WB_JS = ["vendor/leaflet/leaflet.js", "config.js", "js/params.js", "js/grid.js", "js/dem.js", "js/terrain.js", "js/model.js", "js/contour.js", "js/weather.js", "js/osm.js", "js/dispatch.js", "js/suggest.js", "js/protocol.js", "js/search.js", "js/search-ui.js", "js/water-params.js", "js/water.js", "js/water-ui.js", "js/app.js"];
+  window.WB_CSS = ["vendor/leaflet/leaflet.css", "css/app.css", "css/search.css", "css/water.css", "css/safearea.css"];
+  window.WB_JS = ["vendor/leaflet/leaflet.js", "config.js", "js/params.js", "js/grid.js", "js/dem.js", "js/terrain.js", "js/model.js", "js/contour.js", "js/weather.js", "js/osm.js", "js/dispatch.js", "js/suggest.js", "js/protocol.js", "js/search.js", "js/search-ui.js", "js/water-params.js", "js/water.js", "js/water-ui.js", "js/safearea.js", "js/safearea-ui.js", "js/app.js"];
   for (var i = 0; i < window.WB_CSS.length; i++) document.write('<link rel="stylesheet" href="' + window.WB_ASSET(window.WB_CSS[i]) + '">');
 </script>
 <!--/WB-LOADER-->
@@ -73,6 +73,7 @@
           <div class="lg-row lg-scale"><span class="wa wa4"></span>1,05–1,2<span class="wa wa5"></span>&gt; 1,2</div>
           <div class="lg-note">Pfeil = lokale Windrichtung, Farbe = Faktor lokal/synoptisch (10 m), vereinfachte Geländekorrektur, kein Strömungsmodell.</div>
         </div>
+        <div id="sa-legend"></div>
       </div>
     </section>
 
@@ -180,6 +181,18 @@
           <div id="sug-diff" class="status"></div>
           <div id="suggestions"></div>
         </section>
+
+        <!-- Rückzugsflächen und Fluchtwege (0.7.0, js/safearea.js + js/safearea-ui.js). Bewusst KEIN eigener
+             Reiter: ein sechster Reiter bricht auf dem Tablet im Hochformat in die zweite Zeile um, und die
+             Flächen gehören fachlich zu den Einsatzvorschlägen (sie werden am Ende von computeSuggestions()
+             berechnet und warnen je Fahrzeugstandort). -->
+        <section class="card" id="sec-safearea">
+          <h2><span class="step">6</span> Rückzugsflächen und Fluchtwege</h2>
+          <p class="muted small">Automatische Vorschläge aus Landnutzung und Gelände. Vorschläge sind keine
+            Anordnung; jede Fläche lässt sich verwerfen. Sicherheitsabstand nach Butler &amp; Cohen (1998)
+            mit Hang-/Windzuschlag (Annahme), siehe „Grenzen &amp; Quellen“.</p>
+          <div id="sa-panel"></div>
+        </section>
       </div>
 
       <div class="tabpanel" id="panel-fahrzeuge" hidden>
@@ -253,6 +266,10 @@
         <section class="card" id="sec-suche-quellen">
           <h2>Suche: Quellen und Lizenzen</h2>
           <div id="search-sources"></div>
+        </section>
+        <section class="card" id="sec-safearea-quellen">
+          <h2>Rückzugsflächen und Fluchtwege: Quellenlage und Grenzen</h2>
+          <div id="safearea-sources"></div>
         </section>
         <section class="card">
           <h2>Haftung und Freigabe</h2>

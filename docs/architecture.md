@@ -138,6 +138,36 @@ Kennzahlen, Engpassdiagnose, Nachplanung → Karte, Diagramme, Tabellen, Protoko
 2 Entnahmestellen und 33 geeignete Fahrzeuge ca. 120 ms inklusive 6 Nachplanungen; Neurechnen beim Verschieben eines
 Beckens ca. 15 ms. Unit-Test „Performance“: 20 Fahrzeuge, 8 Abnehmer, 6 h in 1-min-Schritten unter 200 ms.
 
+## Rückzugsflächen und Fluchtwege (0.7.0)
+
+Rechenkern `js/safearea.js` (DOM-frei, deterministisch), Oberfläche `js/safearea-ui.js`, Stile `css/safearea.css`,
+Parameter als Block `PARAMS.safearea` in `js/params.js`.
+
+**Entwurfsentscheidungen**
+
+| Thema | Gewählt | Alternativen | Begründung |
+|---|---|---|---|
+| Platz in der Oberfläche | Abschnitt **6** im vorhandenen Reiter „Lage“, direkt hinter den Einsatzvorschlägen | eigener sechster Reiter | Fünf Reiter füllen die Leiste; ein sechster bricht auf dem Tablet im Hochformat in die zweite Zeile um und verdeckt Kartenfläche. Fachlich gehören die Flächen zu den Vorschlägen: sie werden aus den Fahrzeugstandorten berechnet und die Warnung steht an der Fahrzeugkarte. |
+| Parameter | Block `safearea` in `js/params.js` (nicht eigene Datei wie `water-params.js`) | eigene Datei `js/safearea-params.js` | Zum Integrationszeitpunkt war `js/params.js` nur in der Versionszeile verändert, der Block kollidiert also mit nichts. Der Wert gehört zum Modellkern (Flammenlänge, Sicherheitsabstand) und steht damit bei den übrigen Modellparametern. |
+| Maß für „groß genug“ | größter einbeschriebener Kreis (Chamfer-Distanz, abzüglich halber Zellbreite) | Fläche in ha, Bounding Box | Ein langer schmaler Streifen (Wegrand, Bachaue) hat genug Fläche, aber nirgends den geforderten Abstand zum Brennstoff. Der einbeschriebene Kreis ist direkt mit dem Soll-Radius vergleichbar. |
+| Fluchtwege | Dijkstra über das vorhandene 25-m-Raster, 8er-Nachbarschaft, zwei Läufe (Fahrzeug nur auf `drivable`, Fuß über alle passierbaren Zellen) | Routing-Dienst, Luftlinie × Umwegfaktor | Dieselbe Festlegung wie bei der Anfahrtsschätzung (kein Routing-Dienst im Prototyp). Die Luftlinie wäre hier aber falsch, weil ein Rückzug um das Feuer herum führen kann. Kosten: ca. 250–400 ms je Lauf auf dem vollen Gebiet. |
+| Flammenlänge | aus dem vorhandenen Rothermel-Kern (`FireModel.rothermel`, σ aus `rothermel().B` zurückgerechnet) für die ungünstigste Wetterstunde | eigene Brennstofftabelle, feste Werte je Klasse | Keine zweite Brennstoffwelt: die Flammenlänge folgt denselben Annahmen wie die Prognose. Der Hang wirkt **nicht** in der Flammenlänge, sondern über Δ – sonst wäre er doppelt gezählt. |
+| Label-Entzerrung | Delegation an das vorhandene `declutterLabels()` in `js/app.js`; `LABEL_SEL` wird um `.sa-label,.sa-warnbadge` erweitert | eigene Entzerrung im Modul | Zwei Entzerrer würden gegeneinander arbeiten. Das Modul meldet sich über `opt.declutter` nach jedem Zeichnen an. Falle: `declutterLabels` arbeitet mit `style.transform`; bei Leaflet-Tooltips ist das die Position. |
+| Kartenebenen | zwei getrennte Overlays „Safe Areas“ und „Fluchtwege“ im vorhandenen Ebenenschalter | ein Overlay, eigene Steuerung | Die Fluchtwege überdecken bei vielen Fahrzeugen die Prognose; sie müssen getrennt abschaltbar sein. |
+| Verhalten ohne OSM | nur die abgebrannte Fläche (aus der gezeichneten Brandfläche) plus Hinweis „Es werden KEINE Flächen erfunden“ | Annahmen über Landnutzung, leere Anzeige | Eine erfundene Rückzugsfläche ist im Einsatz gefährlicher als keine. Der Hinweis nennt, was fehlt und wie es zu beheben ist (OSM laden). |
+| Verworfene Flächen | `S.saState.dismissed` (Liste von Flächen-Ids), bleibt über Neuberechnungen erhalten und wird auf dem Gerät gespeichert | je Lauf neu | Eine Entscheidung der Einsatzleitung („diese Fläche nicht“) darf nicht durch die nächste Rechnung verschwinden. Jede Änderung geht ins Protokoll (`safearea_verworfen`). |
+| Overpass | vier zusätzliche Zeilen in `buildQuery()` (Steinbruch, Parkplatz, Sportfläche; `farmyard` war schon enthalten) | zweite Abfrage aus dem Modul | Eine Abfrage, ein Zeitpunkt, ein Stand. Die zusätzlichen Elemente laufen durch `areaClass()` ins Leere und verändern die Brennstoffkarte **nicht**; das Modul rastert sie selbst mit `SafeArea.rasterExtra()`. Die Prognose bleibt damit bitgenau unverändert. |
+
+**Nicht übernommen (bewusst):** Die Entwurfsdemo des Moduls (`demo.html`, `demo-js/`, `css/demo.css`) liegt **nicht**
+im Repository – sie arbeitet mit einem frei erfundenen Szenario und könnte auf GitHub Pages für eine echte Lage
+gehalten werden. Das Demoszenario wird allerdings als Testfixture gebraucht und liegt deshalb als
+`tests/safearea-scenario.cjs` (nicht unter `js/`, weil `tests/model.test.mjs` für jede Datei in `js/` einen
+Loader-Eintrag verlangt).
+
+**Laufzeit** (gemessen im Browser-Test, Chromium in der Sandbox): `SafeArea.plan()` für 6 Flächen und 19
+Fahrzeugstandorte auf 400 × 400 Zellen ca. **400 ms** (Unit-Test auf demselben Raster ca. 250 ms). Das ist klein
+gegenüber der Ensemble-Rechnung (0,5–1,1 s). Auf dem Tablet ist mit dem Zwei- bis Vierfachen zu rechnen – **zu messen**.
+
 ## Laufzeit (gemessen im Test, Chromium in der Sandbox)
 
 0.4.0 mit Geländewind (Node, 24 + 1 Läufe, 400 × 400 Zellen, hügeliges Gelände): 0,5–1,1 s (ohne Geländewind 0,13–0,42 s); Vorbereitung der Geländefelder ca. 70–90 ms je Raster. Im Browser-E2E ca. 0,7–0,8 s je Prognose.

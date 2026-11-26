@@ -1,10 +1,10 @@
-# Waldbrand-Lagebild Neunkirchen-Seelscheid (Prototyp, Version 0.6.0-prototyp)
+# Waldbrand-Lagebild Neunkirchen-Seelscheid (Prototyp, Version 0.7.0-prototyp)
 
 > **TESTVERSION – nicht für den Einsatz.** **Modellprognose, unvalidiert. Keine Handlungsanweisung. Entscheidung und Verantwortung liegen bei der Einsatzleitung.**
 
 Veröffentlicht (Test) unter <https://sfelske3006-stack.github.io/waldbrand-app/> (GitHub Pages, Unterpfad `/waldbrand-app/`; alle Pfade relativ).
 
-Browser-App für Einsatzleiter bei Vegetations- und Waldbränden: Brandfläche einzeichnen, Wetter laden oder vor Ort eingeben, Ausbreitung für 1/2/4/6 h mit Unsicherheitsband berechnen, einfache Vorschläge für Riegelstellungen und Fahrzeugstandorte, dazu eine Simulation der Löschwasserversorgung (Pufferbecken, Förderstrecke, Pendelverkehr). Die gesamte Rechnung läuft im Browser, ein Server ist nicht nötig.
+Browser-App für Einsatzleiter bei Vegetations- und Waldbränden: Brandfläche einzeichnen, Wetter laden oder vor Ort eingeben, Ausbreitung für 1/2/4/6 h mit Unsicherheitsband berechnen, einfache Vorschläge für Riegelstellungen und Fahrzeugstandorte, dazu eine Simulation der Löschwasserversorgung (Pufferbecken, Förderstrecke, Pendelverkehr) und Vorschläge für Rückzugsflächen mit Fluchtwegen je Fahrzeug. Die gesamte Rechnung läuft im Browser, ein Server ist nicht nötig.
 
 ## Start
 
@@ -58,9 +58,24 @@ Google Maps (optional): In `config.js` `googleMapsApiKey` eintragen. Erst dann e
    **Pflichtfahrzeuge** (Vorgabe Auftraggeber): HLF 20, LF 20 und LF KatS des LZ Seelscheid werden bei jedem Einsatz vorrangig eingebunden (unabhängig von der Anfahrtsgrenze, Sicherheitsregeln gelten weiter); ohne sichere Aufgabe „Pflichtfahrzeug – bereitgestellt“ im Bereitstellungsraum mit Begründung. Häkchen „Pflicht“ je Fahrzeug in der Fahrzeugliste.
    **Grundschutz** (Vorgabe Auftraggeber): je ein wasserführendes Fahrzeug aus einer Nachbarkommune an den Gerätehäusern Neunkirchen und Seelscheid (bevorzugt HLF/LF, dann TLF/MLF/TSF-W, kürzeste geschätzte Anfahrt zum Gerätehaus; Annahme), manuell tauschbar, auf der Karte („GS“), in Liste, Protokoll und Export. **Ab 0.4.2** wird der Grundschutz direkt nach den Einsatzaufgaben und VOR Verstärkung, Flanke und Bereitstellungsraum vergeben; ein Grundschutzfahrzeug steht am Gerätehaus und nie im Bereitstellungsraum.
    **Geländewind** (Abschnitt 3, Schalter „Geländewind: an/aus“): lokaler Wind und Feuchte je Zelle aus dem DGM, Ebene „Geländewind“ mit Pfeilen (alle 250 m, Farbe = Faktor lokal/synoptisch). Aus = Rechnung wie 0.3.0 (bitgenau, Test).
-7. **Wasserversorgung (Reiter „Wasser“, neu in 0.6.0)**: Aus den Fahrzeugvorschlägen (Riegel, Auffanglinie, Flanke, Objektschutz), den Entnahmestellen, dem Wegenetz und dem Gelände wird eine **Simulation** der Löschwasserversorgung über 6 h gerechnet: Pufferbecken (Faltbehälter 5.000 l), Förderstrecken bis 600 m Schlauchweg, sonst Pendelverkehr. Zeitregler mit Abspielen (1× / 10× / 60×) bewegt Fahrzeuge und Füllstände, je Becken ein Diagramm (Füllstand, Zufluss, Verbrauch). Becken lassen sich auf der Karte verschieben, hinzufügen und löschen – es wird jedes Mal neu gerechnet. Details: Abschnitt „Wasserversorgung“.
-8. **Szenario B** (z. B. „Wind aus 270°“) neben A vergleichen.
-9. **Protokoll**: lokale Hash-Kette (SHA-256), Export als JSON und GeoJSON, Drucken/PDF über den Browser.
+7. **Rückzugsflächen und Fluchtwege (Abschnitt 6 im Reiter „Lage“, neu in 0.7.0)**: Nach jeder Prognose werden aus Landnutzung (OSM) und Gelände Flächen ohne Brandlast vorgeschlagen (Gewässer, abgebrannte Fläche, Steinbruch, Parkplatz, Sportfläche, Hoffläche, Acker, Grünland), je Fläche mit Soll-Radius, Status (geeignet / bedingt geeignet / ungeeignet) und Begründung, dazu je eingesetztem Fahrzeug ein Fluchtweg (Fahrzeug und zu Fuß) mit geschätzter Zeit. Ist die Fluchtzeit plus Sicherheitspuffer größer als die Zeit, bis die „möglich“-Front den Standort erreichen kann, erscheint eine Warnung an der Fahrzeugkarte, auf der Karte und im Protokoll. Jede Fläche lässt sich verwerfen (bleibt über Neuberechnungen erhalten, wird protokolliert). **Ohne OSM-Daten wird nichts erfunden**: dann bleibt nur die abgebrannte Fläche und ein Hinweis. Details und Quellenlage: Abschnitt „Rückzugsflächen und Fluchtwege“.
+8. **Wasserversorgung (Reiter „Wasser“, neu in 0.6.0)**: Aus den Fahrzeugvorschlägen (Riegel, Auffanglinie, Flanke, Objektschutz), den Entnahmestellen, dem Wegenetz und dem Gelände wird eine **Simulation** der Löschwasserversorgung über 6 h gerechnet: Pufferbecken (Faltbehälter 5.000 l), Förderstrecken bis 600 m Schlauchweg, sonst Pendelverkehr. Zeitregler mit Abspielen (1× / 10× / 60×) bewegt Fahrzeuge und Füllstände, je Becken ein Diagramm (Füllstand, Zufluss, Verbrauch). Becken lassen sich auf der Karte verschieben, hinzufügen und löschen – es wird jedes Mal neu gerechnet. Details: Abschnitt „Wasserversorgung“.
+9. **Szenario B** (z. B. „Wind aus 270°“) neben A vergleichen.
+10. **Protokoll**: lokale Hash-Kette (SHA-256), Export als JSON und GeoJSON, Drucken/PDF über den Browser.
+
+## Änderungen in Version 0.7.0
+
+**Rückzugsflächen und Fluchtwege** (neu, Abschnitt 6 im Reiter „Lage“, siehe Abschnitt „Rückzugsflächen und Fluchtwege“):
+Kandidatenflächen ohne Brandlast aus OSM und aus der gezeichneten Brandfläche, Soll-Radius aus der Flammenlänge
+(Byram 1959) nach Butler & Cohen (1998) mit Hang-/Windzuschlag Δ (Annahme, interpoliert), größter einbeschriebener
+Kreis als Maß für „groß genug“, Status mit Begründung, zwei Kartenebenen („Safe Areas“, „Fluchtwege“) mit
+Sicherheitskreis, Legende und Richtungspfeilen, Tabelle in der Seitenleiste, Fluchtwege je Fahrzeugstandort über das
+25-m-Raster (Fahrzeug nur auf befahrbaren Zellen, zu Fuß nach Tobler 1993), Warnung mit Rechenweg bei zu knapper
+Reserve, Verwerfen einzelner Flächen, Protokolleinträge `safearea` und `safearea_verworfen`, GeoJSON um
+`rueckzugsflaeche` und `fluchtweg` erweitert.
+Neu: `js/safearea.js`, `js/safearea-ui.js`, `css/safearea.css`, `tests/safearea.test.mjs`, `tests/safearea-scenario.cjs`.
+**Es gibt keine belegte deutsche Vorgabe mit Zahlen** zur Größe eines Sicherheitsbereichs; die Dimensionierung stützt
+sich auf US-Literatur und ist in Teilen Annahme (`PARAMS.safearea`, [docs/assumptions.md](docs/assumptions.md)).
 
 ## Änderungen in Version 0.6.0
 
@@ -266,6 +281,105 @@ jede Zahl steht in `js/water-params.js` (`PARAMS.wasser`).
   Becken, Wasserbedarf und Einsatzanteil je Riegelfahrzeug, Zahl verfügbarer Faltbehälter, Standortkriterien,
   Grenze Schlauch/Pendelverkehr, Pendelgeschwindigkeiten, Darstellung nach taktischen Zeichen, Ablösung nach 6 h.
 
+## Rückzugsflächen und Fluchtwege
+
+Neu in 0.7.0. Abschnitt **6 „Rückzugsflächen und Fluchtwege“** im Reiter „Lage“ (bewusst **kein eigener Reiter**: ein
+sechster Reiter bricht auf dem Tablet im Hochformat in die zweite Zeile um, und die Flächen gehören fachlich zu den
+Einsatzvorschlägen). Die Berechnung läuft am Ende von `computeSuggestions()`, also bei **jeder** Neuberechnung
+(Prognose, „Vorschläge neu berechnen“, Fahrzeug auf der Karte verschieben, Fläche verwerfen).
+
+### Bedienung
+
+* **Tabelle „Rückzugsflächen“**: je Fläche Art, Status (`geeignet` / `bedingt geeignet` / `ungeeignet`), Größe in ha,
+  freier Radius (größter einbeschriebener Kreis) gegen Soll-Radius, Flammenlänge, Begründung, Randbrennstoff, Hang,
+  Wind, Faktor Δ und – wenn aus OSM bekannt – die Zufahrt. Knopf **„verworfen“/„aufnehmen“** je Zeile; verworfene
+  Flächen werden durchgestrichen, nicht mehr als Fluchtziel verwendet, bleiben über Neuberechnungen hinweg verworfen
+  und erscheinen im Protokoll (`safearea_verworfen`). Der Flächenname ist ein Knopf und zentriert die Karte.
+* **Tabelle „Fluchtwege je Fahrzeug“**: Fahrzeugweg und Fußweg in Minuten, Strecke, Anstieg, Zeit bis zur
+  „möglich“-Front und **Reserve**. Reserve = Front − (Fluchtzeit + Puffer 15 min). Status `kritisch` bei Reserve ≤ 0
+  oder fehlendem Fluchtweg, `knapp` unter 10 min, sonst `ok`.
+* **Karte**: zwei abschaltbare Ebenen **„Safe Areas“** (Flächen in Statusfarbe, gestrichelter Sicherheitskreis mit dem
+  Soll-Radius, Beschriftung „Art · ha · r frei/Soll“) und **„Fluchtwege“** (Linie mit Richtungspfeilen zur Fläche,
+  Fahrzeug durchgezogen, Fuß gestrichelt, kritisch dick und rot, dazu ein Schild „Rückzug!“ am Standort). Die Legende
+  hängt unter der Kartenlegende. Die Beschriftungen laufen durch die vorhandene Label-Entzerrung aus `js/app.js`.
+* **Warnung**: kritisch erscheint zusätzlich oben bei den Einsatzvorschlägen (rote Warnzeile), an der Fahrzeugkarte und
+  im Tooltip des Fahrzeugmarkers – jeweils mit den Zahlen des Rechenwegs.
+* **Export**: GeoJSON um `rueckzugsflaeche` (Polygon mit `status`, `radius_frei_m`, `radius_soll_m`,
+  `flammenlaenge_m`, `faktor_hang_wind`, `verworfen`, `begruendung`) und `fluchtweg` (LineString mit `art`,
+  `fluchtzeit_min`, `reserve_min`, `warnung`) erweitert. Protokolleintrag `safearea` mit Flächen, Fluchtwegen,
+  Warnungen, Hinweisen und der Quellenliste; er geht wie alle Einträge in die SHA-256-Hashkette ein.
+
+### Modellansatz
+
+1. **Flammenlänge** am Flächenrand: Feuerlinienintensität aus dem vorhandenen Rothermel-Kern (`js/model.js`) für die
+   ungünstigste Wetterstunde im Prognosehorizont, daraus die Flammenlänge **L = 0,0775 · I^0,46** (Byram 1959,
+   metrische Form nach Alexander 1982). Maßgeblich ist die ungünstigste Brennstoffklasse mit mindestens 5 % Anteil am
+   Flächenumfang; bei Flächen mit eigener Brandlast zusätzlich deren Klasse.
+2. **Soll-Radius** = 4 × Flammenlänge × Δ, mindestens 10 m, zuzüglich 3,048 m je 20 Einsatzkräfte und 1,524 m je
+   Fahrzeug (gerechnet wird mit einer Gruppe und einem Fahrzeug je Standort). Δ = (1 + 7,5 · tan Hang) ·
+   (1 + 0,6 · Wind / 16,09 km/h), begrenzt auf 1 bis 10.
+3. **Kandidatenflächen** aus OSM (Gewässer, Steinbruch, Parkplatz, Sportfläche, Hoffläche, Acker, Grünland) und aus der
+   gezeichneten Brandfläche („the black“, 30 min nach Durchzug der Front – Annahme). Flächen mit eigener Brandlast im
+   Ausbreitungsbereich werden ausgeschlossen. Maß für „groß genug“ ist der **größte einbeschriebene Kreis**
+   (Chamfer-Distanz), nicht die Fläche in ha: ein langer schmaler Streifen ist keine Sicherheitsfläche. Ab 70 % des
+   Soll-Radius lautet der Status „bedingt geeignet“.
+4. **Fluchtwege** per Dijkstra über das 25-m-Raster: mit dem Fahrzeug nur auf befahrbaren Zellen (Straße 40 km/h, Weg
+   20 km/h, bergauf verlangsamt), zu Fuß über alle passierbaren Zellen nach Tobler (1993), abseits der Wege × 0,6.
+   Dazu 2 min Reaktionszeit. Ziel ist der Kernbereich einer Fläche (Randabstand ≥ Soll-Radius).
+5. **Warnung** gegen `result.tPossible` am Standort (Zeit, ab der die Zelle in mindestens 10 % der Ensemble-Läufe
+   erreicht ist).
+
+### Quellenlage – wichtig
+
+* **Es gibt keine belegte deutsche Vorgabe mit Zahlen.** In Deutschland gilt **LACES**; die eingesehenen deutschen
+  Regelwerke (Taschenkarte 423 und Fachinfo 312 der Staatlichen Feuerwehrschulen Bayern, Taschenkarte Vegetationsbrand
+  BKS-Portal RLP) beschreiben den Sicherheitsbereich nur **qualitativ** („frei von Brandlast, keine Gefährdungen“).
+  Eine zahlenmäßige Mindestgröße wird dort nicht genannt.
+* Die Dimensionierung stützt sich deshalb vollständig auf **US-Literatur**: Butler & Cohen (1998)
+  doi:10.1071/WF9980073 (Radius ≥ 4 × Flammenhöhe, 7,0 kW/m², ebenes Gelände, „breiter als 20 m“), Butler (2014)
+  doi:10.1071/WF13021 (Überblick, vorläufige Regel SSD = 8 · Δ · Vegetationshöhe) und Page & Butler (2017)
+  doi:10.1071/WF16213.
+* **Laut Page & Butler (2017) ist die Vierfach-Regel eher zu klein**: für nicht tödliche Verletzungen ergaben sich
+  Abstände beim 1–2-, 6–7- bzw. 12–16-fachen der heutigen 4×-Regel (Timber/Brush/Grass).
+* **Butlers Zuschlagstabelle für Δ konnte nicht im Original geprüft werden** (nwcg.gov, fs.usda.gov und weitere Hosts
+  waren aus der Entwicklungsumgebung nicht erreichbar). Δ ist hier aus zwei Stützstellen eines Suchindex-Auszugs
+  interpoliert. Vor einem Einsatz ist die Originaltabelle (IRPG bzw. Butlers Safety-Zone-App) zu beschaffen und
+  dagegen zu prüfen.
+* Ein **vfdb-Merkblatt mit Zahlen zu Sicherheitsbereichen wurde nicht gefunden** (MB 05-04 behandelt
+  Löschwasserzusätze); ein „Waldbrandhandbuch NRW“ wurde nicht gefunden.
+
+### Grenzen
+
+* **Kein Routing**: Fluchtwege laufen über das 25-m-Raster (8er-Nachbarschaft). Einbahnstraßen, Durchfahrtsbreiten,
+  Wendemöglichkeiten, Tragfähigkeit von Brücken und Gegenverkehr sind nicht berücksichtigt.
+* **Rauch, Sicht und Hitze unterwegs** werden nicht modelliert; ein Weg am Feuer entlang wird nicht schlechter
+  bewertet. **Keine zeitabhängige Prüfung entlang des Weges** – geprüft wird die Front am Standort. Fachlich relevant,
+  offen.
+* Flammenlänge statt Flammenhöhe (konservativ, aber nicht identisch mit der Quelle); der Wind wirkt über Rothermel
+  **und** über Δ und wird dadurch möglicherweise doppelt gezählt.
+* Kein Kronenfeuer, kein Flugfeuer, kein Totholz; Gewässertiefe, Ufer und Zugänglichkeit werden nicht geprüft.
+  Mehrere Fahrzeuge auf derselben Fläche werden beim Platzbedarf nicht addiert.
+* Die abgebrannte Fläche wird aus der **gezeichneten** Brandfläche abgeleitet, nicht aus einer Beobachtung.
+* Fahrzeuggeschwindigkeiten (40/20 km/h), Sicherheitspuffer (15 min), Reaktionszeit (2 min), „abgebrannt nach 30 min“,
+  Mindestgröße (4 Zellen) und Suchradius (3.000 m) sind **Annahmen ohne Beleg**.
+
+### Offene Fragen an die Feuerwehr
+
+1. Welche Mindestgröße eines Sicherheitsbereichs gilt bei Ihnen – gibt es eine Dienstvorschrift, Taschenkarte oder
+   Fachempfehlung **mit Zahlen**? Falls nein: wird die US-Regel (4 × Flammenlänge × Δ) als Arbeitsgrundlage akzeptiert?
+2. Darf der Zuschlag Δ wie hier interpoliert werden, oder wird Butlers Originaltabelle (IRPG) beschafft und verbindlich
+   hinterlegt?
+3. Ab wann gilt eine abgebrannte Fläche als Rückzugsfläche (hier 30 min nach Durchzug der Front)? Welche Rolle spielen
+   Glutnester und Rückzündung?
+4. Welche Geschwindigkeiten sind auf Wirtschafts- und Waldwegen im Rückzug realistisch (hier 20 km/h), welche auf
+   Straßen (hier 40 km/h)? Mit welchem Sicherheitspuffer soll gerechnet werden (hier 15 min)?
+5. Sollen Gewässer als Rückzugsfläche überhaupt vorgeschlagen werden (hier höchstens „bedingt geeignet“, weil nicht
+   befahrbar)? Gilt dasselbe für Acker und Grünland, deren Erntezustand aus OSM nicht hervorgeht?
+6. Mit welcher Personalstärke je Standort soll der Platzbedarf gerechnet werden (hier eine Gruppe, 9 Einsatzkräfte,
+   ein Fahrzeug)?
+7. Soll der Rückzugsweg zeitabhängig gegen die Front geprüft werden (Weg während der Flucht), und wie sind Rauch und
+   Sicht zu bewerten?
+
 ## Änderungen in Version 0.4.2
 
 Anlass: Rückfrage der Einsatzleitung „Warum sind nur zwei Fahrzeuge an der Front und so viele wasserführende Fahrzeuge im Bereitstellungsraum?“ Analyse und Belege in `docs/assumptions.md` (Abschnitt „Neu in 0.4.2“).
@@ -316,16 +430,19 @@ Reines HTML/CSS/JavaScript ohne Build-Schritt, Leaflet 1.9.4 lokal unter `vendor
 | `js/water-params.js` | Parameterblock `PARAMS.wasser` (eigene Datei, ändert `js/params.js` nicht). Jede Zahl eine Annahme, Herkunft im Kommentar ([A] [F] [P] [V] [App]). |
 | `js/water-ui.js` | Oberfläche der Wasserversorgung: Leaflet-Ebenen (Becken mit Füllstand, Schlauch, Pendelrouten, Fahrzeuge), Zeitregler mit Animation, Canvas-Diagramme ohne Zusatzbibliothek, Kennzahlen-/Entnahmestellen-/Fahrzeugtabellen. |
 | `css/water.css` | Stile der Wasserversorgung (Präfix `w-`, `wbasin`, `wsrc`, `wveh`), nutzt die Tokens aus `css/app.css`. |
+| `js/safearea.js` | Rückzugsflächen und Fluchtwege (Rechenkern, DOM-frei, deterministisch): Flammenlänge aus dem Rothermel-Kern, Soll-Radius mit Hang-/Windzuschlag, Kandidatensuche (Komponenten, Chamfer-Distanz, größter einbeschriebener Kreis, Randbrennstoff), Fluchtwege per Dijkstra über das Raster (Fahrzeug/Fuß), Warnung gegen die „möglich“-Front, Darstellung für Protokoll und Export. |
+| `js/safearea-ui.js` | Oberfläche der Rückzugsflächen: Leaflet-Ebenen „Safe Areas“ und „Fluchtwege“ (Flächen nach Status, Sicherheitskreis, Beschriftung, Richtungspfeile), Legende an der Kartenlegende, Tabellen in der Seitenleiste, Verwerfen/Zeigen. Nutzt die vorhandene Label-Entzerrung aus `js/app.js`. |
+| `css/safearea.css` | Stile der Rückzugsflächen (Präfix `sa-`), nutzt die Tokens aus `css/app.css` (Tag-/Nachtmodus, `--tap`). |
 | `js/search.js` | Ortssuche: Index laden (lazy), Bewertung/Ranking, Hausnummern, Rettungspunkt-Nummern, Koordinatenparser (Grad/UTM, Krüger-Reihen ohne proj4), Online-Abfrage (Nominatim, gedrosselt), Quellenvermerke. Ohne Abhängigkeiten, auch unter Node (Tests). |
 | `js/search-ui.js` | Bedienung der Suche (Leaflet): Combobox/Listbox, Tastatur, Ergebniskarte, Marker/Rechtecke, Kartenebene „Rettungspunkte“ mit Nummern-Entzerrung. |
 | `css/search.css` | Stile der Suche (Präfix `sx-`), nutzt die Tokens aus `css/app.css` (Tag-/Nachtmodus). |
-| `js/app.js` | UI, verdrahtet auch die Suche (Zündpunkt, Protokoll, Ebene, Quellenangaben) und die Wasserversorgung (Adapter `waterInput()`, Reiter, Ebenen, Protokoll, Export). |
+| `js/app.js` | UI, verdrahtet auch die Suche (Zündpunkt, Protokoll, Ebene, Quellenangaben), die Wasserversorgung (Adapter `waterInput()`, Reiter, Ebenen, Protokoll, Export) und die Rückzugsflächen (`computeSafeAreas()` am Ende von `computeSuggestions()`, Warnung je Fahrzeugkarte und Marker, Protokoll, Export). |
 | `data/fahrzeuge.json` | Fahrzeug- und Wachendaten Rhein-Sieg-Kreis (schema 2), editierbar, Quelle/Quellentyp je Eintrag (ca. 220 KB). |
 | `data/gemeindeteile.json` | Gemarkungen Neunkirchen-Seelscheid (ALKIS) mit Zuordnung zu den Gemeindeteilen (ca. 50 KB). |
 | `data/dgm25.bin`, `data/dgm25.json` | Geländemodell 25 m (Int16, Dezimeter) mit Metadaten (Quelle, Stand, Lizenz, Raster). |
 | `data/suche-index.json` | Offline-Suchindex: 7 Kommunen, 306 Ortslagen, 3.223 Straßen, 62.152 Adressen (ca. 860 KB, delta-kodierte Mikrograd). Wird erst beim ersten Fokus im Suchfeld geladen. |
 | `data/rettungspunkte-kwf.json` | KWF-Rettungspunkte v2.21 (Stand 10/2026), Gebietsausschnitt 655 Punkte, Attribute unverändert (ca. 98 KB). |
-| `tests/` | Unit-/Szenariotests (`model.test.mjs`, `search.test.mjs`, `water.test.mjs`), Browser-Test (`e2e.mjs`), synthetische OSM-Testdaten (`synth-osm.mjs`, keine echten Daten), Stichproben aus den Rohdaten (`fixtures/`). |
+| `tests/` | Unit-/Szenariotests (`model.test.mjs`, `search.test.mjs`, `water.test.mjs`, `safearea.test.mjs`), Browser-Test (`e2e.mjs`), synthetische OSM-Testdaten (`synth-osm.mjs`, `safearea-scenario.cjs`, keine echten Daten), Stichproben aus den Rohdaten (`fixtures/`). |
 | `tools/build-artifact.mjs` | Erzeugt die Einzeldatei-Vorschau. |
 | `tools/build-dgm.py` | Erzeugt `data/dgm25.*` aus dem DGM1 NRW. |
 | `tools/build-suche.py` | Erzeugt `data/suche-index.json` aus gebref, Basis-DLM und DVG1 (pyproj, pyshp). |

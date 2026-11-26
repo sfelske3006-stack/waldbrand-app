@@ -37,3 +37,20 @@ export function hillOsm(lat0, lon0) {
   for (let k = 0; k < 8; k++) for (let q = 0; q < 4; q++) els.push(building(1100 + k * 70, 1050 + q * 110));
   return { version: 0.6, osm3s: { timestamp_osm_base: "SYNTHETISCHE TESTDATEN" }, elements: els };
 }
+
+/**
+ * Wie hillOsm, zusätzlich Kandidaten für Rückzugsflächen ohne Brandlast (0.7.0): Parkplatz,
+ * Steinbruch, Sportplatz. SYNTHETISCH, keine echten Daten. Die Ids liegen über 9000, damit sie
+ * nicht mit den Ids aus hillOsm zusammenfallen.
+ */
+export function safeAreaOsm(lat0, lon0) {
+  const base = hillOsm(lat0, lon0);
+  const { rect } = makeTools(lat0, lon0);
+  const extra = (id, tags, geometry) => ({ type: "way", id, tags, geometry });
+  base.elements.push(
+    extra(9001, { amenity: "parking", name: "Parkplatz Waldrand (synthetisch)" }, rect(420, 400, 760, 660)),
+    extra(9002, { landuse: "quarry", name: "Steinbruch (synthetisch)" }, rect(-1500, 600, -1000, 1100)),
+    extra(9003, { leisure: "pitch", name: "Sportplatz (synthetisch)" }, rect(900, -700, 1300, -380)),
+  );
+  return base;
+}

@@ -1183,8 +1183,143 @@ td.s-warten { color: #8a6d00; font-weight: 600; }
   .w-det[open] summary ~ * { display: block; }
 }
 
+/* css/safearea.css */
+/* Safe Areas und Fluchtwege – Darstellung.
+   Nutzt die CSS-Variablen der App (css/app.css: --surface, --ink, --line, --muted, --tap, ...).
+   Fällt zurück, wenn das Modul allein geladen wird (demo.html). Tag-/Nachtmodus wie in der App. */
+:root {
+  --sa-ok: #1d6b3a;
+  --sa-cond: #8a6100;
+  --sa-bad: #9c1c13;
+  --sa-route: #0b4f8a;
+  --sa-foot: #6a1b9a;
+  --sa-ok-bg: #e2f3e8;
+  --sa-cond-bg: #fdf1cf;
+  --sa-bad-bg: #fbe3e0;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --sa-ok: #7fd49b; --sa-cond: #ffd166; --sa-bad: #ff8a80;
+    --sa-route: #8cc4ff; --sa-foot: #cf9bff;
+    --sa-ok-bg: #16301f; --sa-cond-bg: #33280c; --sa-bad-bg: #3a1714;
+  }
+}
+:root[data-theme="dark"] {
+  --sa-ok: #7fd49b; --sa-cond: #ffd166; --sa-bad: #ff8a80;
+  --sa-route: #8cc4ff; --sa-foot: #cf9bff;
+  --sa-ok-bg: #16301f; --sa-cond-bg: #33280c; --sa-bad-bg: #3a1714;
+}
+
+/* ---------------------------------------------------------------- Karte */
+.sa-area { }
+.sa-area.dismissed { opacity: .5; }
+.sa-circle { pointer-events: none; }
+
+.sa-label, .sa-warnbadge {
+  display: inline-block; white-space: nowrap; font-weight: 800; font-size: 13px;
+  border-radius: 5px; padding: 2px 7px; border: 2px solid #fff;
+  box-shadow: 0 0 0 2px #000; color: #fff;
+}
+.sa-label.ok { background: #1d6b3a; }
+.sa-label.cond { background: #8a6100; }
+.sa-label.bad { background: #9c1c13; }
+.sa-label.dismissed { background: #4a5662; text-decoration: line-through; }
+.sa-warnbadge.bad { background: #9c1c13; font-size: 15px; padding: 4px 10px; }
+.sa-warnbadge.cond { background: #8a6100; font-size: 14px; }
+
+.sa-arrow {
+  display: block; width: 0; height: 0;
+  border-left: 7px solid transparent; border-right: 7px solid transparent;
+  border-bottom: 13px solid var(--sa-arrow-color, #0b4f8a);
+  filter: drop-shadow(0 0 1.5px #000) drop-shadow(0 0 1.5px #000);
+}
+
+/* ---------------------------------------------------------------- Legende */
+.sa-lg {
+  display: grid; gap: 3px; font-size: 12px; line-height: 1.35;
+  background: var(--surface, #fff); color: var(--ink, #111820);
+  border: 1px solid var(--line, #c3ccd5); border-radius: 6px; padding: 6px 8px; max-width: 280px;
+}
+.sa-lg-title { font-weight: 700; }
+.sa-lg-row { display: flex; gap: 6px; align-items: center; }
+.sa-lg-note { color: var(--muted, #4a5662); font-size: 11px; }
+.sa-sw { width: 20px; height: 12px; flex: none; border: 2px solid #000; border-radius: 2px; }
+.sa-sw.ok { background: #2e9e57; border-color: #1d6b3a; }
+.sa-sw.cond { background: #e8b923; border-color: #8a6100; }
+.sa-sw.bad { background: #c0392b; border-color: #9c1c13; }
+.sa-sw.circ { background: transparent; border: 2px dashed #1d6b3a; border-radius: 50%; }
+.sa-sw.route { background: transparent; border: 0; border-top: 4px solid #0b4f8a; height: 0; }
+.sa-sw.routefoot { background: transparent; border: 0; border-top: 4px dashed #6a1b9a; height: 0; }
+.sa-sw.warn { background: #9c1c13; border-color: #000; }
+
+/* ---------------------------------------------------------------- Seitenleiste */
+.sa-h { margin: 14px 0 6px; font-size: 16px; }
+.sa-h:first-child { margin-top: 0; }
+.sa-msg {
+  padding: 10px 12px; border-radius: 6px; border-left: 7px solid var(--sa-bad);
+  background: var(--sa-bad-bg); font-size: 15px; margin: 0 0 10px;
+}
+.sa-msg.cond { border-left-color: var(--sa-cond); background: var(--sa-cond-bg); }
+.sa-msg ul { margin: 6px 0 0; padding-left: 20px; }
+.sa-msg li { margin-bottom: 3px; }
+
+.sa-tablewrap { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.sa-table { border-collapse: collapse; width: 100%; font-size: 14px; font-variant-numeric: tabular-nums; }
+.sa-table th, .sa-table td { padding: 6px 6px; text-align: left; vertical-align: middle; }
+.sa-table th { font-size: 11px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted, #4a5662); border-bottom: 2px solid var(--line, #c3ccd5); }
+.sa-table td.num, .sa-table th.num { text-align: right; white-space: nowrap; }
+/* Hauptzeile mit den Kennzahlen, darunter eine Zeile über alle Spalten mit der Begründung:
+   hält die Zeilen flach und vermeidet waagerechtes Scrollen auf dem Tablet. */
+.sa-table tr.sa-main > td { padding-top: 10px; border-top: 1px solid var(--line, #c3ccd5); }
+.sa-table tr.sa-main:first-child > td { border-top: 0; }
+.sa-table tr.sa-why > td { padding: 0 6px 10px; font-size: 13px; color: var(--ink, #111820); }
+.sa-table tr.sa-why:empty { display: none; }
+.sa-table tr.sa-dismissed { opacity: .55; }
+.sa-table tr.sa-dismissed .sa-link { text-decoration: line-through; }
+/* schmale Seitenleiste (App: 360–440 px): Statusmarke und Kopfzeilen dürfen umbrechen,
+   die Aktionsspalte bleibt so schmal wie ihr Knopf */
+.sa-table.areas .sa-badge { white-space: normal; }
+.sa-table.areas td:last-child, .sa-table.areas th:last-child { width: 1%; }
+.sa-table th { white-space: normal; }
+.sa-sub { color: var(--muted, #4a5662); font-size: 12px; }
+.sa-hints { margin: 4px 0 0; padding-left: 18px; font-size: 13px; color: var(--muted, #4a5662); }
+.sa-notes { margin: 0; padding-left: 20px; font-size: 14px; display: grid; gap: 4px; }
+
+.sa-badge {
+  display: inline-block; font-size: 12px; font-weight: 800; padding: 3px 7px; border-radius: 4px;
+  border: 2px solid currentColor; white-space: nowrap;
+}
+.sa-badge.ok { color: var(--sa-ok); background: var(--sa-ok-bg); }
+.sa-badge.cond { color: var(--sa-cond); background: var(--sa-cond-bg); }
+.sa-badge.bad { color: var(--sa-bad); background: var(--sa-bad-bg); }
+
+/* Große Bedienelemente (Tablet, Handschuhe) */
+.sa-btn {
+  min-height: var(--tap, 52px); padding: 0 14px; border-radius: 6px;
+  border: 2px solid var(--ink, #111820); background: var(--surface, #fff); color: var(--ink, #111820);
+  font: inherit; font-weight: 600; cursor: pointer;
+}
+.sa-btn.small { min-height: 44px; font-size: 13px; padding: 0 8px; }
+.sa-btn:focus-visible, .sa-link:focus-visible { outline: 3px solid var(--focus, #0b4f8a); outline-offset: 2px; }
+.sa-link {
+  background: none; border: 0; padding: 0; font: inherit; font-weight: 700;
+  color: var(--info, #0b4f8a); text-decoration: underline; cursor: pointer; text-align: left;
+  min-height: 32px;
+}
+
+@media (max-width: 760px) {
+  .sa-table { font-size: 13px; }
+  .sa-table th, .sa-table td { padding: 10px 5px; }
+  .sa-lg { max-width: 220px; font-size: 11px; }
+}
+@media print {
+  .sa-btn, .sa-lg { display: none !important; }
+  .sa-tablewrap { overflow: visible; }
+}
+@media (prefers-reduced-motion: reduce) { .sa-arrow { filter: none; } }
+
 </style>
-<script>window.WB_VERSION = "0.6.0-prototyp"; window.WB_ASSET = function (p) { return p; };</script>
+<script>window.WB_VERSION = "0.7.0-prototyp"; window.WB_ASSET = function (p) { return p; };</script>
 
 <div id="app">
   <header class="warnbar" role="note" aria-label="Pflichthinweis">
@@ -1242,6 +1377,7 @@ td.s-warten { color: #8a6d00; font-weight: 600; }
           <div class="lg-row lg-scale"><span class="wa wa4"></span>1,05–1,2<span class="wa wa5"></span>&gt; 1,2</div>
           <div class="lg-note">Pfeil = lokale Windrichtung, Farbe = Faktor lokal/synoptisch (10 m), vereinfachte Geländekorrektur, kein Strömungsmodell.</div>
         </div>
+        <div id="sa-legend"></div>
       </div>
     </section>
 
@@ -1349,6 +1485,18 @@ td.s-warten { color: #8a6d00; font-weight: 600; }
           <div id="sug-diff" class="status"></div>
           <div id="suggestions"></div>
         </section>
+
+        <!-- Rückzugsflächen und Fluchtwege (0.7.0, js/safearea.js + js/safearea-ui.js). Bewusst KEIN eigener
+             Reiter: ein sechster Reiter bricht auf dem Tablet im Hochformat in die zweite Zeile um, und die
+             Flächen gehören fachlich zu den Einsatzvorschlägen (sie werden am Ende von computeSuggestions()
+             berechnet und warnen je Fahrzeugstandort). -->
+        <section class="card" id="sec-safearea">
+          <h2><span class="step">6</span> Rückzugsflächen und Fluchtwege</h2>
+          <p class="muted small">Automatische Vorschläge aus Landnutzung und Gelände. Vorschläge sind keine
+            Anordnung; jede Fläche lässt sich verwerfen. Sicherheitsabstand nach Butler &amp; Cohen (1998)
+            mit Hang-/Windzuschlag (Annahme), siehe „Grenzen &amp; Quellen“.</p>
+          <div id="sa-panel"></div>
+        </section>
       </div>
 
       <div class="tabpanel" id="panel-fahrzeuge" hidden>
@@ -1422,6 +1570,10 @@ td.s-warten { color: #8a6d00; font-weight: 600; }
         <section class="card" id="sec-suche-quellen">
           <h2>Suche: Quellen und Lizenzen</h2>
           <div id="search-sources"></div>
+        </section>
+        <section class="card" id="sec-safearea-quellen">
+          <h2>Rückzugsflächen und Fluchtwege: Quellenlage und Grenzen</h2>
+          <div id="safearea-sources"></div>
         </section>
         <section class="card">
           <h2>Haftung und Freigabe</h2>
@@ -1504,7 +1656,7 @@ window.APP_CONFIG = {
   const TPA = 0.0459137; // 1 ton/acre (US short ton) in lb/ft²
 
   const PARAMS = {
-    version: "0.6.0-prototyp",
+    version: "0.7.0-prototyp",
     modelName: "Rothermel-1972-Raster-MTT (vereinfachte Eigenimplementierung)",
 
     // Prognosehorizonte in Stunden (Spezifikation 2.3)
@@ -1793,6 +1945,33 @@ window.APP_CONFIG = {
       noWaterTypes: ["ELW", "KdoW", "MTF", "MTW", "DLK", "DL", "GW", "RW"],
       // Großtanker/Wassertransport: nur Wasserversorgung/Pendelverkehr, dort bevorzugt (Annahme; Präfixvergleich)
       waterSupplyOnlyTypes: ["TW ", "LTW", "WLF"],
+    },
+
+    // ---------------------------------------------------------------- Rückzugsflächen und Fluchtwege (0.7.0)
+    // Die Werte stehen zusätzlich als SafeArea.DEFAULTS in js/safearea.js; dieser Block überschreibt sie.
+    // ES GIBT KEINE BELEGTE DEUTSCHE VORGABE MIT ZAHLEN zur Größe eines Sicherheitsbereichs: die
+    // deutschen Regelwerke (LACES, Taschenkarte 423 SFS Bayern, Fachinfo 312) beschreiben ihn nur
+    // qualitativ ("frei von Brandlast, keine Gefährdungen"). Die Dimensionierung stützt sich deshalb
+    // vollständig auf US-Literatur (Butler & Cohen 1998; Butler 2014; Page & Butler 2017).
+    // Page & Butler (2017) halten die Vierfach-Regel eher für ZU KLEIN; Butlers Zuschlagstabelle für
+    // den Faktor Δ konnte NICHT im Original geprüft werden (Hosts gesperrt), Δ ist hier interpoliert.
+    // Begründung je Zahl: docs/assumptions.md. ALLES OHNE "belegt" IST ANNAHME.
+    safearea: {
+      // Flammenlänge: Abbrandzeit t_res = 384/sigma (min, zu prüfen), Byram (1959) metrisch nach Alexander (1982)
+      residenceTimeConst: 384, byramA: 0.0775, byramB: 0.46,
+      // Soll-Radius: 4 x Flammenlänge, mindestens 10 m Radius (= 20 m Breite) – Butler & Cohen (1998)
+      ssdFlameFactor: 4, minSsdM: 10,
+      // Hang-/Windzuschlag Δ = (1 + 7,5·tan) · (1 + 0,6·u/16,09 km/h), begrenzt auf 10 (ANNAHME, interpoliert)
+      deltaSlopePerTan: 7.5, deltaWindPerRef: 0.6, windRefKmh: 16.09344, deltaMax: 10,
+      // Zuschlag 10 ft je 20 Einsatzkräfte, 5 ft je Fahrzeug (USFS-Zusammenfassung 2019, Primärabgleich offen)
+      addPer20PersonsM: 3.048, addPerVehicleM: 1.524, defaultPersons: 9, defaultVehicles: 1,
+      conditionalFactor: 0.7,
+      // Kandidatensuche (alles ANNAHME)
+      minAreaCells: 4, maxAreas: 12, maxAreaDistM: 3000, blackAfterMin: 30, edgeShareMin: 0.05,
+      // Fluchtwege (Fahrzeuggeschwindigkeiten OHNE BELEG, Fußweg nach Tobler 1993)
+      roadKmh: 40, trackKmh: 20, slopeSlowK: 4, footOffPath: 0.6, reactionMin: 2, maxRouteMin: 60,
+      // Warnung (ANNAHME)
+      bufferMin: 15, warnReserveMin: 10,
     },
   };
 
@@ -3574,6 +3753,13 @@ window.APP_CONFIG = {
   way["leisure"="nature_reserve"](${bb});
   relation["leisure"="nature_reserve"](${bb});
   relation["boundary"="protected_area"]["protect_class"~"^(1a|1b|1|2|3|4)$"](${bb});
+  // Kandidaten für Rückzugsflächen (0.7.0, SafeArea.OVERPASS_EXTRA). landuse=farmyard steht schon in "lu".
+  // Diese Elemente laufen durch areaClass() ins Leere und verändern die Brennstoffkarte NICHT; das Modul
+  // rastert sie selbst mit SafeArea.rasterExtra(). Die Prognose bleibt damit unverändert.
+  way["landuse"="quarry"](${bb});
+  relation["landuse"="quarry"]["type"="multipolygon"](${bb});
+  way["amenity"="parking"](${bb});
+  way["leisure"~"^(pitch|track|sports_centre)$"](${bb});
 );
 out geom;
 (
@@ -8017,6 +8203,1163 @@ out center;`;
 })(typeof globalThis !== "undefined" ? globalThis : this);
 
 </script>
+<script>/* js/safearea.js */
+/*
+ * Safe Areas (Rückzugsflächen) und Fluchtwege – Berechnungskern, ohne DOM.
+ *
+ * Zweck: Zu jeder Lage dauerhaft Rückzugsflächen einplanen, je eingesetztem Fahrzeug einen
+ * Fluchtweg dorthin mit geschätzter Zeit angeben und warnen, wenn die Fluchtzeit plus
+ * Sicherheitspuffer größer ist als die Zeit, bis die „möglich“-Front den Standort erreichen kann.
+ *
+ * FACHLICHE GRUNDLAGE (Belege siehe ASSUMPTIONS.md; alles andere ist ausdrücklich Annahme):
+ *  - Butler & Cohen (1998), Int. J. Wildland Fire 7(2):73–77 (doi:10.1071/WF9980073):
+ *    Strahlungsmodell, Grenzwert 7,0 kW/m² (Verbrennung 2. Grades an unbedeckter Haut in < 90 s);
+ *    Faustregel Radius der Sicherheitsfläche >= 4 x maximale Flammenhöhe; die meisten Flächen
+ *    müssen breiter als 20 m sein. Gilt für EBENES Gelände ohne Wind.
+ *  - Butler (2014), Int. J. Wildland Fire 23(3):295–308 (doi:10.1071/WF13021): Überblick,
+ *    Forschungsbedarf; daraus abgeleitete, vom Autor selbst als VORLÄUFIG bezeichnete Regel
+ *    SSD = 8 * Δ * H_Vegetation mit einem Hang-/Wind-Faktor Δ aus einer Tabelle (Δ zwischen 1 und
+ *    10; Butler hält 1 bis 5 für wahrscheinlicher). Die Tabelle selbst lag hier NICHT vor.
+ *  - Page & Butler (2017), Int. J. Wildland Fire 26:655–667 (doi:10.1071/WF16213): empirisch aus
+ *    Entrapments; ohne Feuerschutzzelt und bei Hang < 25 % rund 20–50 m bei Flammen unter 10 m,
+ *    darüber das 1- bis 4-fache der Flammenhöhe (Timber/Brush/Grass).
+ *  - Byram (1959), metrische Form nach Alexander (1982): Flammenlänge L[m] = 0,0775 * I[kW/m]^0,46.
+ *  - Tobler (1993) Hiking Function: v = 6 * exp(-3,5 * |s + 0,05|) km/h, abseits der Wege * 3/5.
+ *  - LACES (Lookout, Anchor point, Communication, Escape route, Safety zone) ist in Deutschland
+ *    die eingeführte Sicherheitsregel (ersetzte „FRAU“). Sicherheitsbereich: bekanntgeben, frei von
+ *    Brandlast, keine Gefährdungen, Sammelplatz beim Rückzug. Eine ZAHLENMÄSSIGE Mindestgröße ist
+ *    in den eingesehenen deutschen Regelwerken NICHT genannt (zu prüfen).
+ *
+ * WICHTIG: Dieses Modul erfindet keine Flächen. Ohne Landnutzungsdaten (OSM) werden nur Flächen
+ * gemeldet, die sich aus den Eingaben der Einsatzleitung selbst ergeben (bereits abgebrannte
+ * Fläche), zusammen mit einem deutlichen Hinweis.
+ */
+(function (root) {
+  const G = root.Grid;
+  const FTMIN_PER_KMH = 54.6807; // 1 km/h = 54,6807 ft/min (wie js/model.js)
+  const M_PER_FT = 0.3048;
+  const BTU_FT_S_TO_KW_M = 3.46414; // 1 Btu/(ft·s) = 3,46414 kW/m
+
+  // ------------------------------------------------------------------ Parameter (Vorschlag für PARAMS.safearea)
+  const DEFAULTS = {
+    // --- Flammenlänge aus dem Rothermel-Kern (js/model.js) ---
+    // Abbrandzeit der Flammenfront t_res = residenceTimeConst / sigma (min), sigma = charakteristische
+    // Oberfläche/Volumen in 1/ft. Üblicherweise Anderson (1969) zugeschrieben – PRIMÄRQUELLE NICHT
+    // GEPRÜFT (Host gesperrt), deshalb „zu prüfen“.
+    residenceTimeConst: 384,
+    byramA: 0.0775, byramB: 0.46, // Byram (1959), metrisch nach Alexander (1982)
+
+    // --- Sicherheitsabstand (Safe Separation Distance) ---
+    ssdFlameFactor: 4,  // Butler & Cohen (1998)
+    minSsdM: 10,        // Butler & Cohen (1998): Flächen müssen breiter als 20 m sein -> Radius 10 m
+    // Hang-/Windzuschlag Δ. ANNAHME: Δ = Δ_Hang * Δ_Wind, linear interpoliert über zwei Stützstellen
+    // aus der USFS-Zusammenfassung zu Butlers Regel (20 % Hang + 10 mph Wind -> Δ = 4; über 40 % Hang
+    // 6- bis 10-fach). Die Originaltabelle lag nicht vor (siehe ASSUMPTIONS.md).
+    deltaSlopePerTan: 7.5,   // Δ_Hang = 1 + 7,5 * Steigung(tan)
+    deltaWindPerRef: 0.6,    // Δ_Wind = 1 + 0,6 * (Wind / windRefKmh)
+    windRefKmh: 16.09344,    // 10 mph
+    deltaMax: 10,            // NWCG: Δ zwischen 1 und 10
+    // Zuschlag für Personal und Fahrzeuge auf dem Radius (USFS-Zusammenfassung 2019:
+    // 10 ft je 20 Einsatzkräfte, 5 ft je Fahrzeug)
+    addPer20PersonsM: 3.048,
+    addPerVehicleM: 1.524,
+    defaultPersons: 9,       // ANNAHME: Gruppe (1/8) je Fahrzeug
+    defaultVehicles: 1,
+    conditionalFactor: 0.7,  // ANNAHME: ab 70 % des Soll-Radius „bedingt geeignet“
+
+    // --- Kandidatensuche ---
+    minAreaCells: 4,         // ANNAHME: kleiner als 4 Zellen (2500 m²) gar nicht erst prüfen
+    maxAreas: 12,            // ANNAHME: Anzeigegrenze
+    maxAreaDistM: 3000,      // ANNAHME: nur Flächen bis 3 km um den Brandschwerpunkt vorschlagen
+    blackAfterMin: 30,       // ANNAHME: abgebrannte Fläche erst nach 30 min Abkühlung als Rückzugsfläche
+    edgeShareMin: 0.05,      // ANNAHME: Randbrennstoffklasse zählt ab 5 % des Umfangs
+
+    // --- Fluchtwege ---
+    roadKmh: 40,             // ANNAHME (kein Beleg): Löschfahrzeug auf befestigter Straße im Einsatz
+    trackKmh: 20,            // ANNAHME (kein Beleg): Löschfahrzeug auf Wirtschafts-/Waldweg
+    slopeSlowK: 4,           // ANNAHME: v = v0 / (1 + k * Steigung bergauf)
+    footOffPath: 0.6,        // Tobler (1993): abseits der Wege Faktor 3/5
+    reactionMin: 2,          // ANNAHME: Erkennen, Rückzugsbefehl, Aufsitzen
+    maxRouteMin: 60,         // ANNAHME: längere Fluchtwege nicht mehr sinnvoll
+
+    // --- Warnung ---
+    bufferMin: 15,           // ANNAHME: Sicherheitspuffer auf die Fluchtzeit
+    warnReserveMin: 10,      // ANNAHME: unter 10 min Reserve = „knapp“
+  };
+
+  /** Kandidatentypen: Brandlast auf der Fläche entscheidet über die erreichbare Höchstbewertung. */
+  const TYPES = {
+    gewaesser:  { label: "Gewässer",            brandlast: false, befahrbar: false, osm: "natural=water / landuse=reservoir|basin" },
+    abgebrannt: { label: "Abgebrannte Fläche",  brandlast: false, befahrbar: true,  osm: "aus der Lage (Brandfläche)" },
+    steinbruch: { label: "Steinbruch / Abbau",  brandlast: false, befahrbar: true,  osm: "landuse=quarry" },
+    parkplatz:  { label: "Parkplatz",           brandlast: false, befahrbar: true,  osm: "amenity=parking" },
+    sportplatz: { label: "Sportfläche",         brandlast: false, befahrbar: true,  osm: "leisure=pitch|track|sports_centre" },
+    hoffläche:  { label: "Hof-/Betriebsfläche", brandlast: false, befahrbar: true,  osm: "landuse=farmyard" },
+    acker:      { label: "Acker",               brandlast: true,  befahrbar: true,  osm: "landuse=farmland" },
+    gruenland:  { label: "Grünland / Wiese",    brandlast: true,  befahrbar: true,  osm: "landuse=meadow|grass / natural=grassland" },
+  };
+
+  const clamp = (v, a, b) => Math.min(Math.max(v, a), b);
+  const r1 = (v) => Math.round(v * 10) / 10;
+  function fmtMin(m) {
+    if (!isFinite(m)) return "nicht im Prognosehorizont";
+    const h = Math.floor(m / 60), mm = Math.round(m % 60);
+    return h > 0 ? `${h} h ${String(mm).padStart(2, "0")} min` : `${mm} min`;
+  }
+  const de = (v, d = 1) => Number(v).toFixed(d).replace(".", ",");
+
+  function params(P) {
+    return Object.assign({}, DEFAULTS, (P && P.safearea) || {});
+  }
+
+  // ------------------------------------------------------------------ Flammenlänge
+  /**
+   * Charakteristische Oberfläche/Volumen sigma (1/ft) aus dem Rückgabewert von FireModel.rothermel().
+   * rothermel() liefert B = 0,02526 * sigma^0,54 (Rothermel 1972); die Umkehrung ist exakt und
+   * erspart eine zweite Implementierung der Flächenanteilsgewichtung.
+   */
+  function sigmaFromRothermel(r) {
+    if (!r || !(r.B > 0)) return 0;
+    return Math.pow(r.B / 0.02526, 1 / 0.54);
+  }
+
+  /**
+   * Byram-Flammenlänge aus einem Rothermel-Ergebnis.
+   * I = (IR * t_res) * R / 60  [Btu/(ft·s)],  L = a * (I * 3,46414)^b  [m]
+   * @returns {sigma, tResMin, hpaBtuFt2, intensityKwM, flameM}
+   */
+  function flameFromRothermel(r, sp) {
+    // sp darf PARAMS (mit .safearea) oder bereits der flache Parametersatz sein
+    const cfg = sp && sp.residenceTimeConst !== undefined ? sp : params(sp);
+    const sigma = sigmaFromRothermel(r);
+    if (!(sigma > 0) || !(r.IR > 0) || !(r.R > 0)) {
+      return { sigma, tResMin: 0, hpaBtuFt2: 0, intensityKwM: 0, flameM: 0 };
+    }
+    const tResMin = cfg.residenceTimeConst / sigma;
+    const hpa = r.IR * tResMin;                       // Btu/ft²
+    const iBtu = (hpa * r.R) / 60;                    // Btu/(ft·s), R in ft/min
+    const iKw = iBtu * BTU_FT_S_TO_KW_M;              // kW/m
+    const flameM = cfg.byramA * Math.pow(iKw, cfg.byramB);
+    return { sigma, tResMin, hpaBtuFt2: hpa, intensityKwM: iKw, flameM };
+  }
+
+  /**
+   * Flammenlänge einer Brennstoffklasse über alle Wetterstunden (ungünstigste Stunde).
+   * Hang bleibt 0: der Hang geht über den Zuschlag Δ in den Sicherheitsabstand ein (sonst doppelt).
+   * @returns {flameM, windKmh, hour, intensityKwM, rosMMin} oder null (nicht brennbar)
+   */
+  function flameForClass(classKey, weatherHours, P) {
+    const FM = root.FireModel;
+    const cls = P.fuelClasses[classKey];
+    if (!FM || !cls || !cls.model) return null;
+    const fm = P.fuelModels[cls.model];
+    const waf = P.waf[cls.waf] ?? 0.4;
+    let best = null;
+    for (let h = 0; h < weatherHours.length; h++) {
+      const w = weatherHours[h];
+      const dm = FM.deadMoisture(w, P.moisture);
+      const M = {
+        d1: Math.max(1, dm.d1) / 100, d10: Math.max(1, dm.d10) / 100, d100: Math.max(1, dm.d100) / 100,
+        lh: P.moisture.liveHerb / 100, lw: P.moisture.liveWoody / 100,
+      };
+      const r = FM.rothermel(fm, M, w.windKmh * waf * FTMIN_PER_KMH, 0, P.tonPerAcreToLbFt2);
+      const f = flameFromRothermel(r, params(P));
+      if (!best || f.flameM > best.flameM) {
+        best = { flameM: f.flameM, windKmh: w.windKmh, hour: h, intensityKwM: f.intensityKwM, rosMMin: r.R * M_PER_FT };
+      }
+    }
+    return best;
+  }
+
+  // ------------------------------------------------------------------ Sicherheitsabstand
+  /** Hang-/Windfaktor Δ (ANNAHME, Stützstellen siehe ASSUMPTIONS.md). */
+  function deltaFactor(slopeTan, windKmh, sp) {
+    const s = params(sp);
+    const up = Math.max(0, Number.isFinite(slopeTan) ? slopeTan : 0);
+    const u = Math.max(0, Number.isFinite(windKmh) ? windKmh : 0);
+    const dSlope = 1 + s.deltaSlopePerTan * up;
+    const dWind = 1 + s.deltaWindPerRef * (u / s.windRefKmh);
+    return { deltaSlope: dSlope, deltaWind: dWind, delta: clamp(dSlope * dWind, 1, s.deltaMax) };
+  }
+
+  /**
+   * Erforderlicher Radius der Rückzugsfläche.
+   * SSD = max(minSsdM, ssdFlameFactor * Flammenlänge * Δ), dazu Zuschlag für Personal und Fahrzeuge.
+   */
+  function requiredRadius(flameM, slopeTan, windKmh, opt = {}, sp) {
+    const s = params(sp);
+    const d = deltaFactor(slopeTan, windKmh, sp);
+    const base = s.ssdFlameFactor * Math.max(0, flameM) * d.delta;
+    const ssdM = Math.max(s.minSsdM, base);
+    const persons = opt.persons ?? s.defaultPersons;
+    const vehicles = opt.vehicles ?? s.defaultVehicles;
+    const addM = s.addPer20PersonsM * (persons / 20) + s.addPerVehicleM * vehicles;
+    return {
+      ...d, flameM, ssdM, addM, radiusM: ssdM + addM, persons, vehicles,
+      limitedByMin: base < s.minSsdM,
+    };
+  }
+
+  // ------------------------------------------------------------------ Hilfsfunktionen Raster
+  /** Steigung (tan) zwischen zwei Zellen, positiv = von a nach b bergauf. NaN-sicher. */
+  function slopeBetween(grid, a, b) {
+    if (!grid.elev) return 0;
+    const za = grid.elev[a], zb = grid.elev[b];
+    if (!Number.isFinite(za) || !Number.isFinite(zb)) return 0;
+    const ai = a % grid.nx, aj = (a - ai) / grid.nx;
+    const bi = b % grid.nx, bj = (b - bi) / grid.nx;
+    const len = Math.hypot(bi - ai, bj - aj) * grid.cell;
+    return len > 0 ? (zb - za) / len : 0;
+  }
+
+  /** Zusammenhangskomponenten (4er-Nachbarschaft) über eine Zellklassifizierung code[i] (0 = keine). */
+  function components(grid, code, minCells) {
+    const n = grid.nx * grid.ny, seen = new Uint8Array(n), out = [];
+    const stack = new Int32Array(n);
+    for (let start = 0; start < n; start++) {
+      if (seen[start] || !code[start]) continue;
+      const c = code[start];
+      let sp = 0; stack[sp++] = start; seen[start] = 1;
+      const cells = [];
+      while (sp > 0) {
+        const k = stack[--sp];
+        cells.push(k);
+        const i = k % grid.nx, j = (k - i) / grid.nx;
+        if (i > 0 && !seen[k - 1] && code[k - 1] === c) { seen[k - 1] = 1; stack[sp++] = k - 1; }
+        if (i < grid.nx - 1 && !seen[k + 1] && code[k + 1] === c) { seen[k + 1] = 1; stack[sp++] = k + 1; }
+        if (j > 0 && !seen[k - grid.nx] && code[k - grid.nx] === c) { seen[k - grid.nx] = 1; stack[sp++] = k - grid.nx; }
+        if (j < grid.ny - 1 && !seen[k + grid.nx] && code[k + grid.nx] === c) { seen[k + grid.nx] = 1; stack[sp++] = k + grid.nx; }
+      }
+      if (cells.length >= minCells) out.push({ code: c, cells: Int32Array.from(cells.sort((a, b) => a - b)) });
+    }
+    return out;
+  }
+
+  /**
+   * Abstand jeder Zelle der Menge zum Flächenrand (Chamfer-Distanz) im Umgriff der Fläche.
+   * @returns {d, i0, j0, w, h, radiusM, centerIdx, freeAt(k)}
+   */
+  function distanceInside(grid, cells) {
+    let i0 = Infinity, i1 = -Infinity, j0 = Infinity, j1 = -Infinity;
+    for (const k of cells) {
+      const i = k % grid.nx, j = (k - i) / grid.nx;
+      if (i < i0) i0 = i; if (i > i1) i1 = i; if (j < j0) j0 = j; if (j > j1) j1 = j;
+    }
+    i0 = Math.max(0, i0 - 1); j0 = Math.max(0, j0 - 1);
+    i1 = Math.min(grid.nx - 1, i1 + 1); j1 = Math.min(grid.ny - 1, j1 + 1);
+    const w = i1 - i0 + 1, h = j1 - j0 + 1;
+    const INF = 1e9, a = grid.cell, b = grid.cell * Math.SQRT2;
+    const d = new Float32Array(w * h).fill(0);
+    const inSet = new Uint8Array(w * h);
+    for (const k of cells) {
+      const i = k % grid.nx, j = (k - i) / grid.nx;
+      inSet[(j - j0) * w + (i - i0)] = 1;
+    }
+    for (let q = 0; q < d.length; q++) d[q] = inSet[q] ? INF : 0;
+    for (let j = 0; j < h; j++) for (let i = 0; i < w; i++) {
+      const k = j * w + i; let v = d[k];
+      if (i > 0) v = Math.min(v, d[k - 1] + a);
+      if (j > 0) {
+        v = Math.min(v, d[k - w] + a);
+        if (i > 0) v = Math.min(v, d[k - w - 1] + b);
+        if (i < w - 1) v = Math.min(v, d[k - w + 1] + b);
+      }
+      d[k] = v;
+    }
+    let bestV = -1, bestIdx = cells[0];
+    for (let j = h - 1; j >= 0; j--) for (let i = w - 1; i >= 0; i--) {
+      const k = j * w + i; let v = d[k];
+      if (i < w - 1) v = Math.min(v, d[k + 1] + a);
+      if (j < h - 1) {
+        v = Math.min(v, d[k + w] + a);
+        if (i < w - 1) v = Math.min(v, d[k + w + 1] + b);
+        if (i > 0) v = Math.min(v, d[k + w - 1] + b);
+      }
+      d[k] = v;
+      if (inSet[k] && v > bestV) { bestV = v; bestIdx = (j + j0) * grid.nx + (i + i0); }
+    }
+    // Chamfer-Distanz misst bis zum Mittelpunkt der nächsten Außenzelle; der freie Radius ab
+    // Zellmitte ist um eine halbe Zellbreite kleiner (konservativ).
+    const half = grid.cell / 2;
+    const freeAt = (k) => {
+      const i = k % grid.nx, j = (k - i) / grid.nx;
+      if (i < i0 || j < j0 || i > i1 || j > j1) return 0;
+      return Math.max(0, d[(j - j0) * w + (i - i0)] - half);
+    };
+    return { d, i0, j0, w, h, freeAt, radiusM: Math.max(0, bestV - half), centerIdx: bestIdx };
+  }
+
+  /** Größter einbeschriebener Kreis (Kurzform von distanceInside). */
+  function inscribedCircle(grid, cells) {
+    const r = distanceInside(grid, cells);
+    return { radiusM: r.radiusM, centerIdx: r.centerIdx };
+  }
+
+  /** Außenanlieger (4er) einer Zellmenge mit Anteil je Brennstoffklasse. */
+  function edgeClasses(grid, cells, classList) {
+    const set = new Set(cells);
+    const count = new Map();
+    let total = 0;
+    for (const k of cells) {
+      const i = k % grid.nx, j = (k - i) / grid.nx;
+      const nb = [];
+      if (i > 0) nb.push(k - 1);
+      if (i < grid.nx - 1) nb.push(k + 1);
+      if (j > 0) nb.push(k - grid.nx);
+      if (j < grid.ny - 1) nb.push(k + grid.nx);
+      for (const q of nb) {
+        if (set.has(q)) continue;
+        const c = classList[grid.fuel[q]];
+        count.set(c, (count.get(c) || 0) + 1);
+        total++;
+      }
+    }
+    const out = [...count.entries()].map(([cls, n]) => ({ cls, n, share: total ? n / total : 0 }));
+    out.sort((a, b) => b.n - a.n || (a.cls < b.cls ? -1 : 1));
+    return { list: out, total };
+  }
+
+  /**
+   * Steigung (tan) von der Brandseite zur Fläche: > 0 = Fläche liegt OBERHALB des Brandes
+   * (das Feuer läuft bergauf auf die Fläche zu, deshalb gefährlicher).
+   * @param anchorIdx Bezugszelle der Fläche (Mittelpunkt des einbeschriebenen Kreises)
+   */
+  function slopeToFire(grid, anchorIdx, fireXY) {
+    if (!grid.elev) return { tan: 0, known: false };
+    const cz = grid.elev[anchorIdx];
+    if (!Number.isFinite(cz)) return { tan: 0, known: false };
+    const [cx, cy] = G.cellCenter(grid, anchorIdx);
+    const dx = fireXY[0] - cx, dy = fireXY[1] - cy;
+    const dist = Math.hypot(dx, dy);
+    if (!(dist > grid.cell)) return { tan: 0, known: false };
+    // Höhe auf halbem Weg zum Brand als Bezug (robuster als nur der Brandschwerpunkt)
+    const mk = G.cellOf(grid, cx + dx * 0.5, cy + dy * 0.5);
+    const zf = mk >= 0 && Number.isFinite(grid.elev[mk]) ? grid.elev[mk] : NaN;
+    if (!Number.isFinite(zf)) return { tan: 0, known: false };
+    return { tan: (cz - zf) / (dist * 0.5), known: true, deltaZ: cz - zf, distM: dist * 0.5 };
+  }
+
+  // ------------------------------------------------------------------ Kandidatensuche und Bewertung
+  /**
+   * Findet und bewertet Rückzugsflächen.
+   * @param inp {grid, result, osm, ignition, weatherHours, P, state?, extra?}
+   *   osm: Ergebnis von Osm.applyOsm (oder null). extra: optionales Uint8Array mit Zusatztypen
+   *        (siehe SafeArea.rasterExtra) für Parkplätze/Steinbrüche/Sportflächen/Hofflächen.
+   */
+  function findAreas(inp) {
+    const { grid, result, P } = inp;
+    const s = params(P);
+    const classList = grid.classList;
+    const notes = [];
+    const n = grid.nx * grid.ny;
+    const osm = inp.osm || null;
+    const ignition = inp.ignition || [];
+    const weatherHours = inp.weatherHours || [];
+    const dismissed = new Set(inp.state && inp.state.dismissed ? inp.state.dismissed : []);
+
+    // 1) Zellklassifizierung -> Kandidatencode
+    const TYPE_KEYS = Object.keys(TYPES);
+    const codeOf = (t) => TYPE_KEYS.indexOf(t) + 1;
+    const code = new Uint8Array(n);
+    const extra = inp.extra || (osm && osm.safeAreaExtra) || null;
+    if (osm) {
+      for (let i = 0; i < n; i++) {
+        const c = classList[grid.fuel[i]];
+        if (c === "wasser") code[i] = codeOf("gewaesser");
+        else if (c === "acker") code[i] = codeOf("acker");
+        else if (c === "gruenland") code[i] = codeOf("gruenland");
+      }
+    }
+    if (extra) {
+      // extra[i] = 1..4 für steinbruch/parkplatz/sportplatz/hoffläche (hat Vorrang: keine Brandlast)
+      const map = { 1: "steinbruch", 2: "parkplatz", 3: "sportplatz", 4: "hoffläche" };
+      for (let i = 0; i < n; i++) if (extra[i] && map[extra[i]]) code[i] = codeOf(map[extra[i]]);
+    }
+    // Zellen mit Brandlast (Acker/Grünland), die die „möglich“-Zone im Prognosehorizont erreicht,
+    // sind KEINE Rückzugsfläche: über sie läuft das Feuer hinweg.
+    const tPmask = result && result.tPossible ? result.tPossible : null;
+    const tMaxH = result && result.horizons ? Math.max(...result.horizons) * 60 : Infinity;
+    if (tPmask) {
+      const fuelCodes = new Set(TYPE_KEYS.filter((t) => TYPES[t].brandlast).map(codeOf));
+      for (let i = 0; i < n; i++) if (code[i] && fuelCodes.has(code[i]) && tPmask[i] <= tMaxH) code[i] = 0;
+    }
+    // bereits abgebrannte Fläche: die von der Einsatzleitung gezeichnete Brandfläche (Ankunftszeit
+    // liegt in der Vergangenheit). ANNAHME: erst nach blackAfterMin als Rückzugsfläche brauchbar.
+    const blackCode = codeOf("abgebrannt");
+    for (const i of ignition) code[i] = blackCode;
+
+    if (!osm) {
+      notes.push("Keine OSM-Daten geladen: Landnutzung (Acker, Wiese, Parkplatz, Steinbruch, Gewässer, Sportfläche) ist unbekannt. " +
+        "Es werden KEINE Flächen erfunden. Vorgeschlagen wird nur, was sich aus Ihren eigenen Eingaben ergibt (bereits abgebrannte Fläche). " +
+        "Rückzugsflächen bitte vor Ort erkunden und über LACES festlegen.");
+    }
+    if (osm && !extra) {
+      notes.push("Parkplätze, Steinbrüche, Sportflächen und Hofflächen sind in der Overpass-Abfrage der App (js/osm.js) nicht enthalten und fehlen deshalb als Kandidaten. " +
+        "Erweiterung der Abfrage siehe INTEGRATION.md.");
+    }
+
+    // 2) Komponenten
+    const comps = components(grid, code, s.minAreaCells);
+
+    // 3) Brandbezug
+    const tP = result && result.tPossible ? result.tPossible : null;
+    const earliest = result && result.earliest ? result.earliest : null;
+    let fx = 0, fy = 0;
+    for (const i of ignition) { const [x, y] = G.cellCenter(grid, i); fx += x; fy += y; }
+    if (ignition.length) { fx /= ignition.length; fy /= ignition.length; }
+    const fireXY = [fx, fy];
+
+    // Flammenlänge je Brennstoffklasse (Cache)
+    const flameCache = new Map();
+    const flameOf = (cls) => {
+      if (!flameCache.has(cls)) flameCache.set(cls, weatherHours.length ? flameForClass(cls, weatherHours, P) : null);
+      return flameCache.get(cls);
+    };
+    const maxWind = weatherHours.reduce((m, w) => Math.max(m, w.windKmh || 0), 0);
+
+    const areas = [];
+    let skippedFar = 0;
+    for (const comp of comps) {
+      const type = TYPE_KEYS[comp.code - 1];
+      const def = TYPES[type];
+      const cells = comp.cells;
+      const areaHa = (cells.length * grid.cell * grid.cell) / 1e4;
+      const ins = distanceInside(grid, cells);
+      const edge = edgeClasses(grid, cells, classList);
+
+      // Abstand zum Brandschwerpunkt: weit entfernte Flächen sind operativ nicht relevant
+      let distFire = Infinity;
+      for (const k of cells) {
+        const [x, y] = G.cellCenter(grid, k);
+        const d = Math.hypot(x - fireXY[0], y - fireXY[1]);
+        if (d < distFire) distFire = d;
+      }
+      if (distFire > s.maxAreaDistM) { skippedFar++; continue; }
+
+      // Randbrennstoff: ungünstigste Klasse mit nennenswertem Anteil am Umfang (konservativ).
+      // Bei Flächen mit eigener Brandlast (Acker/Grünland) zählt auch die eigene Klasse mit,
+      // weil ein nicht abgeerntetes Feld selbst brennt.
+      const cand = edge.list.filter((e) => e.share >= s.edgeShareMin).map((e) => e.cls);
+      if (def.brandlast) cand.push(type === "acker" ? "acker" : "gruenland");
+      let worst = null;
+      for (const cls of cand) {
+        const f = flameOf(cls);
+        if (!f) continue;
+        if (!worst || f.flameM > worst.f.flameM) worst = { cls, f };
+      }
+      const flameM = worst ? worst.f.flameM : 0;
+      const sl = slopeToFire(grid, ins.centerIdx, fireXY);
+      const req = requiredRadius(flameM, sl.tan, maxWind, {}, P);
+      // Kernbereich: Zellen mit ausreichendem Abstand zum Flächenrand (Ziel der Fluchtwege)
+      const coreCells = [];
+      for (const k of cells) if (ins.freeAt(k) >= req.radiusM) coreCells.push(k);
+
+      // Erreichbarkeit: befahrbare Zelle in oder direkt an der Fläche
+      let drv = 0;
+      if (osm && osm.drivable) {
+        for (const k of cells) {
+          const i = k % grid.nx, j = (k - i) / grid.nx;
+          for (const q of [k, i > 0 ? k - 1 : -1, i < grid.nx - 1 ? k + 1 : -1, j > 0 ? k - grid.nx : -1, j < grid.ny - 1 ? k + grid.nx : -1]) {
+            if (q >= 0 && osm.drivable[q]) drv = Math.max(drv, osm.drivable[q] === 1 ? 2 : 1);
+          }
+          if (drv === 2) break;
+        }
+      }
+
+      // Zeitbezug: wann kann die „möglich“-Front die Fläche erreichen
+      let arrivalMin = Infinity, earliestMin = Infinity;
+      if (tP) for (const k of cells) if (tP[k] < arrivalMin) arrivalMin = tP[k];
+      if (earliest) for (const k of cells) if (earliest[k] < earliestMin) earliestMin = earliest[k];
+
+      // Bewertung
+      const hinweise = [];
+      let status = ins.radiusM >= req.radiusM ? "geeignet"
+        : ins.radiusM >= req.radiusM * s.conditionalFactor ? "bedingt" : "ungeeignet";
+      let grund;
+      const sizeTxt = `freier Radius ca. ${Math.round(ins.radiusM)} m, erforderlich ca. ${Math.round(req.radiusM)} m ` +
+        `(${s.ssdFlameFactor} × Flammenlänge ${de(flameM, 1)} m × Hang-/Windfaktor ${de(req.delta, 1)} + ${de(req.addM, 1)} m für Personal/Fahrzeug)`;
+
+      if (status === "ungeeignet") {
+        grund = `Zu klein: ${sizeTxt}.`;
+      } else if (def.brandlast) {
+        // Acker/Grünland tragen selbst Brennstoff -> nie besser als „bedingt geeignet“
+        if (status === "geeignet") status = "bedingt";
+        grund = `${def.label} ist groß genug (${sizeTxt}), trägt aber selbst Vegetation: nur brauchbar, wenn abgeerntet bzw. kurz und grün – vor Ort prüfen.`;
+        hinweise.push("OSM kennt keinen Erntezustand; Brandlast auf der Fläche ist nicht geprüft.");
+      } else if (type === "gewaesser") {
+        if (status === "geeignet") status = "bedingt";
+        grund = `Gewässer ohne Brandlast (${sizeTxt}), aber nicht befahrbar: nur als Rückzugsraum für Personal, Fahrzeuge brauchen eine andere Fläche.`;
+      } else if (type === "abgebrannt") {
+        grund = status === "geeignet"
+          ? `Bereits abgebrannte Fläche ohne verbleibende Brandlast (${sizeTxt}).`
+          : `Bereits abgebrannte Fläche, aber knapp bemessen: ${sizeTxt}.`;
+        hinweise.push(`ANNAHME: erst ab ${s.blackAfterMin} min nach Durchzug der Front nutzbar; Glutnester, Rauch, Stammbrüche und Rückzündung vor Ort prüfen.`);
+      } else {
+        grund = status === "geeignet"
+          ? `${def.label} ohne Brandlast und groß genug (${sizeTxt}).`
+          : `${def.label} ohne Brandlast, aber knapp bemessen: ${sizeTxt}.`;
+      }
+      if (osm && osm.drivable) {
+        if (!drv) { hinweise.push("Keine befahrbare Zufahrt in den OSM-Daten: Zufahrt vor Ort prüfen."); if (status === "geeignet") status = "bedingt"; }
+        else if (drv === 1) hinweise.push("Zufahrt nur über einen Wirtschafts-/Waldweg (OSM): Befahrbarkeit prüfen.");
+      } else {
+        hinweise.push("Befahrbarkeit nicht geprüft (keine OSM-Wegedaten).");
+      }
+      if (isFinite(arrivalMin) && type !== "abgebrannt" && def.brandlast) {
+        hinweise.push(`Die „möglich“-Front kann die Fläche selbst ab ${fmtMin(arrivalMin)} erreichen.`);
+      }
+      if (!sl.known) hinweise.push(grid.elev
+          ? "Hangneigung zur Brandseite nicht bestimmbar (Fläche liegt am Brandschwerpunkt): Hangzuschlag = 1,0."
+          : "Hangneigung zur Brandseite unbekannt (kein Geländemodell): Hangzuschlag = 1,0.");
+
+      const id = `sa:${type}:${ins.centerIdx}`;
+      const [clat, clon] = G.cellLatLng(grid, ins.centerIdx);
+      areas.push({
+        id, type, typLabel: def.label, cells, cellCount: cells.length, areaHa,
+        coreCells: Int32Array.from(coreCells), distFireM: distFire,
+        inscribedRM: ins.radiusM, centerIdx: ins.centerIdx, lat: clat, lon: clon,
+        edge: edge.list, edgeClass: worst ? worst.cls : null, flameM, flameInfo: worst ? worst.f : null,
+        slopeTan: sl.tan, slopeKnown: sl.known, windKmh: maxWind,
+        delta: req.delta, deltaSlope: req.deltaSlope, deltaWind: req.deltaWind,
+        ssdM: req.ssdM, addM: req.addM, requiredRM: req.radiusM, minSsdLimited: req.limitedByMin,
+        drivable: drv, arrivalMin, earliestMin, status, reason: grund, hinweise,
+        dismissed: dismissed.has(id),
+        source: osm ? "OSM-Landnutzung (nicht verifiziert) + Modellprognose" : "Brandfläche der Einsatzleitung + Modellprognose",
+      });
+    }
+
+    // Reihenfolge: deterministisch – Status, dann Nähe zum Brand, dann Zellindex
+    const rank = { geeignet: 0, bedingt: 1, ungeeignet: 2 };
+    areas.sort((a, b) => rank[a.status] - rank[b.status] || a.distFireM - b.distFireM || a.centerIdx - b.centerIdx);
+    if (skippedFar) notes.push(`${skippedFar} Fläche(n) weiter als ${s.maxAreaDistM} m vom Brandschwerpunkt nicht berücksichtigt (Annahme).`);
+    const kept = areas.slice(0, s.maxAreas);
+    if (areas.length > kept.length) notes.push(`${areas.length - kept.length} weitere Flächen nicht angezeigt (Anzeigegrenze ${s.maxAreas}, Annahme).`);
+    if (!kept.length) {
+      notes.push(osm
+        ? "Keine Fläche in den Daten erfüllt die Mindestgröße. Rückzugsfläche vor Ort festlegen (LACES)."
+        : "Keine Rückzugsfläche aus den vorhandenen Daten ableitbar.");
+    }
+    return { areas: kept, notes, allCount: areas.length, maxWind };
+  }
+
+  // ------------------------------------------------------------------ Fluchtwege (Dijkstra, rückwärts von den Flächen)
+  const OFF8 = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+
+  /**
+   * Zeitfeld „schnellster Weg bis zur nächsten geeigneten Fläche“ (min) und Nachfolgerzelle.
+   * Rückwärtssuche: beim Entspannen von u nach v wird die Fahrtzeit v -> u angesetzt
+   * (Hangwirkung ist richtungsabhängig).
+   * @param speedAt (i) -> km/h in Zelle i, 0 = nicht passierbar
+   * @param speedEdge (v, u, lenM) -> km/h für die Fahrt v -> u
+   */
+  function timeField(grid, targets, speedAt, speedEdge, maxMin) {
+    const n = grid.nx * grid.ny;
+    const time = new Float64Array(n).fill(Infinity);
+    const next = new Int32Array(n).fill(-1);
+    let hIdx = new Int32Array(1024), hKey = new Float64Array(1024), size = 0;
+    function push(i, k) {
+      if (size === hIdx.length) {
+        const a = new Int32Array(size * 2), b = new Float64Array(size * 2);
+        a.set(hIdx); b.set(hKey); hIdx = a; hKey = b;
+      }
+      let q = size++;
+      hIdx[q] = i; hKey[q] = k;
+      while (q > 0) {
+        const p = (q - 1) >> 1;
+        if (hKey[p] <= hKey[q]) break;
+        const ti = hIdx[p], tk = hKey[p]; hIdx[p] = hIdx[q]; hKey[p] = hKey[q]; hIdx[q] = ti; hKey[q] = tk;
+        q = p;
+      }
+    }
+    function pop() {
+      const top = hIdx[0], tk = hKey[0];
+      size--;
+      if (size > 0) {
+        hIdx[0] = hIdx[size]; hKey[0] = hKey[size];
+        let q = 0;
+        for (;;) {
+          const l = 2 * q + 1, r = l + 1;
+          let m = q;
+          if (l < size && hKey[l] < hKey[m]) m = l;
+          if (r < size && hKey[r] < hKey[m]) m = r;
+          if (m === q) break;
+          const ti = hIdx[m], tkk = hKey[m]; hIdx[m] = hIdx[q]; hKey[m] = hKey[q]; hIdx[q] = ti; hKey[q] = tkk;
+          q = m;
+        }
+      }
+      return [top, tk];
+    }
+    for (const t of targets) { if (time[t] > 0) { time[t] = 0; push(t, 0); } }
+    const cell = grid.cell;
+    while (size > 0) {
+      const [u, k] = pop();
+      if (k > time[u]) continue;
+      if (k > maxMin) break;
+      const ui = u % grid.nx, uj = (u - ui) / grid.nx;
+      for (const [di, dj] of OFF8) {
+        const vi = ui + di, vj = uj + dj;
+        if (vi < 0 || vj < 0 || vi >= grid.nx || vj >= grid.ny) continue;
+        const v = vj * grid.nx + vi;
+        if (!(speedAt(v) > 0)) continue;
+        const len = Math.hypot(di, dj) * cell;
+        const kmh = speedEdge(v, u, len);
+        if (!(kmh > 0)) continue;
+        const t = k + (len / 1000 / kmh) * 60;
+        if (t < time[v] && t <= maxMin) { time[v] = t; next[v] = u; push(v, t); }
+      }
+    }
+    return { time, next };
+  }
+
+  /** Tobler (1993): Gehgeschwindigkeit in km/h bei Steigung s (tan, positiv = bergauf). */
+  function toblerKmh(s) { return 6 * Math.exp(-3.5 * Math.abs(s + 0.05)); }
+
+  /**
+   * Fluchtwege aller Standorte zu den geeigneten/bedingt geeigneten Flächen.
+   * @param inp {grid, osm, areas, positions, P}
+   *   positions: [{id, lat, lon, label?, vehicleId?, taskKind?}]
+   * @returns {routes, fields}
+   */
+  function escapeRoutes(inp) {
+    const { grid, P } = inp;
+    const s = params(P);
+    const osm = inp.osm || null;
+    const areas = (inp.areas || []).filter((a) => !a.dismissed && a.status !== "ungeeignet");
+    const positions = inp.positions || [];
+    const drv = osm && osm.drivable ? osm.drivable : null;
+
+    // Ziele sind NICHT die ganze Fläche, sondern ihr Kernbereich: Zellen mit ausreichendem Abstand
+    // zum Flächenrand (dort ist der Sicherheitsabstand nach Butler & Cohen eingehalten).
+    // Für Fahrzeuge zählen nur befahrbare Flächentypen, zu Fuß alle.
+    const targetsVeh = [], targetsFoot = [];
+    const areaOf = new Int32Array(grid.nx * grid.ny).fill(-1);
+    areas.forEach((a, q) => {
+      const core = a.coreCells && a.coreCells.length ? a.coreCells : a.cells;
+      for (const k of core) { if (areaOf[k] < 0) areaOf[k] = q; }
+      if (TYPES[a.type].befahrbar) for (const k of core) targetsVeh.push(k);
+      for (const k of core) targetsFoot.push(k);
+    });
+
+    // Innerhalb einer befahrbaren Rückzugsfläche darf das Fahrzeug abseits der Wege fahren
+    // (ANNAHME: abgeerntetes Feld, Steinbruchsohle, Parkplatz, abgebrannte Fläche).
+    const inArea = new Uint8Array(grid.nx * grid.ny);
+    const anyArea = new Uint8Array(grid.nx * grid.ny);
+    for (const a of areas) {
+      for (const k of a.cells) { anyArea[k] = 1; if (TYPES[a.type].befahrbar) inArea[k] = 1; }
+    }
+    // Zu Fuß: alles außer Bebauung; Wasser nur, wenn es selbst die Rückzugsfläche ist (ANNAHME)
+    const footOk = (i) => {
+      const c = grid.classList[grid.fuel[i]];
+      if (c === "siedlung") return false;
+      if (c === "wasser") return anyArea[i] === 1;
+      return true;
+    };
+    const onPath = (i) => (drv ? drv[i] > 0 : false);
+
+    const vehSpeedAt = (i) => (drv
+      ? (drv[i] === 1 ? s.roadKmh : drv[i] === 2 ? s.trackKmh : inArea[i] ? s.trackKmh : 0)
+      : (inArea[i] ? s.trackKmh : 0));
+    const vehSpeedEdge = (v, u, len) => {
+      const base = Math.min(vehSpeedAt(v), vehSpeedAt(u));
+      if (!(base > 0)) return 0;
+      const up = Math.max(0, slopeBetween(grid, v, u));
+      return base / (1 + s.slopeSlowK * up);
+    };
+    const footSpeedAt = (i) => (footOk(i) ? 1 : 0);
+    const footSpeedEdge = (v, u) => {
+      if (!footOk(v) || !footOk(u)) return 0;
+      const sl = slopeBetween(grid, v, u);
+      const f = onPath(v) && onPath(u) ? 1 : s.footOffPath;
+      return toblerKmh(sl) * f;
+    };
+
+    const fields = {};
+    if (targetsVeh.length) fields.fahrzeug = timeField(grid, targetsVeh, vehSpeedAt, vehSpeedEdge, s.maxRouteMin);
+    if (targetsFoot.length) fields.fuss = timeField(grid, targetsFoot, footSpeedAt, footSpeedEdge, s.maxRouteMin);
+
+    const routes = [];
+    for (const p of positions) {
+      const [x, y] = grid.proj.toXY(p.lat, p.lon);
+      const start = G.cellOf(grid, x, y);
+      const entry = { positionId: p.id, label: p.label || "", vehicleId: p.vehicleId || null, lat: p.lat, lon: p.lon, fahrzeug: null, fuss: null };
+      if (start < 0) { entry.error = "Standort außerhalb des Rechengebiets"; routes.push(entry); continue; }
+      for (const mode of ["fahrzeug", "fuss"]) {
+        const f = fields[mode];
+        if (!f) continue;
+        let from = start;
+        // Fahrzeug steht evtl. nicht exakt auf einem Weg: nächstgelegene erreichbare Zelle im Umkreis
+        if (!isFinite(f.time[from])) {
+          let best = -1, bd = Infinity;
+          const r = Math.ceil(100 / grid.cell);
+          const si = start % grid.nx, sj = (start - si) / grid.nx;
+          for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++) {
+            const a = si + di, b = sj + dj;
+            if (a < 0 || b < 0 || a >= grid.nx || b >= grid.ny) continue;
+            const q = b * grid.nx + a;
+            if (!isFinite(f.time[q])) continue;
+            const d = Math.hypot(di, dj);
+            if (d < bd || (d === bd && q < best)) { bd = d; best = q; }
+          }
+          if (best < 0) continue;
+          from = best;
+        }
+        const path = [];
+        let k = from, guard = 0;
+        while (k >= 0 && guard++ < grid.nx * grid.ny) {
+          path.push(k);
+          if (f.time[k] === 0) break;
+          k = f.next[k];
+        }
+        if (!path.length) continue;
+        const target = path[path.length - 1];
+        const aIdx = areaOf[target];
+        const latlngs = [[p.lat, p.lon], ...path.map((q) => G.cellLatLng(grid, q))];
+        let lengthM = 0, ascentM = 0;
+        for (let q = 1; q < path.length; q++) {
+          const [ax, ay] = G.cellCenter(grid, path[q - 1]), [bx, by] = G.cellCenter(grid, path[q]);
+          lengthM += Math.hypot(bx - ax, by - ay);
+          if (grid.elev) {
+            const za = grid.elev[path[q - 1]], zb = grid.elev[path[q]];
+            if (Number.isFinite(za) && Number.isFinite(zb) && zb > za) ascentM += zb - za;
+          }
+        }
+        const approachM = Math.hypot(...grid.proj.toXY(p.lat, p.lon).map((v, ii) => v - G.cellCenter(grid, from)[ii]));
+        const extraMin = mode === "fuss" ? (approachM / 1000) / 5 * 60 : (approachM / 1000) / s.trackKmh * 60;
+        const atArea = from === start && f.time[start] === 0;
+        entry[mode] = {
+          mode, areaId: aIdx >= 0 ? areas[aIdx].id : null, area: aIdx >= 0 ? areas[aIdx] : null,
+          travelMin: f.time[from] + extraMin,
+          timeMin: atArea ? 0 : f.time[from] + extraMin + s.reactionMin,
+          reactionMin: atArea ? 0 : s.reactionMin, lengthM, ascentM, latlngs, cells: path,
+          offRoadStartM: approachM, atArea,
+        };
+      }
+      routes.push(entry);
+    }
+    return { routes, fields, areasUsed: areas };
+  }
+
+  // ------------------------------------------------------------------ Warnung
+  /**
+   * Prüft je Standort: Fluchtzeit + Puffer gegen die früheste Zeit, zu der die „möglich“-Front
+   * den Standort erreichen kann.
+   */
+  function checkRoutes(inp) {
+    const { grid, result, P } = inp;
+    const s = params(P);
+    const tP = result && result.tPossible ? result.tPossible : null;
+    const out = [];
+    for (const r of inp.routes || []) {
+      const [x, y] = grid.proj.toXY(r.lat, r.lon);
+      const k = G.cellOf(grid, x, y);
+      const frontMin = k >= 0 && tP ? tP[k] : Infinity;
+      const best = r.fahrzeug || r.fuss;
+      const o = {
+        positionId: r.positionId, vehicleId: r.vehicleId, label: r.label,
+        frontMin, bufferMin: s.bufferMin,
+        escapeMin: best ? best.timeMin : Infinity,
+        mode: best ? best.mode : null,
+        areaId: best ? best.areaId : null,
+      };
+      if (!best) {
+        o.status = "kritisch";
+        o.reserveMin = -Infinity;
+        o.text = `Kein Fluchtweg zu einer geeigneten Rückzugsfläche gefunden (Umkreis ${s.maxRouteMin} min). Rückzugsweg und Sicherheitsbereich vor Ort festlegen (LACES).`;
+      } else {
+        o.reserveMin = frontMin - (best.timeMin + s.bufferMin);
+        o.atArea = !!best.atArea;
+        if (best.atArea) {
+          o.status = "ok";
+          o.text = `Standort liegt bereits im Kernbereich einer Rückzugsfläche (${best.areaId}): kein Fluchtweg nötig.`;
+        } else if (!isFinite(frontMin)) {
+          o.status = "ok";
+          o.text = `Fluchtweg ${best.mode === "fuss" ? "zu Fuß" : "mit Fahrzeug"} ca. ${Math.round(best.timeMin)} min; die „möglich“-Front erreicht den Standort im Prognosehorizont nicht.`;
+        } else if (o.reserveMin <= 0) {
+          o.status = "kritisch";
+          o.text = `WARNUNG: Fluchtzeit ${Math.round(best.timeMin)} min + ${s.bufferMin} min Puffer übersteigt die Zeit bis zur „möglich“-Front (${fmtMin(frontMin)}) um ${Math.round(-o.reserveMin)} min. Standort so nicht halten.`;
+        } else if (o.reserveMin < s.warnReserveMin) {
+          o.status = "knapp";
+          o.text = `Knapp: Fluchtzeit ${Math.round(best.timeMin)} min + ${s.bufferMin} min Puffer, „möglich“-Front ab ${fmtMin(frontMin)} – Reserve nur ${Math.round(o.reserveMin)} min.`;
+        } else {
+          o.status = "ok";
+          o.text = `Fluchtweg ${best.mode === "fuss" ? "zu Fuß" : "mit Fahrzeug"} ca. ${Math.round(best.timeMin)} min, „möglich“-Front ab ${fmtMin(frontMin)}, Reserve ${Math.round(o.reserveMin)} min.`;
+        }
+        if (r.fahrzeug && r.fuss && r.fuss.timeMin > r.fahrzeug.timeMin) {
+          o.footMin = r.fuss.timeMin;
+          o.text += ` Zu Fuß (Fahrzeug bleibt stehen): ca. ${Math.round(r.fuss.timeMin)} min.`;
+        } else if (!r.fahrzeug && r.fuss) {
+          o.text += " Kein befahrbarer Weg zu einer Fläche: nur Fußweg geprüft.";
+        }
+      }
+      out.push(o);
+    }
+    return out;
+  }
+
+  // ------------------------------------------------------------------ Gesamtlauf
+  /**
+   * Vollständige Planung: Flächen, Fluchtwege, Warnungen.
+   * @param inp {grid, result, osm, ignition, weatherHours, positions, P, state?, extra?}
+   */
+  function plan(inp) {
+    const t0 = Date.now();
+    const P = inp.P;
+    const s = params(P);
+    const found = findAreas(inp);
+    const er = escapeRoutes({ grid: inp.grid, osm: inp.osm, areas: found.areas, positions: inp.positions || [], P });
+    const warnings = checkRoutes({ grid: inp.grid, result: inp.result, routes: er.routes, P });
+    const notes = [...found.notes];
+    const alerts = warnings.filter((w) => w.status === "kritisch").map((w) => `ACHTUNG Rückzug – ${w.label || w.positionId}: ${w.text}`);
+    if (!inp.grid.elev) notes.push("Kein Geländemodell geladen: Hangzuschlag auf den Sicherheitsabstand und die Hangwirkung auf die Fluchtzeit entfallen (Fluchtzeiten eher zu kurz).");
+    if (!(inp.weatherHours || []).length) notes.push("Keine Wetterdaten: Flammenlänge nicht berechenbar, es gilt nur der Mindestabstand (Radius " + s.minSsdM + " m, Butler & Cohen 1998).");
+    return {
+      areas: found.areas, routes: er.routes, warnings, notes, alerts,
+      params: s, allAreaCount: found.allCount, durationMs: Date.now() - t0,
+      meta: {
+        osm: !!inp.osm, dem: !!inp.grid.elev, positions: (inp.positions || []).length,
+        version: "0.1.0-safearea",
+        quellen: [
+          "Butler & Cohen (1998), Int. J. Wildland Fire 7(2):73–77, doi:10.1071/WF9980073",
+          "Butler (2014), Int. J. Wildland Fire 23(3):295–308, doi:10.1071/WF13021",
+          "Page & Butler (2017), Int. J. Wildland Fire 26:655–667, doi:10.1071/WF16213",
+          "Byram (1959), metrische Form nach Alexander (1982)",
+          "Tobler (1993) Hiking Function",
+        ],
+      },
+    };
+  }
+
+  /**
+   * Hilfsfunktion: zusätzliche OSM-Flächen (Parkplatz, Steinbruch, Sportfläche, Hoffläche) auf das
+   * Raster übertragen. Erwartet Overpass-Elemente wie in js/osm.js (way/relation mit geometry).
+   * @returns Uint8Array mit 1=steinbruch, 2=parkplatz, 3=sportplatz, 4=hoffläche
+   */
+  function rasterExtra(grid, json) {
+    const n = grid.nx * grid.ny;
+    const out = new Uint8Array(n);
+    if (!json || !json.elements) return out;
+    const codeOf = (t) => {
+      if (t.landuse === "quarry") return 1;
+      if (t.amenity === "parking") return 2;
+      if (t.leisure === "pitch" || t.leisure === "track" || t.leisure === "sports_centre") return 3;
+      if (t.landuse === "farmyard") return 4;
+      return 0;
+    };
+    for (const el of json.elements) {
+      const t = el.tags || {};
+      const c = codeOf(t);
+      if (!c) continue;
+      const segs = [];
+      if (el.type === "way" && el.geometry && el.geometry.length > 2) {
+        G.ringToSegs(el.geometry.filter(Boolean).map((p) => grid.proj.toXY(p.lat, p.lon)), segs);
+      } else if (el.type === "relation" && el.members) {
+        for (const m of el.members) {
+          if (m.type !== "way" || !m.geometry || m.geometry.length < 2) continue;
+          const pts = m.geometry.map((p) => grid.proj.toXY(p.lat, p.lon));
+          for (let k = 0; k + 1 < pts.length; k++) segs.push([pts[k][0], pts[k][1], pts[k + 1][0], pts[k + 1][1]]);
+        }
+      }
+      if (segs.length) G.fillSegments(grid, segs, (i) => { out[i] = c; });
+    }
+    return out;
+  }
+
+  /** Overpass-Ergänzung für js/osm.js (siehe INTEGRATION.md). */
+  const OVERPASS_EXTRA = `
+  way["landuse"~"^(quarry|farmyard)$"]({{bbox}});
+  relation["landuse"~"^(quarry|farmyard)$"]["type"="multipolygon"]({{bbox}});
+  way["amenity"="parking"]({{bbox}});
+  way["leisure"~"^(pitch|track|sports_centre)$"]({{bbox}});`;
+
+  /** Umrisse einer Fläche als Leaflet-Ringe [[lat,lon],...]. Nutzt Contour.cellOutline, wenn vorhanden. */
+  function areaRings(grid, area) {
+    const set = new Set(area.cells);
+    if (!root.Contour || !root.Contour.cellOutline) return [];
+    const rings = root.Contour.cellOutline(grid.nx, grid.ny, (k) => set.has(k));
+    const drop = root.Contour.dropCollinear || ((r) => r);
+    return rings.map((r) => drop(r).map(([i, j]) => grid.proj.toLatLng(grid.x0 + i * grid.cell, grid.y0 + j * grid.cell)));
+  }
+
+  /** Protokoll-/Exportdarstellung (kompakt, ohne Zellenlisten). */
+  function forProtocol(res) {
+    return {
+      flaechen: res.areas.map((a) => ({
+        id: a.id, typ: a.typLabel, status: a.status, flaeche_ha: r1(a.areaHa),
+        freier_radius_m: Math.round(a.inscribedRM), erforderlicher_radius_m: Math.round(a.requiredRM),
+        flammenlaenge_m: r1(a.flameM), randbrennstoff: a.edgeClass,
+        hang_tan: r1(a.slopeTan * 100) / 100, wind_kmh: Math.round(a.windKmh), faktor_hang_wind: r1(a.delta),
+        befahrbar: a.drivable === 2 ? "Straße" : a.drivable === 1 ? "Weg" : "nicht geprüft/keine",
+        lat: +a.lat.toFixed(6), lon: +a.lon.toFixed(6),
+        begruendung: a.reason, hinweise: a.hinweise, verworfen: !!a.dismissed, quelle: a.source,
+      })),
+      fluchtwege: res.routes.map((r) => ({
+        standort: r.positionId, fahrzeug: r.vehicleId, aufgabe: r.label,
+        fahrzeugweg_min: r.fahrzeug ? Math.round(r.fahrzeug.timeMin) : null,
+        fahrzeugweg_m: r.fahrzeug ? Math.round(r.fahrzeug.lengthM) : null,
+        fussweg_min: r.fuss ? Math.round(r.fuss.timeMin) : null,
+        ziel: (r.fahrzeug || r.fuss || {}).areaId || null,
+        anstieg_m: r.fahrzeug ? Math.round(r.fahrzeug.ascentM) : r.fuss ? Math.round(r.fuss.ascentM) : null,
+      })),
+      warnungen: res.warnings.map((w) => ({
+        standort: w.positionId, fahrzeug: w.vehicleId, status: w.status,
+        fluchtzeit_min: isFinite(w.escapeMin) ? Math.round(w.escapeMin) : null,
+        puffer_min: w.bufferMin,
+        front_moeglich_min: isFinite(w.frontMin) ? Math.round(w.frontMin) : null,
+        reserve_min: isFinite(w.reserveMin) ? Math.round(w.reserveMin) : null,
+        text: w.text,
+      })),
+      hinweise: res.notes, quellen: res.meta.quellen,
+    };
+  }
+
+  const SafeArea = {
+    DEFAULTS, TYPES, OVERPASS_EXTRA,
+    params, sigmaFromRothermel, flameFromRothermel, flameForClass,
+    deltaFactor, requiredRadius, toblerKmh,
+    components, inscribedCircle, edgeClasses, slopeToFire, slopeBetween,
+    findAreas, escapeRoutes, checkRoutes, plan, rasterExtra, areaRings, forProtocol, fmtMin,
+  };
+  root.SafeArea = SafeArea;
+  if (typeof module !== "undefined" && module.exports) module.exports = SafeArea;
+})(typeof globalThis !== "undefined" ? globalThis : this);
+
+</script>
+<script>/* js/safearea-ui.js */
+/*
+ * Darstellung des Moduls "Safe Areas und Fluchtwege".
+ *
+ *  - eigene Kartenebene „Safe Areas“ (Flächen mit Status-Farbe, einbeschriebener Sicherheitskreis,
+ *    Beschriftung) und „Fluchtwege“ (Linien mit Richtungspfeilen zur Fläche)
+ *  - Legende
+ *  - Tabelle in der Seitenleiste (Flächen, Fluchtwege/Warnungen)
+ *
+ * Reine Anzeige: keine Rechnung, keine Modellentscheidung. Tag-/Nachtmodus über die CSS-Variablen
+ * der App (css/safearea.css), große Bedienelemente (Tablet).
+ */
+(function (root) {
+  const SA = () => root.SafeArea;
+
+  const STATUS = {
+    geeignet:   { label: "geeignet",           color: "#1d6b3a", fill: "#2e9e57", cls: "ok" },
+    bedingt:    { label: "bedingt geeignet",   color: "#8a6100", fill: "#e8b923", cls: "cond" },
+    ungeeignet: { label: "ungeeignet",         color: "#9c1c13", fill: "#c0392b", cls: "bad" },
+  };
+  const WARN = {
+    ok:       { label: "Rückzug gesichert", cls: "ok" },
+    knapp:    { label: "knapp",             cls: "cond" },
+    kritisch: { label: "WARNUNG",           cls: "bad" },
+  };
+
+  const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const num = (v, d = 0) => (Number.isFinite(v) ? Number(v).toLocaleString("de-DE", { minimumFractionDigits: d, maximumFractionDigits: d }) : "–");
+  const mins = (v) => (Number.isFinite(v) ? `${Math.round(v)} min` : "–");
+
+  /**
+   * Erzeugt die Kartenebenen und die Seitenleisten-Ausgabe.
+   * @param opt {map, L, layerControl?, panelEl?, legendEl?, onDismiss?, onFocus?, declutter?}
+   *   declutter: Funktion des Wirts, die überlappende Kartenbeschriftungen entzerrt. In der App ist
+   *   das scheduleDeclutter() aus js/app.js (declutterLabels); dieses Modul bringt BEWUSST keine
+   *   zweite Lösung mit, sondern meldet sich nach jedem Zeichnen bei der vorhandenen an.
+   *   Dazu müssen in app.js die Auswahl-Klassen ".sa-label,.sa-warnbadge" in LABEL_SEL ergänzt werden.
+   * @returns {render(res, grid), layers, destroy()}
+   */
+  function create(opt) {
+    const { map, L } = opt;
+    const declutter = typeof opt.declutter === "function" ? opt.declutter : null;
+    const areaLayer = L.layerGroup();
+    const routeLayer = L.layerGroup();
+    if (opt.show !== false) { areaLayer.addTo(map); routeLayer.addTo(map); }
+    if (opt.layerControl) {
+      opt.layerControl.addOverlay(areaLayer, "Safe Areas");
+      opt.layerControl.addOverlay(routeLayer, "Fluchtwege");
+    }
+    let last = null, lastGrid = null;
+    if (declutter) map.on("zoomend moveend", declutter);
+
+    function legendHtml() {
+      return `<div class="sa-lg">
+        <div class="sa-lg-title">Rückzugsflächen und Fluchtwege</div>
+        <div class="sa-lg-row"><span class="sa-sw ok"></span><span>geeignet (Soll-Radius erfüllt)</span></div>
+        <div class="sa-lg-row"><span class="sa-sw cond"></span><span>bedingt geeignet (Begründung in der Tabelle)</span></div>
+        <div class="sa-lg-row"><span class="sa-sw bad"></span><span>ungeeignet (zu klein)</span></div>
+        <div class="sa-lg-row"><span class="sa-sw circ"></span><span>Sicherheitskreis (Soll-Radius)</span></div>
+        <div class="sa-lg-row"><span class="sa-sw route"></span><span>Fluchtweg Fahrzeug (Pfeil = Richtung)</span></div>
+        <div class="sa-lg-row"><span class="sa-sw routefoot"></span><span>Fluchtweg zu Fuß</span></div>
+        <div class="sa-lg-row"><span class="sa-sw warn"></span><span>Standort mit zu knapper Fluchtzeit</span></div>
+        <div class="sa-lg-note">Flammenlänge nach Byram (1959), Soll-Radius nach Butler &amp; Cohen (1998) mit Hang-/Windzuschlag (Annahme). Vorschlag, keine Anordnung.</div>
+      </div>`;
+    }
+
+    /** Pfeilspitzen entlang einer Linie (Richtung zur Fläche). */
+    function arrows(latlngs, color, weight) {
+      const out = [];
+      const pts = latlngs;
+      if (pts.length < 2) return out;
+      // Pfeile in gleichmäßigem Abstand: alle n Punkte, mindestens einer am Ende
+      const step = Math.max(1, Math.floor(pts.length / 5));
+      for (let i = step; i < pts.length; i += step) {
+        const a = pts[i - 1], b = pts[i];
+        const ang = (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI;
+        out.push(L.marker(b, {
+          interactive: false, keyboard: false,
+          icon: L.divIcon({
+            className: "", iconSize: null, iconAnchor: [8, 8],
+            html: `<span class="sa-arrow" style="--sa-arrow-color:${color};transform:rotate(${(90 - ang).toFixed(1)}deg)"></span>`,
+          }),
+        }));
+      }
+      return out;
+    }
+
+    function render(res, grid) {
+      last = res; lastGrid = grid;
+      areaLayer.clearLayers(); routeLayer.clearLayers();
+      if (opt.legendEl) opt.legendEl.innerHTML = legendHtml();
+      if (!res) { if (opt.panelEl) opt.panelEl.innerHTML = ""; return; }
+
+      // --- Flächen
+      for (const a of res.areas) {
+        const st = STATUS[a.status];
+        const rings = SA().areaRings(grid, a);
+        const dim = a.dismissed;
+        for (const r of rings) {
+          L.polygon(r, {
+            className: `sa-area ${st.cls}${dim ? " dismissed" : ""}`,
+            color: st.color, weight: dim ? 1 : 3, opacity: dim ? 0.5 : 0.95,
+            fillColor: st.fill, fillOpacity: dim ? 0.06 : 0.22,
+            dashArray: dim ? "4 6" : null, interactive: true,
+          }).bindTooltip(`<b>${esc(a.typLabel)}</b> – ${esc(st.label)}<br>${esc(a.reason)}`, { sticky: true }).addTo(areaLayer);
+        }
+        if (!dim) {
+          L.circle([a.lat, a.lon], {
+            radius: a.requiredRM, className: "sa-circle", color: st.color,
+            weight: 2, dashArray: "6 5", fill: false, interactive: false,
+          }).addTo(areaLayer);
+        }
+        L.marker([a.lat, a.lon], {
+          interactive: false, keyboard: false,
+          icon: L.divIcon({
+            className: "", iconSize: null, iconAnchor: [36, 12],
+            html: `<span class="sa-label ${st.cls}${dim ? " dismissed" : ""}">${esc(a.typLabel)} · ${num(a.areaHa, 1)} ha · r ${num(a.inscribedRM)}/${num(a.requiredRM)} m</span>`,
+          }),
+        }).addTo(areaLayer);
+      }
+
+      // --- Fluchtwege
+      const warnOf = new Map(res.warnings.map((w) => [w.positionId, w]));
+      for (const r of res.routes) {
+        const w = warnOf.get(r.positionId);
+        const crit = w && w.status !== "ok";
+        const best = r.fahrzeug || r.fuss;
+        if (best && !best.atArea) {
+          const color = crit ? "#9c1c13" : best.mode === "fuss" ? "#6a1b9a" : "#0b4f8a";
+          L.polyline(best.latlngs, {
+            className: `sa-route ${best.mode}${crit ? " crit" : ""}`, color,
+            weight: crit ? 6 : 4, opacity: 0.95, dashArray: best.mode === "fuss" ? "8 6" : null,
+          }).bindTooltip(`${esc(r.label || r.positionId)}: Fluchtweg ${best.mode === "fuss" ? "zu Fuß" : "mit Fahrzeug"} ${mins(best.timeMin)}, ${num(best.lengthM)} m`, { sticky: true }).addTo(routeLayer);
+          for (const m of arrows(best.latlngs, color)) m.addTo(routeLayer);
+        }
+        if (crit) {
+          L.marker([r.lat, r.lon], {
+            interactive: false, keyboard: false,
+            icon: L.divIcon({
+              className: "", iconSize: null, iconAnchor: [18, 34],
+              html: `<span class="sa-warnbadge ${WARN[w.status].cls}">${w.status === "kritisch" ? "Rückzug!" : "knapp"}</span>`,
+            }),
+          }).addTo(routeLayer);
+        }
+      }
+
+      if (opt.panelEl) renderPanel(res);
+      if (declutter) declutter();
+    }
+
+    function renderPanel(res) {
+      const h = [];
+      const crit = res.warnings.filter((w) => w.status === "kritisch");
+      const tight = res.warnings.filter((w) => w.status === "knapp");
+      if (crit.length) {
+        h.push(`<div class="sa-msg bad" role="alert"><b>Rückzug nicht gesichert bei ${crit.length} Standort(en).</b><ul>${
+          crit.map((w) => `<li>${esc(w.label || w.positionId)}: ${esc(w.text)}</li>`).join("")}</ul></div>`);
+      }
+      if (tight.length) {
+        h.push(`<div class="sa-msg cond"><b>Knapp bei ${tight.length} Standort(en).</b><ul>${
+          tight.map((w) => `<li>${esc(w.label || w.positionId)}: ${esc(w.text)}</li>`).join("")}</ul></div>`);
+      }
+
+      h.push(`<h3 class="sa-h">Rückzugsflächen (${res.areas.filter((a) => !a.dismissed).length} von ${res.allAreaCount})</h3>`);
+      // Spalten bewusst knapp: in der App ist die Seitenleiste 360–440 px breit. Größe und Flammenlänge
+      // stehen in der Begründungszeile darunter, damit der Knopf „verwerfen“ ohne waagerechtes Scrollen
+      // erreichbar bleibt (Befund bei der Integration 0.7.0).
+      h.push(`<div class="sa-tablewrap"><table class="sa-table areas"><thead><tr>
+        <th>Fläche</th><th>Status</th><th class="num">Radius<br>frei / Soll</th>
+        <th></th></tr></thead><tbody>`);
+      for (const a of res.areas) {
+        const st = STATUS[a.status];
+        const zu = a.drivable === 2 ? "Zufahrt über eine Straße (OSM)." : a.drivable === 1 ? "Zufahrt über einen Weg (OSM), Befahrbarkeit prüfen." : "";
+        h.push(`<tr class="sa-main${a.dismissed ? " sa-dismissed" : ""}" data-sa-row="${esc(a.id)}">
+          <td><button type="button" class="sa-link" data-sa-focus="${esc(a.id)}">${esc(a.typLabel)}</button></td>
+          <td><span class="sa-badge ${st.cls}">${esc(st.label)}</span></td>
+          <td class="num">${num(a.inscribedRM)} / <b>${num(a.requiredRM)}</b> m</td>
+          <td><button type="button" class="sa-btn small" data-sa-dismiss="${esc(a.id)}">${a.dismissed ? "aufnehmen" : "verwerfen"}</button></td>
+        </tr>
+        <tr class="sa-why${a.dismissed ? " sa-dismissed" : ""}"><td colspan="4">${esc(a.reason)} ${esc(zu)}
+          ${a.hinweise.length ? `<ul class="sa-hints">${a.hinweise.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>` : ""}
+          <span class="sa-sub">Größe ${num(a.areaHa, 1)} ha, Flammenlänge ${num(a.flameM, 1)} m, Randbrennstoff ${esc(a.edgeClass || "–")}, Hang ${num(100 * a.slopeTan)} %, Wind ${num(a.windKmh)} km/h, Faktor Δ ${num(a.delta, 1)} · ${esc(a.id)}</span></td></tr>`);
+      }
+      h.push(`</tbody></table></div>`);
+
+      h.push(`<h3 class="sa-h">Fluchtwege je Fahrzeug</h3>`);
+      h.push(`<div class="sa-tablewrap"><table class="sa-table routes"><thead><tr>
+        <th>Fahrzeug / Aufgabe</th><th class="num">Fahrzeug</th><th class="num">zu&nbsp;Fuß</th>
+        <th class="num">Front</th><th class="num">Reserve</th></tr></thead><tbody>`);
+      for (const r of res.routes) {
+        const w = res.warnings.find((x) => x.positionId === r.positionId) || {};
+        const cls = WARN[w.status] ? WARN[w.status].cls : "";
+        const best = r.fahrzeug || r.fuss;
+        h.push(`<tr class="sa-main">
+          <td><b>${esc(r.label || r.positionId)}</b><br><span class="sa-sub">${esc(r.vehicleId || "")}</span></td>
+          <td class="num">${r.fahrzeug ? (r.fahrzeug.atArea ? "0 min" : mins(r.fahrzeug.timeMin)) : "–"}</td>
+          <td class="num">${r.fuss ? (r.fuss.atArea ? "0 min" : mins(r.fuss.timeMin)) : "–"}</td>
+          <td class="num">${mins(w.frontMin)}</td>
+          <td class="num"><span class="sa-badge ${cls}">${Number.isFinite(w.reserveMin) ? `${Math.round(w.reserveMin)} min` : w.status === "ok" ? "offen" : "–"}</span></td>
+        </tr>
+        <tr class="sa-why"><td colspan="5">${esc(w.text || "")}${best ? ` <span class="sa-sub">Strecke ${num(best.lengthM)} m, Anstieg ${num(best.ascentM)} m.</span>` : ""}</td></tr>`);
+      }
+      h.push(`</tbody></table></div>`);
+
+      if (res.notes.length) {
+        h.push(`<h3 class="sa-h">Hinweise und Grenzen</h3><ul class="sa-notes">${res.notes.map((x) => `<li>${esc(x)}</li>`).join("")}</ul>`);
+      }
+      h.push(`<p class="sa-sub">Sicherheitspuffer ${res.params.bufferMin} min, Reaktionszeit ${res.params.reactionMin} min, Fahrzeug ${res.params.roadKmh}/${res.params.trackKmh} km/h (Straße/Weg) – alles Annahmen, siehe ASSUMPTIONS.md. Rechenzeit ${res.durationMs} ms.</p>`);
+      opt.panelEl.innerHTML = h.join("");
+
+      for (const b of opt.panelEl.querySelectorAll("[data-sa-dismiss]")) {
+        b.onclick = () => opt.onDismiss && opt.onDismiss(b.getAttribute("data-sa-dismiss"));
+      }
+      for (const b of opt.panelEl.querySelectorAll("[data-sa-focus]")) {
+        b.onclick = () => {
+          const a = res.areas.find((x) => x.id === b.getAttribute("data-sa-focus"));
+          if (!a) return;
+          if (opt.onFocus) opt.onFocus(a);
+          else map.setView([a.lat, a.lon], Math.max(map.getZoom(), 15));
+        };
+      }
+    }
+
+    return {
+      render, layers: { areaLayer, routeLayer }, legendHtml,
+      redraw: () => render(last, lastGrid),
+      destroy() { if (declutter) map.off("zoomend moveend", declutter); areaLayer.remove(); routeLayer.remove(); },
+    };
+  }
+
+  const SafeAreaUI = { create, STATUS, WARN };
+  root.SafeAreaUI = SafeAreaUI;
+  if (typeof module !== "undefined" && module.exports) module.exports = SafeAreaUI;
+})(typeof globalThis !== "undefined" ? globalThis : this);
+
+</script>
 <script>/* js/app.js */
 /*
  * UI-Steuerung: Karte, Zeichnen, Wetter, OSM, Prognose, Vorschläge, Protokoll.
@@ -8062,6 +9405,9 @@ out center;`;
     gsOverride: store.get("wb_gs_override", {}),
     teilMode: store.get("wb_teil", "auto"), grenzen: null,
     vf: Object.assign({ kommune: "", typ: "", sort: "anfahrt", onlyAvail: false }, store.get("wb_vf", {})),
+    // Rückzugsflächen und Fluchtwege (0.7.0): Ergebnis von SafeArea.plan() und die verworfenen Flächen
+    // (bleiben über Neuberechnungen hinweg erhalten, damit eine Entscheidung der Einsatzleitung Bestand hat).
+    sa: null, saState: { dismissed: store.get("wb_sa_dismissed", []) },
   };
 
   // ---------------------------------------------------------------- Texte
@@ -8075,7 +9421,37 @@ out center;`;
     <li><b>Brennstoffkarte</b> aus OpenStreetMap kann veraltet, unvollständig oder falsch sein. Die Zuordnung zu nordamerikanischen Brennstoffmodellen (Anderson 13) ist eine Annahme und nicht mit Forst/Feuerwehr abgestimmt.</li>
     <li><b>Wetterdaten</b> sind Modell- oder Stationswerte, keine Messung am Brandort.</li>
     <li><b>Vereinfachtes Rothermel-Modell</b> (ohne Größenklassen-Gewichtung), Ellipsenform nach Anderson (1983), Rasterrechnung (25 m). Tote-Brennstoff-Feuchte aus einem einfachen Ansatz (Gleichgewichtsfeuchte + Regenzuschlag). Das Modell ist unvalidiert.</li>
-    <li><b>Vorschläge</b> berücksichtigen keine echten Fahrzeiten: Die Anfahrt wird aus der Luftlinie Wache–Einsatzstelle × Umwegfaktor ÷ Durchschnittsgeschwindigkeit + Ausrückzeit <b>geschätzt (kein Routing)</b>; Fahrzeuge ohne Wachenkoordinate werden nicht eingeplant. Keine Rückzugswege und keine feuerwehrinternen Sicherheitsregeln. Riegel werden nur vorgeschlagen, wenn sie bei Einsatzbereitschaft außerhalb der „möglich“-Zone liegen; sonst erscheint „Keine geeignete Riegelstellung gefunden“.</li>
+    <li><b>Rückzugsflächen und Fluchtwege</b> (ab 0.7.0) sind Vorschläge aus Landnutzung und Gelände. <b>Es gibt keine belegte deutsche Vorgabe mit Zahlen</b> zur Größe eines Sicherheitsbereichs; die Dimensionierung stützt sich auf US-Literatur (Butler &amp; Cohen 1998, Butler 2014, Page &amp; Butler 2017). Laut Page &amp; Butler (2017) ist die Vierfach-Regel <b>eher zu klein</b>. Kein Straßenrouting (Raster 25 m), keine Prüfung von Rauch, Sicht und Hitze auf dem Weg, keine zeitabhängige Prüfung entlang des Weges. Siehe „Grenzen &amp; Quellen“.</li>
+    <li><b>Vorschläge</b> berücksichtigen keine echten Fahrzeiten: Die Anfahrt wird aus der Luftlinie Wache–Einsatzstelle × Umwegfaktor ÷ Durchschnittsgeschwindigkeit + Ausrückzeit <b>geschätzt (kein Routing)</b>; Fahrzeuge ohne Wachenkoordinate werden nicht eingeplant. Rückzugswege und Rückzugsflächen werden ab 0.7.0 geprüft (eigener Abschnitt 6), feuerwehrinterne Sicherheitsregeln sind darüber hinaus nicht abgebildet. Riegel werden nur vorgeschlagen, wenn sie bei Einsatzbereitschaft außerhalb der „möglich“-Zone liegen; sonst erscheint „Keine geeignete Riegelstellung gefunden“.</li>
+  </ul>`;
+  const SAFEAREA_HTML = `
+  <p class="muted small">Modul „Rückzugsflächen und Fluchtwege“ (0.7.0). Vorschläge sind keine Anordnung.</p>
+  <h3>Belegt</h3>
+  <ul>
+    <li>Radius der Sicherheitsfläche <b>≥ 4 × maximale Flammenhöhe</b>, Grenzwert 7,0 kW/m² (Verbrennung 2. Grades an unbedeckter Haut in unter 90 s); gilt für <b>ebenes Gelände ohne Wind</b>; „für die meisten Feuer müssen Sicherheitsflächen breiter als 20 m sein“ – <b>Butler, B.&nbsp;W. &amp; Cohen, J.&nbsp;D. (1998)</b>, Int. J. Wildland Fire 7(2):73–77, doi:10.1071/WF9980073.</li>
+    <li>Überblick und Forschungsbedarf, Grundlage der neueren (vom Autor selbst als <b>vorläufig</b> bezeichneten) Regel SSD = 8 · Δ · Vegetationshöhe – <b>Butler, B.&nbsp;W. (2014)</b>, Int. J. Wildland Fire 23(3):295–308, doi:10.1071/WF13021.</li>
+    <li>Empirische Auswertung von Entrapments: <b>die Vierfach-Regel ist eher zu klein</b> – für nicht tödliche Verletzungen ergaben sich Abstände beim 1–2-, 6–7- bzw. 12–16-fachen der heutigen 4×-Regel (Timber/Brush/Grass) – <b>Page, W.&nbsp;G. &amp; Butler, B.&nbsp;W. (2017)</b>, Int. J. Wildland Fire 26:655–667, doi:10.1071/WF16213 (Open Access).</li>
+    <li>Flammenlänge aus Feuerlinienintensität L[m] = 0,0775 · I[kW/m]<sup>0,46</sup> – Byram (1959), metrische Form nach Alexander (1982).</li>
+    <li>Gehgeschwindigkeit im Gelände v = 6 · exp(−3,5 · |s + 0,05|) km/h, abseits der Wege Faktor 0,6 – Tobler (1993) Hiking Function (Originaltext nicht eingesehen).</li>
+    <li>In Deutschland gilt <b>LACES</b> (Lookout, Anchor point, Communication, Escape route, Safety zone; löste „FRAU“ ab): Sicherheitsbereich bekanntgeben, frei von Brandlast, keine Gefährdungen, Sammelplatz beim Rückzug; Rückzugsweg erkunden, markieren, einweisen – Taschenkarte 423 und Fachinfo 312 (Staatliche Feuerwehrschulen Bayern), Taschenkarte Vegetationsbrand (BKS-Portal RLP, 04.07.2023).</li>
+  </ul>
+  <h3>Nicht belegt – ausdrücklich mit der Feuerwehr zu klären</h3>
+  <ul>
+    <li><b>Es gibt keine belegte deutsche Vorgabe mit Zahlen.</b> Keine der eingesehenen deutschen Quellen nennt eine zahlenmäßige Mindestgröße eines Sicherheitsbereichs; sie beschreiben ihn qualitativ. Die gesamte Dimensionierung dieses Moduls stützt sich deshalb auf die US-Literatur.</li>
+    <li><b>Butlers Zuschlagstabelle für den Faktor Δ konnte nicht im Original geprüft werden</b> (nwcg.gov, fs.usda.gov und weitere Hosts waren nicht erreichbar). Δ ist hier aus zwei Stützstellen eines Suchindex-Auszugs interpoliert: Δ = (1 + 7,5 · tan Hang) · (1 + 0,6 · Wind/16,09 km/h), begrenzt auf 1 bis 10. <b>Vor einem Einsatz ist die Originaltabelle (IRPG bzw. Butlers Safety-Zone-App) zu beschaffen und dagegen zu prüfen.</b></li>
+    <li>Ein <b>vfdb-Merkblatt mit Zahlen zu Sicherheitsbereichen wurde nicht gefunden</b>; MB 05-04 behandelt Löschwasserzusätze, nicht Sicherheit. Ein „Waldbrandhandbuch NRW“ wurde nicht gefunden.</li>
+    <li>Das Modul rechnet mit der Flammen<b>länge</b> (Byram), die Quelle mit der Flammen<b>höhe</b>. Bei Wind und Hang ist die Länge größer – konservativ, aber nicht identisch mit der Quelle. Der Wind wirkt zusätzlich über Δ und wird dadurch möglicherweise <b>doppelt gezählt</b>.</li>
+    <li>Abbrandzeit t<sub>res</sub> = 384/σ (Anderson 1969 zugeschrieben), Geschwindigkeit von Löschfahrzeugen auf Straßen (40 km/h) und Waldwegen (20 km/h), Sicherheitspuffer 15 min, Reaktionszeit 2 min, „abgebrannt“ 30 min nach Durchzug der Front, Mindestgröße 4 Zellen, Suchradius 3.000 m: <b>alles Annahmen ohne Beleg</b>.</li>
+  </ul>
+  <h3>Bekannte Grenzen</h3>
+  <ul>
+    <li><b>Kein Routing:</b> Fluchtwege laufen über das 25-m-Raster (8er-Nachbarschaft). Einbahnstraßen, Durchfahrtsbreiten, Wendemöglichkeiten, Tragfähigkeit von Brücken und Gegenverkehr sind nicht berücksichtigt.</li>
+    <li><b>Rauch, Sicht und Hitze unterwegs</b> werden nicht modelliert; ein Weg am Feuer entlang wird nicht schlechter bewertet als einer, der davon wegführt. <b>Offen.</b></li>
+    <li><b>Keine zeitabhängige Prüfung des Weges:</b> geprüft wird die Front am Standort, nicht entlang des Weges während der Flucht. <b>Offen, fachlich relevant.</b></li>
+    <li>Kronenfeuer, Flugfeuer, Totholz und Bestandsaufbau sind nicht erfasst – Kronenfeuer würde die Soll-Radien deutlich vergrößern. Gewässertiefe, Ufer und Zugänglichkeit werden nicht geprüft.</li>
+    <li>Mehrere Fahrzeuge auf derselben Fläche werden beim Platzbedarf nicht addiert (je Standort ein Fahrzeug, neun Einsatzkräfte).</li>
+    <li>Die abgebrannte Fläche wird aus der <b>gezeichneten</b> Brandfläche abgeleitet, nicht aus einer Beobachtung; ob sie durchgebrannt und abgekühlt ist, weiß die App nicht.</li>
+    <li><b>Ohne OSM-Daten werden keine Flächen erfunden:</b> dann bleibt nur die abgebrannte Fläche, zusammen mit einem Hinweis.</li>
   </ul>`;
   const SOURCES_HTML = `<ul>
     <li><b>Luftbild</b>: Geobasis NRW, WMS <code>wms_nw_dop</code>, Layer <code>nw_dop_rgb</code>; Lizenz laut GetCapabilities: Datenlizenz Deutschland – Zero 2.0 (geprüft 21.11.2026).</li>
@@ -8820,6 +10196,10 @@ out center;`;
     });
     refreshProtocol();
     renderSuggestions();
+    // Rückzugsflächen am Ende: brauchen die Fahrzeugstandorte aus S.sug. Die Warnungen werden danach
+    // noch einmal gezeichnet, damit sie oben bei den Vorschlägen und an den Fahrzeugkarten stehen.
+    const sa = computeSafeAreas();
+    if (sa) { refreshProtocol(); renderSuggestions(); }
     updateWater();
   }
   $("btn-resuggest").onclick = () => computeSuggestions(true);
@@ -8862,6 +10242,15 @@ out center;`;
   }
   const anfLabel = (a) => (!a ? "–" : a.ok ? `${a.short}${a.fallback ? "" : " (geschätzt, kein Routing)"}` : `unbekannt (${a.reason})`);
 
+  /** Rückzugswarnung (0.7.0) für die Fahrzeugkarte: kritisch = rot, knapp = gelb, sonst Fließtext. */
+  function saWarnHtml(v) {
+    const w = S.sa && S.sa.warnings.find((x) => x.positionId === v.id);
+    if (!w) return "";
+    if (w.status === "kritisch") return `<div class="msg err alert-msg"><b>Rückzug:</b> ${esc(w.text)}</div>`;
+    if (w.status === "knapp") return `<div class="msg warn"><b>Rückzug:</b> ${esc(w.text)}</div>`;
+    return `<p class="muted small"><b>Rückzug:</b> ${esc(w.text)}</p>`;
+  }
+
   function vehCard(v, sub) {
     const tank = v.vehicle.tank_l === null || v.vehicle.tank_l === undefined ? "Tank offen" : `${v.vehicle.tank_l} l`;
     return `<div class="${sub ? "sug-sub" : "sug"}${v.locked ? " locked" : ""}${v.moved ? " moved" : ""}" data-id="${esc(v.id)}">
@@ -8869,6 +10258,7 @@ out center;`;
         <p class="small anf"><b>Anfahrt:</b> ${esc(anfLabel(v.anfahrt))}</p>
         <p>${esc(sub ? v.reason.replace(S.sug.stageInfo?.reason || "\u0000", "").trim() : v.reason)}</p>
         ${v.check ? `<p class="${v.check.ok ? "" : "ov"}"><b>Prüfung nach Verschieben:</b> ${esc(v.check.text)}</p>` : ""}
+        ${saWarnHtml(v)}
         ${v.waterInfo ? `<p><b>Wasser:</b> ${esc(v.waterInfo)}</p>` : ""}
         <p class="muted small">${esc(v.vehicle.bezeichnung || "")}, ${esc(tank)} (${esc(v.vehicle.tank_quelle || "")}). Quelle: ${esc(v.source)}</p>
         <div class="btnrow"><button class="btn small" data-act="lock" type="button">${v.locked ? "Entsperren" : "Sperren (behalten)"}</button><button class="btn small danger" data-act="discard" type="button">Verwerfen</button><button class="btn small" data-act="zoom" type="button">Zeigen</button></div>
@@ -8900,6 +10290,8 @@ out center;`;
         const v = gr.items[0];
         icon = L.divIcon({ className: "", html: `<span class="veh-marker${v.locked ? " locked" : ""}">${esc(vehShort(v.vehicle))}</span>`, iconSize: null, iconAnchor: [30, 14] });
         tip = `${esc(v.vehicle.bezeichnung || v.vehicle.typ)}: ${esc(v.task)}<br>Anfahrt ${esc(anfLabel(v.anfahrt))}${(v.lateFor || []).length ? `<br>zu spät für Riegel ${esc(v.lateFor.join(", "))}` : ""}`;
+        const saw = S.sa && S.sa.warnings.find((x) => x.positionId === v.id);
+        if (saw) tip += `<br>Rückzug: ${esc(saw.status)}${Number.isFinite(saw.escapeMin) ? ` (${Math.round(saw.escapeMin)} min Fluchtzeit)` : ""}`;
       } else if (isStage) {
         icon = L.divIcon({ className: "", html: `<div class="veh-group stage"><b>Bereitstellungsraum</b> <span class="cnt">${gr.items.length}</span><ul>${gr.items.map((v) => `<li>${esc(vehShort(v.vehicle))} – ${esc(v.role || v.task)}</li>`).join("")}</ul></div>`, iconSize: null, iconAnchor: [14, 14] });
         tip = `Bereitstellungsraum:<br>${gr.items.map((v) => `${esc(vehShort(v.vehicle))} – ${esc(v.role || "")}, Anfahrt ${esc(anfLabel(v.anfahrt))}`).join("<br>")}`;
@@ -8911,12 +10303,69 @@ out center;`;
       const mk = L.marker([gr.lat, gr.lon], { icon, draggable: true, keyboard: false }).addTo(vehLayer);
       mk.bindTooltip(tip);
       mk.on("dragend", (e) => {
-        for (const v of gr.items) moveVehicle(v, e.latlng.lat, e.latlng.lng);
+        // Leaflet liefert bei "dragend" KEIN e.latlng (nur bei "drag"/"move"); die neue Position steht am
+        // Marker. Vorher lief hier ein TypeError und das Verschieben blieb ohne Wirkung (Fehler seit 0.3.0).
+        const ll = e.target.getLatLng();
+        for (const v of gr.items) moveVehicle(v, ll.lat, ll.lng);
+        // Rückzug neu prüfen: ein verschobener Standort kann die Fluchtzeit und damit die Warnung ändern.
+        computeSafeAreas();
         refreshProtocol(); renderSuggestions();
       });
     }
   }
   map.on("zoomend", renderVehicleMarkers);
+
+  // ---------------------------------------------------------------- Rückzugsflächen und Fluchtwege (0.7.0)
+  // Zwei eigene Kartenebenen („Safe Areas“, „Fluchtwege“) hängen sich selbst in den Ebenenschalter.
+  // Die Label-Entzerrung ist BEWUSST die vorhandene aus dieser Datei (scheduleDeclutter), das Modul
+  // bringt keine zweite Lösung mit.
+  const saUi = SafeAreaUI.create({
+    map, L, layerControl: layerCtl,
+    panelEl: $("sa-panel"), legendEl: $("sa-legend"),
+    declutter: scheduleDeclutter,
+    onDismiss(id) {
+      const q = S.saState.dismissed.indexOf(id);
+      if (q >= 0) S.saState.dismissed.splice(q, 1); else S.saState.dismissed.push(id);
+      store.set("wb_sa_dismissed", S.saState.dismissed);
+      Protocol.add("safearea_verworfen", { id, verworfen: q < 0 });
+      computeSafeAreas();
+      renderSuggestions();
+      refreshProtocol();
+    },
+    onFocus(a) { map.setView([a.lat, a.lon], Math.max(map.getZoom(), 15)); },
+  });
+
+  /**
+   * Rückzugsflächen, Fluchtwege und Warnungen berechnen. Läuft am Ende von computeSuggestions(),
+   * also bei JEDER Neuberechnung (Prognose, Vorschläge neu, Fahrzeug verschoben, Fläche verworfen).
+   * Ohne OSM-Daten wird NICHTS erfunden: dann bleibt nur die abgebrannte Fläche plus Hinweis.
+   */
+  function computeSafeAreas() {
+    const run = S.run;
+    if (!run || !S.sug) { S.sa = null; saUi.render(null, null); return; }
+    const positions = S.sug.vehicles.map((v) => ({
+      id: v.id, vehicleId: v.vehicleId, lat: v.lat, lon: v.lon,
+      label: v.task, taskKind: v.taskKind,
+      name: v.vehicle ? (v.vehicle.bezeichnung || v.vehicle.typ) : v.vehicleId,
+    }));
+    const osm = run.osmApplied || null;
+    if (osm && S.osm && !osm.safeAreaExtra) osm.safeAreaExtra = SafeArea.rasterExtra(run.grid, S.osm.json);
+    S.sa = SafeArea.plan({
+      grid: run.grid, result: run.result, osm, ignition: run.ignition,
+      weatherHours: run.hours, positions, P, state: S.saState,
+    });
+    saUi.render(S.sa, run.grid);
+    Protocol.add("safearea", SafeArea.forProtocol(S.sa));
+    // Der Satz „Rückzugsweg nicht geprüft.“ aus js/suggest.js ist jetzt falsch – durch das Ergebnis ersetzen.
+    for (const v of S.sug.vehicles) {
+      const w = S.sa.warnings.find((x) => x.positionId === v.id);
+      if (w) v.reason = v.reason.replace(" Rückzugsweg nicht geprüft.", " Rückzug: " + w.text);
+    }
+    // Warnungen in die vorhandene Warnliste der Vorschläge: erst die alten Rückzugswarnungen entfernen,
+    // damit beim Verwerfen einer Fläche keine veralteten Zeilen stehen bleiben.
+    S.sug.alerts = (S.sug.alerts || []).filter((a) => !/^ACHTUNG Rückzug/.test(a)).concat(S.sa.alerts);
+    return S.sa;
+  }
 
   /**
    * Überlappende Kartenbeschriftungen entzerren (nur Anzeige, 0.4.2). Fahrzeug-, Linien-, Prüfgrenzen- und
@@ -8924,7 +10373,7 @@ out center;`;
    * (die Markerposition selbst bleibt unverändert). Reihenfolge: Fahrzeuge zuerst, damit sie ihren Platz
    * behalten und die übrigen Label ausweichen.
    */
-  const LABEL_SEL = ".veh-marker,.veh-group,.line-label,.ready-label,.hz-label";
+  const LABEL_SEL = ".veh-marker,.veh-group,.line-label,.ready-label,.hz-label,.sa-label,.sa-warnbadge";
   // feste Marker, denen die Beschriftungen ausweichen (Wassermodul: Becken, Entnahmestellen, Abnehmer, Pumpen).
   // .wveh bleibt bewusst draußen: Wasserfahrzeuge bewegen sich im Zeitverlauf, eine Entzerrung je Frame wäre teuer.
   const FIXED_SEL = ".vx-marker,.water-marker,.wbasin,.wsrc,.wcons,.wpump";
@@ -9639,6 +11088,35 @@ out center;`;
       S.sug.lines.forEach((l) => feats.push({ type: "Feature", properties: { typ: "abwehrlinie_vorschlag", id: l.id, begruendung: l.reason, gesperrt: !!l.locked }, geometry: { type: "LineString", coordinates: l.latlngs.map(([a, b]) => [b, a]) } }));
       S.sug.vehicles.forEach((v) => feats.push({ type: "Feature", properties: { typ: "fahrzeug_vorschlag", fahrzeug: v.vehicle.bezeichnung, aufgabe: v.task, begruendung: v.reason, verschoben: !!v.moved, gesperrt: !!v.locked, pflicht: !!v.pflicht, anfahrt: v.anfahrt ? (v.anfahrt.ok ? v.anfahrt.text : v.anfahrt.reason) : null, zu_spaet_fuer: v.lateFor || null }, geometry: { type: "Point", coordinates: [v.lon, v.lat] } }));
     }
+    // Rückzugsflächen und Fluchtwege (0.7.0): Flächen als Polygon, Fluchtwege als LineString
+    if (S.sa) {
+      const g = S.run.grid;
+      S.sa.areas.forEach((a) => {
+        const rings = SafeArea.areaRings(g, a);
+        if (!rings.length) return;
+        feats.push({ type: "Feature", properties: {
+          typ: "rueckzugsflaeche", id: a.id, art: a.typLabel, status: a.status,
+          radius_frei_m: Math.round(a.inscribedRM), radius_soll_m: Math.round(a.requiredRM),
+          flammenlaenge_m: +a.flameM.toFixed(1), randbrennstoff: a.edgeClass,
+          faktor_hang_wind: +a.delta.toFixed(1), flaeche_ha: +a.areaHa.toFixed(2),
+          verworfen: !!a.dismissed, begruendung: a.reason, hinweise: a.hinweise, quelle: a.source,
+        }, geometry: { type: "Polygon", coordinates: rings.map((r) => [...r, r[0]].map(([la, lo]) => [+lo.toFixed(7), +la.toFixed(7)])) } });
+      });
+      S.sa.routes.forEach((r) => {
+        const wa = S.sa.warnings.find((x) => x.positionId === r.positionId) || {};
+        for (const [mode, leg] of [["fahrzeug", r.fahrzeug], ["fuss", r.fuss]]) {
+          if (!leg || !leg.latlngs || leg.latlngs.length < 2) continue;
+          feats.push({ type: "Feature", properties: {
+            typ: "fluchtweg", art: mode, standort: r.positionId, fahrzeug: r.vehicleId, aufgabe: r.label,
+            status: wa.status || null, ziel: leg.areaId || null,
+            fluchtzeit_min: Number.isFinite(wa.escapeMin) ? Math.round(wa.escapeMin) : null,
+            reserve_min: Number.isFinite(wa.reserveMin) ? Math.round(wa.reserveMin) : null,
+            strecke_m: Math.round(leg.lengthM), warnung: wa.status && wa.status !== "ok" ? wa.text : null,
+            geometrie: "Raster 25 m, 8er-Nachbarschaft – KEIN Straßenrouting",
+          }, geometry: { type: "LineString", coordinates: leg.latlngs.map(([la, lo]) => [+lo.toFixed(7), +la.toFixed(7)]) } });
+        }
+      });
+    }
     for (const a of gsProto(currentGrundschutz().list)) {
       const st = S.stations.find((x) => x.name === a.geraetehaus || x.id === a.geraetehaus);
       feats.push({ type: "Feature", properties: { typ: "grundschutz", ...a }, geometry: st && Dispatch.hasCoord(st) ? { type: "Point", coordinates: [Number(st.lon), Number(st.lat)] } : null });
@@ -9884,6 +11362,7 @@ out center;`;
     const nxt = cur === "dark" ? "light" : "dark";
     document.documentElement.setAttribute("data-theme", nxt); store.set("wb_theme", nxt);
     if (waterUI) waterUI.redraw();
+    if (saUi) saUi.redraw();
   };
 
   // ---------------------------------------------------------------- Start
@@ -9893,6 +11372,7 @@ out center;`;
   syncTwControls();
   $("ack-text").innerHTML = `<p><b>TESTVERSION – nicht für den Einsatz</b> (Version ${esc(P.version)}).</p><p>Diese App ist ein <b>unvalidierter Prototyp</b>. Sie zeigt eine Modellprognose mit Unsicherheitsband und einfache Vorschläge. Sie ersetzt weder Einsatzleitung noch Lageerkundung vor Ort.</p>${LIMITS_HTML}`;
   $("sources-text").innerHTML = SOURCES_HTML;
+  $("safearea-sources").innerHTML = SAFEAREA_HTML;
   renderSearchSources();
   document.querySelectorAll(".p-likely").forEach((e) => { e.textContent = Math.round(P.ensemble.likely * 100); });
   document.querySelectorAll(".p-possible").forEach((e) => { e.textContent = Math.round(P.ensemble.possible * 100); });
@@ -9951,6 +11431,8 @@ out center;`;
     water() { return waterUI; },
     waterInput,
     waterTab(on) { onWaterTab(on !== false); },
+    safearea() { return S.sa; },
+    safeareaUi: saUi,
     rpLayer,
     setRpLayer(on) { if (on) map.addLayer(rpLayer); else map.removeLayer(rpLayer); },
     map,

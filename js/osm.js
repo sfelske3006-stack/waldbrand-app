@@ -22,6 +22,13 @@
   way["leisure"="nature_reserve"](${bb});
   relation["leisure"="nature_reserve"](${bb});
   relation["boundary"="protected_area"]["protect_class"~"^(1a|1b|1|2|3|4)$"](${bb});
+  // Kandidaten für Rückzugsflächen (0.7.0, SafeArea.OVERPASS_EXTRA). landuse=farmyard steht schon in "lu".
+  // Diese Elemente laufen durch areaClass() ins Leere und verändern die Brennstoffkarte NICHT; das Modul
+  // rastert sie selbst mit SafeArea.rasterExtra(). Die Prognose bleibt damit unverändert.
+  way["landuse"="quarry"](${bb});
+  relation["landuse"="quarry"]["type"="multipolygon"](${bb});
+  way["amenity"="parking"](${bb});
+  way["leisure"~"^(pitch|track|sports_centre)$"](${bb});
 );
 out geom;
 (

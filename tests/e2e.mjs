@@ -157,7 +157,8 @@ try {
   const nLines = await page.locator(".sug .badge.l").count();
   const nVeh = await page.locator(".sug .badge.v").count();
   check("Riegel-Vorschläge aus Barrieren", nLines >= 1, `${nLines} Linien`);
-  check("Fahrzeugvorschläge mit Begründung", nVeh >= 2 && sug2.includes("Rückzugsweg nicht geprüft"), `${nVeh} Fahrzeuge`);
+  check("Fahrzeugvorschläge mit Begründung, Rückzug geprüft (0.7.0 ersetzt „Rückzugsweg nicht geprüft“)",
+    nVeh >= 2 && /Rückzug:/.test(sug2) && !/Rückzugsweg nicht geprüft/.test(sug2), `${nVeh} Fahrzeuge`);
   check("Wasserinfo (nicht verifiziert) vorhanden", sug2.includes("Entnahmestelle") || sug2.includes("Wasserversorgung"));
   const lineOk = await page.evaluate(() => {
     const sg = window.__wb.state.sug;
@@ -771,6 +772,11 @@ try {
   check("Unterpfad: Wassermodul (js/water*.js, css/water.css) relativ geladen, Reiter „Wasser“ nutzbar",
     subW.has && subW.css && subFiles.length === 4 && subFiles.every((u) => u.startsWith(PREFIX)) && (subW.panel > 200 || /Keine/.test(subW.hint)) && outside.length === 0 && notFound.length === 0 && subErr.length === 0,
     `${subFiles.length} Dateien: ${subFiles.join(", ")}; Becken ${subW.basins}; Hinweis: ${subW.hint}`);
+  // Rückzugsflächen-Modul unter dem Unterpfad: js/safearea*.js und css/safearea.css relativ geladen
+  const subSa = served2.filter((u) => /safearea/.test(u));
+  check("Unterpfad: Modul Rückzugsflächen (js/safearea.js, js/safearea-ui.js, css/safearea.css) relativ geladen",
+    subSa.length === 3 && subSa.every((u) => u.startsWith(PREFIX)) && await pg.evaluate(() => typeof window.SafeArea === "object" && typeof window.SafeAreaUI === "object"),
+    `${subSa.length} Dateien: ${subSa.join(", ")}`);
   await c.close();
   sub.close();
 } catch (e) {
@@ -1112,6 +1118,250 @@ try {
   await pg.context().close();
 } catch (e) {
   check("Testablauf Wasser ohne OSM", false, e.message);
+}
+
+// ------------------------------------------------------------------ Rückzugsflächen und Fluchtwege (0.7.0)
+// Lage mit synthetischen OSM-Daten (Parkplatz, Steinbruch, Sportplatz, Teich, Wege). deviceScaleFactor 2
+// wegen der Vergleichbarkeit mit dem Screenshot-Block weiter unten.
+try {
+  const { safeAreaOsm } = await import("./synth-osm.mjs");
+  const c2 = await browser.newContext({ viewport: { width: 1400, height: 950 }, deviceScaleFactor: 2 });
+  const pg = await c2.newPage();
+  pg.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text()); });
+  pg.on("pageerror", (e) => consoleErrors.push("PAGEERROR " + e.message));
+  await pg.route("**/*", (route) => { const u = new URL(route.request().url()); if (u.hostname === "localhost") return route.continue(); blocked.add(u.hostname); return route.abort("blockedbyclient"); });
+  await ack(pg);
+  await pg.evaluate(() => window.__wb.demReady());
+  await pg.waitForFunction(() => !!window.__wb.grenzenReady(), null, { timeout: 15000 });
+  const lat0 = 50.8045, lon0 = 7.3405, r = 60;
+  const pts = Array.from({ length: 12 }, (_, k) => [lat0 + (r / 111195) * Math.cos((k / 12) * 2 * Math.PI), lon0 + (r / (111195 * Math.cos((lat0 * Math.PI) / 180))) * Math.sin((k / 12) * 2 * Math.PI)]);
+  await pg.evaluate((p) => window.__wb.setPolygon(p), pts);
+  const osmJson = safeAreaOsm(lat0, lon0);
+  await pg.evaluate((j) => window.__wb.injectOsm(j, "Testdaten (synthetisch)"), osmJson);
+  await pg.click("#btn-wx-sample");
+  await pg.click("#wx-override summary");
+  for (const [k, v] of [["windKmh", "18"], ["windDirDeg", "225"], ["tempC", "29"], ["rh", "28"]]) { await pg.fill(`#ov-${k}`, v); await pg.locator(`#ov-${k}`).dispatchEvent("change"); }
+  await pg.click("#btn-run");
+  await pg.waitForFunction(() => document.querySelector("#sa-panel")?.innerText.length > 50, null, { timeout: 60000 });
+
+  const saText = await pg.locator("#sec-safearea").innerText();
+  const sa = await pg.evaluate(() => {
+    const r0 = window.__wb.safearea();
+    return {
+      areas: r0.areas.map((a) => ({ id: a.id, typ: a.typLabel, st: a.status, reason: a.reason, rFree: a.inscribedRM, rReq: a.requiredRM })),
+      routes: r0.routes.length, warn: r0.warnings.map((w) => w.status), notes: r0.notes, ms: r0.durationMs,
+      quellen: r0.meta.quellen.length,
+    };
+  });
+  check("Rückzugsflächen: Abschnitt 6 sichtbar, mindestens eine Fläche in der Tabelle",
+    await pg.locator("#sec-safearea").isVisible() && (await pg.locator("#sa-panel table.sa-table.areas tbody tr.sa-main").count()) >= 1,
+    `${sa.areas.length} Flächen, ${sa.routes} Fluchtwege, ${sa.ms} ms`);
+  check("Rückzugsflächen: jede Fläche mit einem der drei Status und einer Begründung über 20 Zeichen",
+    sa.areas.length > 0 && sa.areas.every((a) => ["geeignet", "bedingt", "ungeeignet"].includes(a.st) && a.reason.length > 20),
+    sa.areas.map((a) => `${a.typ}=${a.st}`).join(", "));
+  check("Rückzugsflächen: Flächen und Sicherheitskreise auf der Karte",
+    (await pg.locator("path.sa-area").count()) >= 1 && (await pg.locator("path.sa-circle").count()) >= 1 && (await pg.locator(".sa-label").count()) >= 1,
+    `${await pg.locator("path.sa-area").count()} Flächen, ${await pg.locator("path.sa-circle").count()} Kreise`);
+  const nRoute = await pg.locator("path.sa-route").count();
+  check("Rückzugsflächen: Fluchtweg mit Richtungspfeilen gezeichnet (oder Standort liegt schon auf der Fläche)",
+    nRoute === 0 || (await pg.locator(".sa-arrow").count()) >= 1, `${nRoute} Wege, ${await pg.locator(".sa-arrow").count()} Pfeile`);
+  check("Rückzugsflächen: Legende an der Kartenlegende, Quellen genannt",
+    (await pg.locator("#sa-legend .sa-lg").count()) === 1 && /Butler/.test(await pg.locator("#sa-legend").innerText()) && sa.quellen >= 5);
+  check("Rückzugsflächen: Ebenensteuerung bietet „Safe Areas“ und „Fluchtwege“",
+    await pg.evaluate(() => { const t = document.querySelector(".leaflet-control-layers-list")?.innerText || ""; return /Safe Areas/.test(t) && /Fluchtwege/.test(t); }));
+  // Ebene abschalten -> Flächen verschwinden, wieder an -> Flächen wieder da
+  const toggled = await pg.evaluate(async () => {
+    const ui = window.__wb.safeareaUi, m = window.__wb.map;
+    m.removeLayer(ui.layers.areaLayer);
+    const off = document.querySelectorAll("#map path.sa-area").length;
+    m.addLayer(ui.layers.areaLayer);
+    return { off, on: document.querySelectorAll("#map path.sa-area").length };
+  });
+  check("Rückzugsflächen: Ebene aus-/einschaltbar", toggled.off === 0 && toggled.on >= 1, JSON.stringify(toggled));
+  check("Rückzugsflächen: Warnung je Fahrzeugstandort (ok/knapp/kritisch) mit Rechenweg in der Fahrzeugkarte",
+    sa.warn.length >= 1 && sa.warn.every((x) => ["ok", "knapp", "kritisch"].includes(x)) && /Rückzug:/.test(await pg.locator("#suggestions").innerText()),
+    sa.warn.join(", "));
+  // Protokoll
+  const proto = await pg.evaluate(() => {
+    const e = Protocol.all().filter((x) => x.typ === "safearea").pop();
+    return { has: !!e, keys: e ? Object.keys(e.daten) : [], v: Protocol.verify().ok };
+  });
+  check("Rückzugsflächen: Protokolleintrag „safearea“ mit Flächen, Fluchtwegen, Warnungen und Quellen, Hashkette ok",
+    proto.has && ["flaechen", "fluchtwege", "warnungen", "quellen"].every((k) => proto.keys.includes(k)) && proto.v, proto.keys.join(", "));
+  // Fahrzeug auf der Karte verschieben: der Rückzug muss neu geprüft und protokolliert werden.
+  // (Ein Standort kritisch zu bekommen gelingt in dieser synthetischen Lage nicht: der Untergrund ist
+  // flächig Grünland, also liegt überall eine Rückzugsfläche in wenigen Minuten. Status „kritisch“/„knapp“
+  // mit Rechenweg prüfen die Unit-Tests in tests/safearea.test.mjs.)
+  try {
+    const nProtoBefore = await pg.evaluate(() => Protocol.all().filter((x) => x.typ === "safearea").length);
+    const target = await pg.evaluate(() => {
+      const s0 = window.__wb.state, m = window.__wb.map;
+      const c = s0.poly.reduce((a, q) => [a[0] + q[0] / s0.poly.length, a[1] + q[1] / s0.poly.length], [0, 0]);
+      m.setView(c, 14, { animate: false });
+      return c;
+    });
+    await pg.waitForTimeout(700);
+    const geo = await pg.evaluate((c) => {
+      const m = window.__wb.map;
+      const p0 = m.latLngToContainerPoint(c);
+      const mr = m.getContainer().getBoundingClientRect();
+      // Stationsmarker tragen dieselbe Klasse (.veh-marker.st-marker) und dürfen nicht gezogen werden
+      const marks = [...document.querySelectorAll("#map .veh-marker:not(.st-marker)")].map((el) => { const r = el.getBoundingClientRect(); return { x: r.left + r.width / 2, y: r.top + r.height / 2 }; });
+      const fx = mr.left + p0.x, fy = mr.top + p0.y;
+      const inView = marks.filter((q) => q.x > mr.left + 25 && q.x < mr.right - 25 && q.y > mr.top + 25 && q.y < mr.bottom - 25 && Math.hypot(q.x - fx, q.y - fy) > 60);
+      return { fx, fy, pick: inView[0] || null, n: marks.length };
+    }, target);
+    if (!geo.pick) throw new Error(`kein ziehbarer Fahrzeugmarker im Sichtbereich (${geo.n} Marker)`);
+    await pg.mouse.move(geo.pick.x, geo.pick.y);
+    await pg.mouse.down();
+    await pg.mouse.move((geo.pick.x + geo.fx) / 2, (geo.pick.y + geo.fy) / 2, { steps: 10 });
+    await pg.mouse.move(geo.fx, geo.fy, { steps: 10 });
+    await pg.mouse.up();
+    await pg.waitForTimeout(1200);
+    const moved = await pg.evaluate((n0) => {
+      const s0 = window.__wb.state, r0 = window.__wb.safearea();
+      const mv = s0.sug.vehicles.filter((v) => v.moved);
+      const w = mv.length ? r0.warnings.find((x) => x.positionId === mv[0].id) : null;
+      const entries = Protocol.all().filter((x) => x.typ === "safearea");
+      const last = entries[entries.length - 1];
+      return {
+        moved: mv.length, id: mv.length ? mv[0].id : null,
+        status: w ? w.status : null, text: w ? w.text : "",
+        neuProtokolliert: entries.length > n0,
+        imProtokoll: !!last && last.daten.warnungen.some((x) => x.standort === (mv.length ? mv[0].id : null)),
+        karte: /Rückzug:/.test(document.querySelector("#suggestions").innerText),
+        kette: Protocol.verify().ok,
+      };
+    }, nProtoBefore);
+    check("Rückzugsflächen: Fahrzeug auf der Karte verschoben -> Rückzug neu geprüft, Begründung an der Fahrzeugkarte und im Protokoll",
+      moved.moved >= 1 && ["ok", "knapp", "kritisch"].includes(moved.status) && moved.text.length > 20 &&
+      moved.neuProtokolliert && moved.imProtokoll && moved.karte && moved.kette,
+      `${moved.moved} Fahrzeug(e) verschoben, Status ${moved.status}: ${moved.text.slice(0, 110)}`);
+  } catch (e) {
+    check("Rückzugsflächen: Fahrzeug auf der Karte verschoben -> Rückzug neu geprüft", false, e.message);
+  }
+  // Verwerfen einer Fläche
+  const dism = await pg.evaluate(async () => {
+    const b = document.querySelector("#sa-panel [data-sa-dismiss]");
+    const id = b.getAttribute("data-sa-dismiss");
+    b.click();
+    await new Promise((r) => setTimeout(r, 300));
+    const row = document.querySelector(`#sa-panel tr[data-sa-row="${id}"]`);
+    const r0 = window.__wb.safearea();
+    return {
+      id, dismissedClass: !!row && row.classList.contains("sa-dismissed"),
+      stateHas: window.__wb.state.saState.dismissed.includes(id),
+      used: r0.routes.some((x) => (x.fahrzeug || x.fuss || {}).areaId === id),
+      proto: Protocol.all().some((x) => x.typ === "safearea_verworfen" && x.daten.id === id && x.daten.verworfen === true),
+    };
+  });
+  check("Rückzugsflächen: Verwerfen streicht die Zeile durch, Fläche ist kein Fluchtziel mehr, Protokolleintrag vorhanden",
+    dism.dismissedClass && dism.stateHas && !dism.used && dism.proto, JSON.stringify(dism));
+  // GeoJSON-Export
+  const gj = await pg.evaluate(async () => {
+    document.querySelector("#tab-protokoll").click();
+    document.querySelector("#btn-geojson").click();
+    await new Promise((r) => setTimeout(r, 300));
+    const j = JSON.parse(document.querySelector("#exp-text").value);
+    const f = j.features.filter((x) => x.properties.typ === "rueckzugsflaeche");
+    const w = j.features.filter((x) => x.properties.typ === "fluchtweg");
+    document.querySelector("#btn-exp-close").click();
+    return { f: f.length, w: w.length, props: f.length ? Object.keys(f[0].properties) : [], geo: f.length ? f[0].geometry.type : null };
+  });
+  check("Rückzugsflächen: GeoJSON-Export enthält Flächen (Polygon) und Fluchtwege (LineString) mit Soll-Radius",
+    gj.f >= 1 && gj.geo === "Polygon" && ["radius_frei_m", "radius_soll_m", "flammenlaenge_m", "status"].every((k) => gj.props.includes(k)),
+    `${gj.f} Flächen, ${gj.w} Fluchtwege`);
+  // Druckansicht: Abschnitt bleibt, Knöpfe weg
+  await pg.emulateMedia({ media: "print" });
+  const printOk = await pg.evaluate(() => {
+    document.querySelector("#tab-lage").click();
+    const sec = document.querySelector("#sec-safearea");
+    const btn = document.querySelector("#sa-panel .sa-btn");
+    return { sec: sec.offsetHeight > 0, btn: btn ? getComputedStyle(btn).display : "none" };
+  });
+  check("Rückzugsflächen: Druckansicht zeigt den Abschnitt, Knöpfe ausgeblendet", printOk.sec && printOk.btn === "none", JSON.stringify(printOk));
+  await pg.emulateMedia({ media: "screen" });
+  await c2.close();
+} catch (e) {
+  check("Testablauf Rückzugsflächen", false, e.message);
+}
+
+// Screenshot Rückzugsflächen (deviceScaleFactor 2): eigener, unberührter Lauf – ohne verschobene
+// Fahrzeuge und ohne verworfene Fläche, damit das Bild den Normalfall zeigt.
+try {
+  const { safeAreaOsm } = await import("./synth-osm.mjs");
+  const c2 = await browser.newContext({ viewport: { width: 1400, height: 950 }, deviceScaleFactor: 2 });
+  const pg = await c2.newPage();
+  pg.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text()); });
+  pg.on("pageerror", (e) => consoleErrors.push("PAGEERROR " + e.message));
+  await pg.route("**/*", (route) => { const u = new URL(route.request().url()); if (u.hostname === "localhost") return route.continue(); blocked.add(u.hostname); return route.abort("blockedbyclient"); });
+  await ack(pg);
+  await pg.evaluate(() => window.__wb.demReady());
+  await pg.waitForFunction(() => !!window.__wb.grenzenReady(), null, { timeout: 15000 });
+  const lat0 = 50.8045, lon0 = 7.3405, r = 60;
+  const pts = Array.from({ length: 12 }, (_, k) => [lat0 + (r / 111195) * Math.cos((k / 12) * 2 * Math.PI), lon0 + (r / (111195 * Math.cos((lat0 * Math.PI) / 180))) * Math.sin((k / 12) * 2 * Math.PI)]);
+  await pg.evaluate((p) => window.__wb.setPolygon(p), pts);
+  await pg.evaluate((j) => window.__wb.injectOsm(j, "Testdaten (synthetisch)"), safeAreaOsm(lat0, lon0));
+  await pg.click("#btn-wx-sample");
+  await pg.click("#wx-override summary");
+  for (const [k, v] of [["windKmh", "18"], ["windDirDeg", "225"], ["tempC", "29"], ["rh", "28"]]) { await pg.fill(`#ov-${k}`, v); await pg.locator(`#ov-${k}`).dispatchEvent("change"); }
+  await pg.click("#btn-run");
+  await pg.waitForFunction(() => document.querySelector("#sa-panel")?.innerText.length > 50, null, { timeout: 60000 });
+  // Screenshot (deviceScaleFactor 2): Karte mit Flächen und Fluchtwegen, Seitenleiste auf Abschnitt 6
+  await pg.waitForTimeout(1600); // fitBounds nach der Rechnung abwarten, sonst zoomt die Karte danach zurück
+  await pg.evaluate(() => {
+    const s0 = window.__wb.state;
+    const c = s0.poly.reduce((a, q) => [a[0] + q[0] / s0.poly.length, a[1] + q[1] / s0.poly.length], [0, 0]);
+    window.__wb.map.setView([c[0] + 0.004, c[1] + 0.004], 14, { animate: false });
+    const cap = document.createElement("div");
+    cap.className = "maphint"; cap.style.top = "12px"; cap.style.bottom = "auto"; cap.style.left = "12px"; cap.style.zIndex = "900";
+    cap.textContent = "Test-Lage: synthetische OSM-Daten (Parkplatz, Steinbruch, Sportplatz, Wege erfunden), Beispielwetter Wind 18 km/h aus SW";
+    document.querySelector(".mapwrap").appendChild(cap);
+    document.querySelector(".maptools").style.visibility = "hidden";
+    document.querySelector("#sec-safearea").scrollIntoView();
+  });
+  await pg.mouse.move(5, 5); // offene Tooltips schließen
+  await pg.waitForTimeout(900);
+  await pg.screenshot({ path: path.join(OUT, "screenshot-safearea.png") });
+  check("Rückzugsflächen: Screenshot docs/screenshot-safearea.png (deviceScaleFactor 2) erstellt", fs.existsSync(path.join(OUT, "screenshot-safearea.png")));
+  await c2.close();
+} catch (e) {
+  check("Testablauf Screenshot Rückzugsflächen", false, e.message);
+}
+
+// Rückzugsflächen OHNE OSM-Daten und OHNE Geländemodell: es darf NICHTS erfunden werden.
+try {
+  const pg = await newPage({ noDem: true });
+  await ack(pg);
+  await pg.waitForFunction(() => !!window.__wb.grenzenReady(), null, { timeout: 15000 });
+  const lat0 = 50.8705, lon0 = 7.3120, r = 60;
+  const pts = Array.from({ length: 12 }, (_, k) => [lat0 + (r / 111195) * Math.cos((k / 12) * 2 * Math.PI), lon0 + (r / (111195 * Math.cos((lat0 * Math.PI) / 180))) * Math.sin((k / 12) * 2 * Math.PI)]);
+  await pg.evaluate((p) => window.__wb.setPolygon(p), pts);
+  await pg.click("#btn-wx-sample");
+  await pg.click("#wx-override summary");
+  for (const [k, v] of [["windKmh", "16"], ["windDirDeg", "225"], ["tempC", "28"], ["rh", "30"]]) { await pg.fill(`#ov-${k}`, v); await pg.locator(`#ov-${k}`).dispatchEvent("change"); }
+  await pg.selectOption("#sel-fuel", "gebuesch");
+  await pg.click("#btn-run");
+  await pg.waitForFunction(() => document.querySelector("#sa-panel")?.innerText.length > 50, null, { timeout: 60000 });
+  const noOsm = await pg.evaluate(() => {
+    const r0 = window.__wb.safearea();
+    return {
+      typen: [...new Set(r0.areas.map((a) => a.typLabel))],
+      notes: r0.notes, osm: r0.meta.osm, dem: r0.meta.dem,
+      panel: document.getElementById("sa-panel").innerText.replace(/\s+/g, " "),
+      deltaOhneHang: r0.areas.every((a) => a.slopeTan === 0),
+    };
+  });
+  check("Rückzugsflächen ohne OSM: deutlicher Hinweis, KEINE erfundenen Flächen (nur die abgebrannte Fläche)",
+    noOsm.osm === false && /Keine OSM-Daten/.test(noOsm.notes.join(" ")) && /KEINE Flächen erfunden/.test(noOsm.notes.join(" ")) &&
+    !noOsm.typen.some((t) => /Acker|Grünland|Parkplatz|Steinbruch|Sportfläche|Gewässer/.test(t)),
+    `Typen: ${noOsm.typen.join(", ") || "keine"}; Hinweis: ${(noOsm.notes.find((t) => /Keine OSM/.test(t)) || "").slice(0, 110)}`);
+  check("Rückzugsflächen ohne Geländemodell: Hinweis, kein Hanganteil im Faktor Δ",
+    noOsm.dem === false && /Kein Geländemodell/.test(noOsm.notes.join(" ")) && noOsm.deltaOhneHang,
+    (noOsm.notes.find((t) => /Kein Geländemodell/.test(t)) || "").slice(0, 110));
+  await pg.context().close();
+} catch (e) {
+  check("Testablauf Rückzugsflächen ohne OSM/DGM", false, e.message);
 }
 
 const explainable = consoleErrors.filter((t) => /ERR_BLOCKED_BY_CLIENT|Failed to load resource|net::ERR/.test(t));

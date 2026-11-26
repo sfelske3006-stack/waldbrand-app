@@ -361,3 +361,139 @@ kennzeichnet sie (gestrichelter Rand, „?“, Tabellenspalte). Verifiziert sind
 12. **Fahrzeugzuteilung:** Dürfen Fahrzeuge aus dem Bereitstellungsraum für die Wasserversorgung verplant werden
     (derzeit ja)? Soll die Vorschlagsaufgabe „Wasserversorgung“ im Reiter „Lage“ durch die gerechnete Zuteilung des
     Wassermoduls ersetzt werden?
+
+## Neu in 0.7.0 (Rückzugsflächen und Fluchtwege)
+
+Modul `js/safearea.js` / `js/safearea-ui.js`, Parameter `PARAMS.safearea` in `js/params.js` (die Werte stehen
+zusätzlich als `SafeArea.DEFAULTS` im Rechenkern; der Block in `params.js` überschreibt sie).
+
+**Grundsatz:** Es wird keine Zahl erfunden und **keine Fläche erfunden**. Ohne Landnutzungsdaten (OSM) gibt das Modul
+einen Hinweis aus statt Vorschläge zu produzieren; dann bleibt nur die abgebrannte Fläche, die sich aus der von der
+Einsatzleitung gezeichneten Brandfläche ergibt.
+
+### Quellenlage – der wichtigste Befund
+
+**Es gibt keine belegte deutsche Vorgabe mit Zahlen.** Keine der eingesehenen deutschen Quellen nennt eine
+zahlenmäßige Mindestgröße eines Sicherheitsbereichs. In Deutschland gilt **LACES** (Lookout, Anchor point,
+Communication, Escape route, Safety zone; löste „FRAU“ ab); der Sicherheitsbereich wird dort **qualitativ** beschrieben
+(bekanntgeben, frei von Brandlast, keine Gefährdungen, Sammelplatz beim Rückzug), der Rückzugsweg ist zu erkunden, zu
+markieren und einzuweisen. Quellen: Taschenkarte 423 „Vegetationsbrandbekämpfung – Sicherheit“ und Fachinfo 312
+(Staatliche Feuerwehrschulen Bayern), Taschenkarte Vegetationsbrand (BKS-Portal RLP, 04.07.2023); außerdem existiert
+eine DFV-/AGBF-Fachempfehlung „Sicherheit und Taktik im Waldbrandeinsatz“ (Nr. 2, 10.07.2018) bzw.
+„… im Vegetationsbrandeinsatz“ (Juni 2020).
+
+Die **gesamte Dimensionierung dieses Moduls stützt sich deshalb auf US-Literatur**:
+
+| Aussage | Quelle | Status |
+|---|---|---|
+| Radius der Sicherheitsfläche ≥ **4 × maximale Flammenhöhe**; Grenzwert **7,0 kW/m²** (Verbrennung 2. Grades an unbedeckter Haut in unter 90 s); Modell gilt für **ebenes Gelände ohne Wind**; „für die meisten Feuer müssen Sicherheitsflächen breiter als 20 m sein“ | Butler, B. W. & Cohen, J. D. (1998): *Firefighter Safety Zones: A Theoretical Model Based on Radiative Heating.* Int. J. Wildland Fire 7(2):73–77, doi:10.1071/WF9980073 | **belegt** |
+| Überblick, Forschungsbedarf, Grundlage der neueren Regel SSD = 8 · Δ · Vegetationshöhe (vom Autor selbst als **vorläufig** bezeichnet) | Butler, B. W. (2014): Int. J. Wildland Fire 23(3):295–308, doi:10.1071/WF13021 | **belegt** |
+| Empirische Auswertung von Entrapments: ohne Feuerschutzzelt und bei Hang < 25 % rund 20–50 m bei Flammen unter 10 m, darüber das 1- bis 4-fache der Flammenhöhe. **Die Vierfach-Regel ist eher zu klein**: für *nicht*-tödliche Verletzungen lagen die Abstände beim 1–2-, 6–7- bzw. 12–16-fachen der heutigen 4×-Regel (Timber/Brush/Grass) | Page, W. G. & Butler, B. W. (2017): Int. J. Wildland Fire 26:655–667, doi:10.1071/WF16213 (Open Access) | **belegt** |
+| Δ (Hang-/Wind-Zuschlag) liegt zwischen 1 und 10, Butler hält 1 bis 5 für wahrscheinlicher; Rechenbeispiel 3 ft Sagebrush, 20 % Hang, 10 mph Wind → Δ = 4; Zuschlag 10 ft Radius je 20 Einsatzkräfte, 5 ft je Fahrzeug; bei Hang über 40 % soll die Fläche 6- bis 10-fach größer sein | NWCG „Safety Zone Research“ und USFS-Zusammenfassung 2019 | **Primärabgleich offen** – die Hosts (nwcg.gov, fs.usda.gov, research.fs.usda.gov) waren aus der Entwicklungsumgebung nicht erreichbar; die Angaben stammen aus Suchindex-Auszügen. **Butlers Zuschlagstabelle konnte nicht im Original geprüft werden.** |
+| Flammenlänge **L[m] = 0,0775 · I[kW/m]^0,46**; Feuerlinienintensität I = H · w_a · r | Byram (1959), metrische Form nach Alexander (1982) | **belegt** |
+| Gehgeschwindigkeit **v = 6 · exp(−3,5 · \|s + 0,05\|) km/h**, abseits der Wege Faktor 3/5 | Tobler, W. (1993) Hiking Function | belegt, **Originaltext nicht eingesehen** |
+
+**Weitere Negativbefunde:** Das vfdb-Merkblatt MB 05-04 behandelt **nicht** Sicherheit, sondern Löschwasserzusätze; ein
+vfdb-Merkblatt mit zahlenmäßigen Vorgaben zu Sicherheitsbereichen wurde **nicht gefunden**. Ein „Waldbrandhandbuch
+NRW“ wurde **nicht gefunden** (gefunden: Taschenkarte Waldbrand des IdF NRW, Waldbrandvorsorgekonzept Wald und Holz
+NRW 2022 – beide nicht öffnbar).
+
+### Parameter (`PARAMS.safearea`)
+
+| Parameter | Wert | Status |
+|---|---|---|
+| `residenceTimeConst` | 384 (t_res = 384/σ in min, σ in 1/ft) | **zu prüfen** (meist Anderson 1969 zugeschrieben, Primärabgleich offen) |
+| `byramA` / `byramB` | 0,0775 / 0,46 | belegt (Byram 1959) |
+| Bezugsstunde der Flammenlänge | ungünstigste Wetterstunde im Prognosehorizont | Annahme (konservativ) |
+| Hang in der Flammenlänge | **nicht** berücksichtigt (Hang wirkt über Δ) | Annahme, vermeidet Doppelzählung |
+| Randbrennstoff | ungünstigste Klasse mit ≥ 5 % Anteil am Flächenumfang (`edgeShareMin`); bei Flächen mit eigener Brandlast zusätzlich die eigene Klasse | Annahme |
+| `ssdFlameFactor` | 4 | belegt (Butler & Cohen 1998), laut Page & Butler (2017) **eher zu klein** |
+| `minSsdM` | 10 m Radius (= 20 m Breite) | belegt (Butler & Cohen 1998) |
+| `deltaSlopePerTan` | Δ_Hang = 1 + 7,5 · Steigung(tan), nur bergauf | **Annahme** (Interpolation, s. u.) |
+| `deltaWindPerRef` / `windRefKmh` | Δ_Wind = 1 + 0,6 · (Wind / 16,09 km/h) | **Annahme** (Interpolation, s. u.) |
+| `deltaMax` | Δ ≤ 10 | belegt (NWCG-Wertebereich) |
+| `addPer20PersonsM` / `addPerVehicleM` | 3,048 m je 20 Einsatzkräfte / 1,524 m je Fahrzeug | belegt (10 ft / 5 ft), Primärabgleich offen |
+| `defaultPersons` / `defaultVehicles` | 9 / 1 | **Annahme** (eine Gruppe je Fahrzeug) |
+| `conditionalFactor` | ab 70 % des Soll-Radius „bedingt geeignet“ | **Annahme** |
+| `minAreaCells` | 4 Zellen (2.500 m²) | Annahme |
+| `maxAreas` / `maxAreaDistM` | 12 Flächen / 3.000 m um den Brandschwerpunkt | Annahme |
+| `blackAfterMin` | 30 min nach Durchzug der Front gilt die Fläche als abgebrannt | **Annahme, mit der Feuerwehr zu klären** |
+| `roadKmh` / `trackKmh` | 40 km/h Straße / 20 km/h Wirtschafts-/Waldweg | **Annahme, kein Beleg gefunden** |
+| `slopeSlowK` | v = v₀ / (1 + 4 · Steigung bergauf); bergab keine Beschleunigung | **Annahme, kein Beleg** |
+| `footOffPath` | Fußweg abseits der Wege × 0,6 | belegt (Tobler) |
+| `reactionMin` | 2 min (Erkennen, Rückzugsbefehl, Aufsitzen) | **Annahme** |
+| `maxRouteMin` | 60 min Suchgrenze | Annahme |
+| `bufferMin` | 15 min Sicherheitspuffer auf die Fluchtzeit | **Annahme** |
+| `warnReserveMin` | unter 10 min Reserve = „knapp“ | **Annahme** |
+
+**Herleitung von Δ (Annahme).** Die Originaltabelle lag nicht vor. Δ wird multiplikativ angesetzt und auf die beiden
+belegten Stützstellen gelegt:
+
+* Δ(0 % Hang, 0 Wind) = 1 (Definition der Regel)
+* Δ(20 % Hang, 10 mph) = 4 → mit Δ_Hang(0,20) = 2,5 folgt Δ_Wind(10 mph) = 1,6
+* Prüfpunkt: Δ(40 % Hang, 10 mph) = 4,0 · 1,6 = **6,4** – liegt im belegten Band 6 bis 10
+
+Ergebnis: `Δ = clamp((1 + 7,5·tan) · (1 + 0,6·u/16,09), 1, 10)`. **Wichtig:** Die Flammenlänge enthält den Wind bereits
+über Rothermel; Δ_Wind wirkt zusätzlich. Das ist bewusst konservativ, kann den Wind aber **doppelt zählen** – an der
+Originaltabelle bzw. mit der Feuerwehr zu prüfen. Bergab wird **kein** Abschlag gerechnet (Δ_Hang ≥ 1), weil die
+Quellen dafür keinen Faktor hergeben.
+
+**Flammenhöhe vs. Flammenlänge:** Butler & Cohen beziehen sich auf die Flammen*höhe*, dieses Modul rechnet mit der
+Flammen*länge* nach Byram, weil nur diese aus dem Modellkern ableitbar ist. Bei Wind und Hang ist die Flammenlänge
+**größer** als die Höhe; der Ansatz ist damit konservativ, aber nicht identisch mit der Quelle. **Zu prüfen.**
+
+### Kandidatenflächen
+
+| Flächentyp | OSM-Herkunft | erreichbare Höchstbewertung | Begründung |
+|---|---|---|---|
+| Gewässer | `natural=water`, `landuse=reservoir|basin` | bedingt | ohne Brandlast, aber nicht befahrbar |
+| Abgebrannte Fläche | aus der gezeichneten Brandfläche | geeignet | „the black“; Glutnester/Rückzündung als Hinweis |
+| Steinbruch | `landuse=quarry` | geeignet | ohne Brandlast |
+| Parkplatz | `amenity=parking` | geeignet | ohne Brandlast |
+| Sportfläche | `leisure=pitch|track|sports_centre` | geeignet | ohne Brandlast |
+| Hof-/Betriebsfläche | `landuse=farmyard` | geeignet | ohne Brandlast |
+| Acker | `landuse=farmland` | **bedingt** | Erntezustand aus OSM unbekannt |
+| Grünland / Wiese | `landuse=meadow|grass`, `natural=grassland` | **bedingt** | trägt selbst Vegetation |
+
+Weitere Annahmen: Flächen mit Brandlast im Ausbreitungsbereich (Zellen mit „möglich“-Ankunft ≤ 6 h) werden
+**ausgeschlossen** (über ein unabgeerntetes Feld läuft das Feuer hinweg). Maß für „groß genug“ ist der größte
+einbeschriebene Kreis, nicht die Fläche in ha. Ziel der Fluchtwege ist der Kernbereich (Randabstand ≥ Soll-Radius).
+
+### Grenzen des Moduls
+
+* **Kein Routing.** Die Fluchtwege laufen über das 25-m-Raster der App (8er-Nachbarschaft), nicht über ein
+  Straßennetz. Einbahnstraßen, Durchfahrtsbreiten, Wendemöglichkeiten, Tragfähigkeit von Brücken und Gegenverkehr sind
+  **nicht** berücksichtigt.
+* **Rauch, Sicht, Hitze unterwegs** werden nicht modelliert. Ein Fluchtweg, der am Feuer entlangführt, wird nicht
+  schlechter bewertet als einer, der davon wegführt. **Offen.**
+* **Keine zeitabhängige Prüfung des Weges:** geprüft wird die Front am Standort (`result.tPossible`), nicht entlang des
+  Weges während der Flucht. **Offen, fachlich relevant.**
+* Flammenlänge am Rand nur aus dem OSM-Brennstoff; Bestandsaufbau, Kronenfeuer, Flugfeuer und Totholz fehlen –
+  Kronenfeuer würde die Soll-Radien deutlich vergrößern.
+* Gewässertiefe, Ufer und Zugänglichkeit werden nicht geprüft.
+* Mehrere Fahrzeuge auf derselben Fläche werden beim Platzbedarf **nicht** addiert (je Standort ein Fahrzeug, neun
+  Einsatzkräfte).
+* Die abgebrannte Fläche wird aus der **gezeichneten** Brandfläche abgeleitet, nicht aus einer Beobachtung. Ob sie
+  tatsächlich durchgebrannt und abgekühlt ist, weiß die App nicht.
+
+### Offene Fragen an die Feuerwehr (Rückzugsflächen)
+
+1. **Gibt es bei Ihnen eine Vorgabe mit Zahlen** zur Mindestgröße eines Sicherheitsbereichs (Dienstvorschrift,
+   Taschenkarte, Fachempfehlung)? Falls nein: wird die US-Regel (4 × Flammenlänge × Δ) als Arbeitsgrundlage akzeptiert?
+2. Darf Δ wie hier interpoliert werden, oder wird **Butlers Originaltabelle** (IRPG bzw. Safety-Zone-App) beschafft und
+   verbindlich hinterlegt? (Dringend: die Zahl geht linear in den Soll-Radius ein.)
+3. Soll der Soll-Radius dem Befund von **Page & Butler (2017)** folgen und über die Vierfach-Regel hinausgehen
+   (dort je Brennstofftyp 1–2-, 6–7- bzw. 12–16-fach)? Das würde die Flächen deutlich vergrößern und die meisten
+   Kandidaten auf „ungeeignet“ setzen.
+4. Ab wann gilt eine abgebrannte Fläche als Rückzugsfläche (hier 30 min nach Durchzug der Front)? Welche Rolle spielen
+   Glutnester und Rückzündung?
+5. Welche **Geschwindigkeiten** sind im Rückzug realistisch – Wirtschafts-/Waldweg (hier 20 km/h), Straße (hier
+   40 km/h)? Welcher **Sicherheitspuffer** (hier 15 min) und welche **Reaktionszeit** (hier 2 min)?
+6. Sollen **Gewässer** überhaupt als Rückzugsfläche vorgeschlagen werden (hier höchstens „bedingt geeignet“, weil nicht
+   befahrbar)? Gilt dasselbe für **Acker und Grünland**, deren Erntezustand aus OSM nicht hervorgeht?
+7. Mit welcher **Personalstärke je Standort** soll der Platzbedarf gerechnet werden (hier eine Gruppe, 9
+   Einsatzkräfte, ein Fahrzeug)? Sollen mehrere Fahrzeuge auf einer Fläche addiert werden?
+8. Soll der Rückzugsweg **zeitabhängig** gegen die Front geprüft werden (Lage während der Flucht), und wie sind Rauch
+   und Sicht zu bewerten?
+9. Wer gibt den Sicherheitsbereich bekannt und wie wird er markiert (LACES)? Soll die App dafür einen Ausdruck je
+   Fläche liefern?

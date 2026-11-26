@@ -1014,7 +1014,7 @@ test("Version einheitlich (params.js, index.html-Loader, package.json) und alle 
   const html = fs.readFileSync(path.join(ROOT, "index.html"), "utf8");
   const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
   const v = html.match(/window\.WB_VERSION = "([^"]+)"/)[1];
-  assert.equal(P.version, "0.6.0-prototyp");
+  assert.equal(P.version, "0.7.0-prototyp");
   assert.equal(v, P.version); assert.equal(pkg.version, P.version);
   assert.match(html, /TESTVERSION – nicht für den Einsatz/);
   const js = JSON.parse(html.match(/window\.WB_JS = (\[[^\]]+\])/)[1]), css = JSON.parse(html.match(/window\.WB_CSS = (\[[^\]]+\])/)[1]);

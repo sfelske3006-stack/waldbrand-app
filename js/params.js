@@ -8,7 +8,7 @@
   const TPA = 0.0459137; // 1 ton/acre (US short ton) in lb/ft²
 
   const PARAMS = {
-    version: "0.6.0-prototyp",
+    version: "0.7.0-prototyp",
     modelName: "Rothermel-1972-Raster-MTT (vereinfachte Eigenimplementierung)",
 
     // Prognosehorizonte in Stunden (Spezifikation 2.3)
@@ -297,6 +297,33 @@
       noWaterTypes: ["ELW", "KdoW", "MTF", "MTW", "DLK", "DL", "GW", "RW"],
       // Großtanker/Wassertransport: nur Wasserversorgung/Pendelverkehr, dort bevorzugt (Annahme; Präfixvergleich)
       waterSupplyOnlyTypes: ["TW ", "LTW", "WLF"],
+    },
+
+    // ---------------------------------------------------------------- Rückzugsflächen und Fluchtwege (0.7.0)
+    // Die Werte stehen zusätzlich als SafeArea.DEFAULTS in js/safearea.js; dieser Block überschreibt sie.
+    // ES GIBT KEINE BELEGTE DEUTSCHE VORGABE MIT ZAHLEN zur Größe eines Sicherheitsbereichs: die
+    // deutschen Regelwerke (LACES, Taschenkarte 423 SFS Bayern, Fachinfo 312) beschreiben ihn nur
+    // qualitativ ("frei von Brandlast, keine Gefährdungen"). Die Dimensionierung stützt sich deshalb
+    // vollständig auf US-Literatur (Butler & Cohen 1998; Butler 2014; Page & Butler 2017).
+    // Page & Butler (2017) halten die Vierfach-Regel eher für ZU KLEIN; Butlers Zuschlagstabelle für
+    // den Faktor Δ konnte NICHT im Original geprüft werden (Hosts gesperrt), Δ ist hier interpoliert.
+    // Begründung je Zahl: docs/assumptions.md. ALLES OHNE "belegt" IST ANNAHME.
+    safearea: {
+      // Flammenlänge: Abbrandzeit t_res = 384/sigma (min, zu prüfen), Byram (1959) metrisch nach Alexander (1982)
+      residenceTimeConst: 384, byramA: 0.0775, byramB: 0.46,
+      // Soll-Radius: 4 x Flammenlänge, mindestens 10 m Radius (= 20 m Breite) – Butler & Cohen (1998)
+      ssdFlameFactor: 4, minSsdM: 10,
+      // Hang-/Windzuschlag Δ = (1 + 7,5·tan) · (1 + 0,6·u/16,09 km/h), begrenzt auf 10 (ANNAHME, interpoliert)
+      deltaSlopePerTan: 7.5, deltaWindPerRef: 0.6, windRefKmh: 16.09344, deltaMax: 10,
+      // Zuschlag 10 ft je 20 Einsatzkräfte, 5 ft je Fahrzeug (USFS-Zusammenfassung 2019, Primärabgleich offen)
+      addPer20PersonsM: 3.048, addPerVehicleM: 1.524, defaultPersons: 9, defaultVehicles: 1,
+      conditionalFactor: 0.7,
+      // Kandidatensuche (alles ANNAHME)
+      minAreaCells: 4, maxAreas: 12, maxAreaDistM: 3000, blackAfterMin: 30, edgeShareMin: 0.05,
+      // Fluchtwege (Fahrzeuggeschwindigkeiten OHNE BELEG, Fußweg nach Tobler 1993)
+      roadKmh: 40, trackKmh: 20, slopeSlowK: 4, footOffPath: 0.6, reactionMin: 2, maxRouteMin: 60,
+      // Warnung (ANNAHME)
+      bufferMin: 15, warnReserveMin: 10,
     },
   };
 

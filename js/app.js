@@ -42,6 +42,9 @@
     gsOverride: store.get("wb_gs_override", {}),
     teilMode: store.get("wb_teil", "auto"), grenzen: null,
     vf: Object.assign({ kommune: "", typ: "", sort: "anfahrt", onlyAvail: false }, store.get("wb_vf", {})),
+    // Rückzugsflächen und Fluchtwege (0.7.0): Ergebnis von SafeArea.plan() und die verworfenen Flächen
+    // (bleiben über Neuberechnungen hinweg erhalten, damit eine Entscheidung der Einsatzleitung Bestand hat).
+    sa: null, saState: { dismissed: store.get("wb_sa_dismissed", []) },
   };
 
   // ---------------------------------------------------------------- Texte
@@ -55,7 +58,37 @@
     <li><b>Brennstoffkarte</b> aus OpenStreetMap kann veraltet, unvollständig oder falsch sein. Die Zuordnung zu nordamerikanischen Brennstoffmodellen (Anderson 13) ist eine Annahme und nicht mit Forst/Feuerwehr abgestimmt.</li>
     <li><b>Wetterdaten</b> sind Modell- oder Stationswerte, keine Messung am Brandort.</li>
     <li><b>Vereinfachtes Rothermel-Modell</b> (ohne Größenklassen-Gewichtung), Ellipsenform nach Anderson (1983), Rasterrechnung (25 m). Tote-Brennstoff-Feuchte aus einem einfachen Ansatz (Gleichgewichtsfeuchte + Regenzuschlag). Das Modell ist unvalidiert.</li>
-    <li><b>Vorschläge</b> berücksichtigen keine echten Fahrzeiten: Die Anfahrt wird aus der Luftlinie Wache–Einsatzstelle × Umwegfaktor ÷ Durchschnittsgeschwindigkeit + Ausrückzeit <b>geschätzt (kein Routing)</b>; Fahrzeuge ohne Wachenkoordinate werden nicht eingeplant. Keine Rückzugswege und keine feuerwehrinternen Sicherheitsregeln. Riegel werden nur vorgeschlagen, wenn sie bei Einsatzbereitschaft außerhalb der „möglich“-Zone liegen; sonst erscheint „Keine geeignete Riegelstellung gefunden“.</li>
+    <li><b>Rückzugsflächen und Fluchtwege</b> (ab 0.7.0) sind Vorschläge aus Landnutzung und Gelände. <b>Es gibt keine belegte deutsche Vorgabe mit Zahlen</b> zur Größe eines Sicherheitsbereichs; die Dimensionierung stützt sich auf US-Literatur (Butler &amp; Cohen 1998, Butler 2014, Page &amp; Butler 2017). Laut Page &amp; Butler (2017) ist die Vierfach-Regel <b>eher zu klein</b>. Kein Straßenrouting (Raster 25 m), keine Prüfung von Rauch, Sicht und Hitze auf dem Weg, keine zeitabhängige Prüfung entlang des Weges. Siehe „Grenzen &amp; Quellen“.</li>
+    <li><b>Vorschläge</b> berücksichtigen keine echten Fahrzeiten: Die Anfahrt wird aus der Luftlinie Wache–Einsatzstelle × Umwegfaktor ÷ Durchschnittsgeschwindigkeit + Ausrückzeit <b>geschätzt (kein Routing)</b>; Fahrzeuge ohne Wachenkoordinate werden nicht eingeplant. Rückzugswege und Rückzugsflächen werden ab 0.7.0 geprüft (eigener Abschnitt 6), feuerwehrinterne Sicherheitsregeln sind darüber hinaus nicht abgebildet. Riegel werden nur vorgeschlagen, wenn sie bei Einsatzbereitschaft außerhalb der „möglich“-Zone liegen; sonst erscheint „Keine geeignete Riegelstellung gefunden“.</li>
+  </ul>`;
+  const SAFEAREA_HTML = `
+  <p class="muted small">Modul „Rückzugsflächen und Fluchtwege“ (0.7.0). Vorschläge sind keine Anordnung.</p>
+  <h3>Belegt</h3>
+  <ul>
+    <li>Radius der Sicherheitsfläche <b>≥ 4 × maximale Flammenhöhe</b>, Grenzwert 7,0 kW/m² (Verbrennung 2. Grades an unbedeckter Haut in unter 90 s); gilt für <b>ebenes Gelände ohne Wind</b>; „für die meisten Feuer müssen Sicherheitsflächen breiter als 20 m sein“ – <b>Butler, B.&nbsp;W. &amp; Cohen, J.&nbsp;D. (1998)</b>, Int. J. Wildland Fire 7(2):73–77, doi:10.1071/WF9980073.</li>
+    <li>Überblick und Forschungsbedarf, Grundlage der neueren (vom Autor selbst als <b>vorläufig</b> bezeichneten) Regel SSD = 8 · Δ · Vegetationshöhe – <b>Butler, B.&nbsp;W. (2014)</b>, Int. J. Wildland Fire 23(3):295–308, doi:10.1071/WF13021.</li>
+    <li>Empirische Auswertung von Entrapments: <b>die Vierfach-Regel ist eher zu klein</b> – für nicht tödliche Verletzungen ergaben sich Abstände beim 1–2-, 6–7- bzw. 12–16-fachen der heutigen 4×-Regel (Timber/Brush/Grass) – <b>Page, W.&nbsp;G. &amp; Butler, B.&nbsp;W. (2017)</b>, Int. J. Wildland Fire 26:655–667, doi:10.1071/WF16213 (Open Access).</li>
+    <li>Flammenlänge aus Feuerlinienintensität L[m] = 0,0775 · I[kW/m]<sup>0,46</sup> – Byram (1959), metrische Form nach Alexander (1982).</li>
+    <li>Gehgeschwindigkeit im Gelände v = 6 · exp(−3,5 · |s + 0,05|) km/h, abseits der Wege Faktor 0,6 – Tobler (1993) Hiking Function (Originaltext nicht eingesehen).</li>
+    <li>In Deutschland gilt <b>LACES</b> (Lookout, Anchor point, Communication, Escape route, Safety zone; löste „FRAU“ ab): Sicherheitsbereich bekanntgeben, frei von Brandlast, keine Gefährdungen, Sammelplatz beim Rückzug; Rückzugsweg erkunden, markieren, einweisen – Taschenkarte 423 und Fachinfo 312 (Staatliche Feuerwehrschulen Bayern), Taschenkarte Vegetationsbrand (BKS-Portal RLP, 04.07.2023).</li>
+  </ul>
+  <h3>Nicht belegt – ausdrücklich mit der Feuerwehr zu klären</h3>
+  <ul>
+    <li><b>Es gibt keine belegte deutsche Vorgabe mit Zahlen.</b> Keine der eingesehenen deutschen Quellen nennt eine zahlenmäßige Mindestgröße eines Sicherheitsbereichs; sie beschreiben ihn qualitativ. Die gesamte Dimensionierung dieses Moduls stützt sich deshalb auf die US-Literatur.</li>
+    <li><b>Butlers Zuschlagstabelle für den Faktor Δ konnte nicht im Original geprüft werden</b> (nwcg.gov, fs.usda.gov und weitere Hosts waren nicht erreichbar). Δ ist hier aus zwei Stützstellen eines Suchindex-Auszugs interpoliert: Δ = (1 + 7,5 · tan Hang) · (1 + 0,6 · Wind/16,09 km/h), begrenzt auf 1 bis 10. <b>Vor einem Einsatz ist die Originaltabelle (IRPG bzw. Butlers Safety-Zone-App) zu beschaffen und dagegen zu prüfen.</b></li>
+    <li>Ein <b>vfdb-Merkblatt mit Zahlen zu Sicherheitsbereichen wurde nicht gefunden</b>; MB 05-04 behandelt Löschwasserzusätze, nicht Sicherheit. Ein „Waldbrandhandbuch NRW“ wurde nicht gefunden.</li>
+    <li>Das Modul rechnet mit der Flammen<b>länge</b> (Byram), die Quelle mit der Flammen<b>höhe</b>. Bei Wind und Hang ist die Länge größer – konservativ, aber nicht identisch mit der Quelle. Der Wind wirkt zusätzlich über Δ und wird dadurch möglicherweise <b>doppelt gezählt</b>.</li>
+    <li>Abbrandzeit t<sub>res</sub> = 384/σ (Anderson 1969 zugeschrieben), Geschwindigkeit von Löschfahrzeugen auf Straßen (40 km/h) und Waldwegen (20 km/h), Sicherheitspuffer 15 min, Reaktionszeit 2 min, „abgebrannt“ 30 min nach Durchzug der Front, Mindestgröße 4 Zellen, Suchradius 3.000 m: <b>alles Annahmen ohne Beleg</b>.</li>
+  </ul>
+  <h3>Bekannte Grenzen</h3>
+  <ul>
+    <li><b>Kein Routing:</b> Fluchtwege laufen über das 25-m-Raster (8er-Nachbarschaft). Einbahnstraßen, Durchfahrtsbreiten, Wendemöglichkeiten, Tragfähigkeit von Brücken und Gegenverkehr sind nicht berücksichtigt.</li>
+    <li><b>Rauch, Sicht und Hitze unterwegs</b> werden nicht modelliert; ein Weg am Feuer entlang wird nicht schlechter bewertet als einer, der davon wegführt. <b>Offen.</b></li>
+    <li><b>Keine zeitabhängige Prüfung des Weges:</b> geprüft wird die Front am Standort, nicht entlang des Weges während der Flucht. <b>Offen, fachlich relevant.</b></li>
+    <li>Kronenfeuer, Flugfeuer, Totholz und Bestandsaufbau sind nicht erfasst – Kronenfeuer würde die Soll-Radien deutlich vergrößern. Gewässertiefe, Ufer und Zugänglichkeit werden nicht geprüft.</li>
+    <li>Mehrere Fahrzeuge auf derselben Fläche werden beim Platzbedarf nicht addiert (je Standort ein Fahrzeug, neun Einsatzkräfte).</li>
+    <li>Die abgebrannte Fläche wird aus der <b>gezeichneten</b> Brandfläche abgeleitet, nicht aus einer Beobachtung; ob sie durchgebrannt und abgekühlt ist, weiß die App nicht.</li>
+    <li><b>Ohne OSM-Daten werden keine Flächen erfunden:</b> dann bleibt nur die abgebrannte Fläche, zusammen mit einem Hinweis.</li>
   </ul>`;
   const SOURCES_HTML = `<ul>
     <li><b>Luftbild</b>: Geobasis NRW, WMS <code>wms_nw_dop</code>, Layer <code>nw_dop_rgb</code>; Lizenz laut GetCapabilities: Datenlizenz Deutschland – Zero 2.0 (geprüft 21.11.2026).</li>
@@ -800,6 +833,10 @@
     });
     refreshProtocol();
     renderSuggestions();
+    // Rückzugsflächen am Ende: brauchen die Fahrzeugstandorte aus S.sug. Die Warnungen werden danach
+    // noch einmal gezeichnet, damit sie oben bei den Vorschlägen und an den Fahrzeugkarten stehen.
+    const sa = computeSafeAreas();
+    if (sa) { refreshProtocol(); renderSuggestions(); }
     updateWater();
   }
   $("btn-resuggest").onclick = () => computeSuggestions(true);
@@ -842,6 +879,15 @@
   }
   const anfLabel = (a) => (!a ? "–" : a.ok ? `${a.short}${a.fallback ? "" : " (geschätzt, kein Routing)"}` : `unbekannt (${a.reason})`);
 
+  /** Rückzugswarnung (0.7.0) für die Fahrzeugkarte: kritisch = rot, knapp = gelb, sonst Fließtext. */
+  function saWarnHtml(v) {
+    const w = S.sa && S.sa.warnings.find((x) => x.positionId === v.id);
+    if (!w) return "";
+    if (w.status === "kritisch") return `<div class="msg err alert-msg"><b>Rückzug:</b> ${esc(w.text)}</div>`;
+    if (w.status === "knapp") return `<div class="msg warn"><b>Rückzug:</b> ${esc(w.text)}</div>`;
+    return `<p class="muted small"><b>Rückzug:</b> ${esc(w.text)}</p>`;
+  }
+
   function vehCard(v, sub) {
     const tank = v.vehicle.tank_l === null || v.vehicle.tank_l === undefined ? "Tank offen" : `${v.vehicle.tank_l} l`;
     return `<div class="${sub ? "sug-sub" : "sug"}${v.locked ? " locked" : ""}${v.moved ? " moved" : ""}" data-id="${esc(v.id)}">
@@ -849,6 +895,7 @@
         <p class="small anf"><b>Anfahrt:</b> ${esc(anfLabel(v.anfahrt))}</p>
         <p>${esc(sub ? v.reason.replace(S.sug.stageInfo?.reason || "\u0000", "").trim() : v.reason)}</p>
         ${v.check ? `<p class="${v.check.ok ? "" : "ov"}"><b>Prüfung nach Verschieben:</b> ${esc(v.check.text)}</p>` : ""}
+        ${saWarnHtml(v)}
         ${v.waterInfo ? `<p><b>Wasser:</b> ${esc(v.waterInfo)}</p>` : ""}
         <p class="muted small">${esc(v.vehicle.bezeichnung || "")}, ${esc(tank)} (${esc(v.vehicle.tank_quelle || "")}). Quelle: ${esc(v.source)}</p>
         <div class="btnrow"><button class="btn small" data-act="lock" type="button">${v.locked ? "Entsperren" : "Sperren (behalten)"}</button><button class="btn small danger" data-act="discard" type="button">Verwerfen</button><button class="btn small" data-act="zoom" type="button">Zeigen</button></div>
@@ -880,6 +927,8 @@
         const v = gr.items[0];
         icon = L.divIcon({ className: "", html: `<span class="veh-marker${v.locked ? " locked" : ""}">${esc(vehShort(v.vehicle))}</span>`, iconSize: null, iconAnchor: [30, 14] });
         tip = `${esc(v.vehicle.bezeichnung || v.vehicle.typ)}: ${esc(v.task)}<br>Anfahrt ${esc(anfLabel(v.anfahrt))}${(v.lateFor || []).length ? `<br>zu spät für Riegel ${esc(v.lateFor.join(", "))}` : ""}`;
+        const saw = S.sa && S.sa.warnings.find((x) => x.positionId === v.id);
+        if (saw) tip += `<br>Rückzug: ${esc(saw.status)}${Number.isFinite(saw.escapeMin) ? ` (${Math.round(saw.escapeMin)} min Fluchtzeit)` : ""}`;
       } else if (isStage) {
         icon = L.divIcon({ className: "", html: `<div class="veh-group stage"><b>Bereitstellungsraum</b> <span class="cnt">${gr.items.length}</span><ul>${gr.items.map((v) => `<li>${esc(vehShort(v.vehicle))} – ${esc(v.role || v.task)}</li>`).join("")}</ul></div>`, iconSize: null, iconAnchor: [14, 14] });
         tip = `Bereitstellungsraum:<br>${gr.items.map((v) => `${esc(vehShort(v.vehicle))} – ${esc(v.role || "")}, Anfahrt ${esc(anfLabel(v.anfahrt))}`).join("<br>")}`;
@@ -891,12 +940,69 @@
       const mk = L.marker([gr.lat, gr.lon], { icon, draggable: true, keyboard: false }).addTo(vehLayer);
       mk.bindTooltip(tip);
       mk.on("dragend", (e) => {
-        for (const v of gr.items) moveVehicle(v, e.latlng.lat, e.latlng.lng);
+        // Leaflet liefert bei "dragend" KEIN e.latlng (nur bei "drag"/"move"); die neue Position steht am
+        // Marker. Vorher lief hier ein TypeError und das Verschieben blieb ohne Wirkung (Fehler seit 0.3.0).
+        const ll = e.target.getLatLng();
+        for (const v of gr.items) moveVehicle(v, ll.lat, ll.lng);
+        // Rückzug neu prüfen: ein verschobener Standort kann die Fluchtzeit und damit die Warnung ändern.
+        computeSafeAreas();
         refreshProtocol(); renderSuggestions();
       });
     }
   }
   map.on("zoomend", renderVehicleMarkers);
+
+  // ---------------------------------------------------------------- Rückzugsflächen und Fluchtwege (0.7.0)
+  // Zwei eigene Kartenebenen („Safe Areas“, „Fluchtwege“) hängen sich selbst in den Ebenenschalter.
+  // Die Label-Entzerrung ist BEWUSST die vorhandene aus dieser Datei (scheduleDeclutter), das Modul
+  // bringt keine zweite Lösung mit.
+  const saUi = SafeAreaUI.create({
+    map, L, layerControl: layerCtl,
+    panelEl: $("sa-panel"), legendEl: $("sa-legend"),
+    declutter: scheduleDeclutter,
+    onDismiss(id) {
+      const q = S.saState.dismissed.indexOf(id);
+      if (q >= 0) S.saState.dismissed.splice(q, 1); else S.saState.dismissed.push(id);
+      store.set("wb_sa_dismissed", S.saState.dismissed);
+      Protocol.add("safearea_verworfen", { id, verworfen: q < 0 });
+      computeSafeAreas();
+      renderSuggestions();
+      refreshProtocol();
+    },
+    onFocus(a) { map.setView([a.lat, a.lon], Math.max(map.getZoom(), 15)); },
+  });
+
+  /**
+   * Rückzugsflächen, Fluchtwege und Warnungen berechnen. Läuft am Ende von computeSuggestions(),
+   * also bei JEDER Neuberechnung (Prognose, Vorschläge neu, Fahrzeug verschoben, Fläche verworfen).
+   * Ohne OSM-Daten wird NICHTS erfunden: dann bleibt nur die abgebrannte Fläche plus Hinweis.
+   */
+  function computeSafeAreas() {
+    const run = S.run;
+    if (!run || !S.sug) { S.sa = null; saUi.render(null, null); return; }
+    const positions = S.sug.vehicles.map((v) => ({
+      id: v.id, vehicleId: v.vehicleId, lat: v.lat, lon: v.lon,
+      label: v.task, taskKind: v.taskKind,
+      name: v.vehicle ? (v.vehicle.bezeichnung || v.vehicle.typ) : v.vehicleId,
+    }));
+    const osm = run.osmApplied || null;
+    if (osm && S.osm && !osm.safeAreaExtra) osm.safeAreaExtra = SafeArea.rasterExtra(run.grid, S.osm.json);
+    S.sa = SafeArea.plan({
+      grid: run.grid, result: run.result, osm, ignition: run.ignition,
+      weatherHours: run.hours, positions, P, state: S.saState,
+    });
+    saUi.render(S.sa, run.grid);
+    Protocol.add("safearea", SafeArea.forProtocol(S.sa));
+    // Der Satz „Rückzugsweg nicht geprüft.“ aus js/suggest.js ist jetzt falsch – durch das Ergebnis ersetzen.
+    for (const v of S.sug.vehicles) {
+      const w = S.sa.warnings.find((x) => x.positionId === v.id);
+      if (w) v.reason = v.reason.replace(" Rückzugsweg nicht geprüft.", " Rückzug: " + w.text);
+    }
+    // Warnungen in die vorhandene Warnliste der Vorschläge: erst die alten Rückzugswarnungen entfernen,
+    // damit beim Verwerfen einer Fläche keine veralteten Zeilen stehen bleiben.
+    S.sug.alerts = (S.sug.alerts || []).filter((a) => !/^ACHTUNG Rückzug/.test(a)).concat(S.sa.alerts);
+    return S.sa;
+  }
 
   /**
    * Überlappende Kartenbeschriftungen entzerren (nur Anzeige, 0.4.2). Fahrzeug-, Linien-, Prüfgrenzen- und
@@ -904,7 +1010,7 @@
    * (die Markerposition selbst bleibt unverändert). Reihenfolge: Fahrzeuge zuerst, damit sie ihren Platz
    * behalten und die übrigen Label ausweichen.
    */
-  const LABEL_SEL = ".veh-marker,.veh-group,.line-label,.ready-label,.hz-label";
+  const LABEL_SEL = ".veh-marker,.veh-group,.line-label,.ready-label,.hz-label,.sa-label,.sa-warnbadge";
   // feste Marker, denen die Beschriftungen ausweichen (Wassermodul: Becken, Entnahmestellen, Abnehmer, Pumpen).
   // .wveh bleibt bewusst draußen: Wasserfahrzeuge bewegen sich im Zeitverlauf, eine Entzerrung je Frame wäre teuer.
   const FIXED_SEL = ".vx-marker,.water-marker,.wbasin,.wsrc,.wcons,.wpump";
@@ -1619,6 +1725,35 @@
       S.sug.lines.forEach((l) => feats.push({ type: "Feature", properties: { typ: "abwehrlinie_vorschlag", id: l.id, begruendung: l.reason, gesperrt: !!l.locked }, geometry: { type: "LineString", coordinates: l.latlngs.map(([a, b]) => [b, a]) } }));
       S.sug.vehicles.forEach((v) => feats.push({ type: "Feature", properties: { typ: "fahrzeug_vorschlag", fahrzeug: v.vehicle.bezeichnung, aufgabe: v.task, begruendung: v.reason, verschoben: !!v.moved, gesperrt: !!v.locked, pflicht: !!v.pflicht, anfahrt: v.anfahrt ? (v.anfahrt.ok ? v.anfahrt.text : v.anfahrt.reason) : null, zu_spaet_fuer: v.lateFor || null }, geometry: { type: "Point", coordinates: [v.lon, v.lat] } }));
     }
+    // Rückzugsflächen und Fluchtwege (0.7.0): Flächen als Polygon, Fluchtwege als LineString
+    if (S.sa) {
+      const g = S.run.grid;
+      S.sa.areas.forEach((a) => {
+        const rings = SafeArea.areaRings(g, a);
+        if (!rings.length) return;
+        feats.push({ type: "Feature", properties: {
+          typ: "rueckzugsflaeche", id: a.id, art: a.typLabel, status: a.status,
+          radius_frei_m: Math.round(a.inscribedRM), radius_soll_m: Math.round(a.requiredRM),
+          flammenlaenge_m: +a.flameM.toFixed(1), randbrennstoff: a.edgeClass,
+          faktor_hang_wind: +a.delta.toFixed(1), flaeche_ha: +a.areaHa.toFixed(2),
+          verworfen: !!a.dismissed, begruendung: a.reason, hinweise: a.hinweise, quelle: a.source,
+        }, geometry: { type: "Polygon", coordinates: rings.map((r) => [...r, r[0]].map(([la, lo]) => [+lo.toFixed(7), +la.toFixed(7)])) } });
+      });
+      S.sa.routes.forEach((r) => {
+        const wa = S.sa.warnings.find((x) => x.positionId === r.positionId) || {};
+        for (const [mode, leg] of [["fahrzeug", r.fahrzeug], ["fuss", r.fuss]]) {
+          if (!leg || !leg.latlngs || leg.latlngs.length < 2) continue;
+          feats.push({ type: "Feature", properties: {
+            typ: "fluchtweg", art: mode, standort: r.positionId, fahrzeug: r.vehicleId, aufgabe: r.label,
+            status: wa.status || null, ziel: leg.areaId || null,
+            fluchtzeit_min: Number.isFinite(wa.escapeMin) ? Math.round(wa.escapeMin) : null,
+            reserve_min: Number.isFinite(wa.reserveMin) ? Math.round(wa.reserveMin) : null,
+            strecke_m: Math.round(leg.lengthM), warnung: wa.status && wa.status !== "ok" ? wa.text : null,
+            geometrie: "Raster 25 m, 8er-Nachbarschaft – KEIN Straßenrouting",
+          }, geometry: { type: "LineString", coordinates: leg.latlngs.map(([la, lo]) => [+lo.toFixed(7), +la.toFixed(7)]) } });
+        }
+      });
+    }
     for (const a of gsProto(currentGrundschutz().list)) {
       const st = S.stations.find((x) => x.name === a.geraetehaus || x.id === a.geraetehaus);
       feats.push({ type: "Feature", properties: { typ: "grundschutz", ...a }, geometry: st && Dispatch.hasCoord(st) ? { type: "Point", coordinates: [Number(st.lon), Number(st.lat)] } : null });
@@ -1864,6 +1999,7 @@
     const nxt = cur === "dark" ? "light" : "dark";
     document.documentElement.setAttribute("data-theme", nxt); store.set("wb_theme", nxt);
     if (waterUI) waterUI.redraw();
+    if (saUi) saUi.redraw();
   };
 
   // ---------------------------------------------------------------- Start
@@ -1873,6 +2009,7 @@
   syncTwControls();
   $("ack-text").innerHTML = `<p><b>TESTVERSION – nicht für den Einsatz</b> (Version ${esc(P.version)}).</p><p>Diese App ist ein <b>unvalidierter Prototyp</b>. Sie zeigt eine Modellprognose mit Unsicherheitsband und einfache Vorschläge. Sie ersetzt weder Einsatzleitung noch Lageerkundung vor Ort.</p>${LIMITS_HTML}`;
   $("sources-text").innerHTML = SOURCES_HTML;
+  $("safearea-sources").innerHTML = SAFEAREA_HTML;
   renderSearchSources();
   document.querySelectorAll(".p-likely").forEach((e) => { e.textContent = Math.round(P.ensemble.likely * 100); });
   document.querySelectorAll(".p-possible").forEach((e) => { e.textContent = Math.round(P.ensemble.possible * 100); });
@@ -1931,6 +2068,8 @@
     water() { return waterUI; },
     waterInput,
     waterTab(on) { onWaterTab(on !== false); },
+    safearea() { return S.sa; },
+    safeareaUi: saUi,
     rpLayer,
     setRpLayer(on) { if (on) map.addLayer(rpLayer); else map.removeLayer(rpLayer); },
     map,
