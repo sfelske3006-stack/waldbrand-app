@@ -1009,8 +1009,182 @@ td.num, th.num { text-align: right; }
 }
 @media print { .sx-box { display: none !important; } }
 
+/* css/water.css */
+/* Modul Wasserversorgung – Oberfläche. Ergänzt css/app.css (gleiche Variablen, gleicher Dark/Light-Mechanismus).
+   Tablet-tauglich: Bedienelemente mindestens --tap hoch, Schriftgrößen >= 15 px, hoher Kontrast für Sonnenlicht. */
+
+:root {
+  --w-level: #2b7cd3;   /* Füllstand */
+  --w-in: #1d6b3a;      /* Zufluss */
+  --w-out: #b3261e;     /* Verbrauch */
+  --w-hose: #1d6b3a;    /* Schlauchleitung (durchgezogen) */
+  --w-route: #0b4f8a;   /* Pendelroute (gestrichelt) */
+  --w-cursor: #b3261e;
+  /* Alle übrigen Variablen (--bg, --ink, --tap, --font …) kommen aus css/app.css. Hier NICHT wiederholen:
+     sonst überschreibt dieses Modul die Farben der ganzen App, sobald sich css/app.css ändert. */
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --w-level: #6fb3ff; --w-in: #7fd49b; --w-out: #ff8a80; --w-hose: #7fd49b; --w-route: #8cc4ff; --w-cursor: #ff8a80;
+  }
+}
+:root[data-theme="dark"] {
+  --w-level: #6fb3ff; --w-in: #7fd49b; --w-out: #ff8a80; --w-hose: #7fd49b; --w-route: #8cc4ff; --w-cursor: #ff8a80;
+}
+
+/* ------------------------------------------------------------------ Bedienfeld */
+.w-ui { font: 15px/1.45 var(--font); color: var(--ink); }
+.w-ui h3 { font-size: 17px; margin: 0 0 8px; }
+.w-ui h4 { font-size: 15px; margin: 14px 0 6px; }
+.w-disclaimer {
+  background: var(--warn-bg); color: var(--warn-ink); border: 2px solid var(--warn-ink);
+  border-radius: 6px; padding: 8px 10px; margin: 0 0 10px; font-size: 14px;
+}
+.w-card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin: 0 0 12px; }
+.w-small { font-size: 13px; color: var(--muted); margin: 6px 0 0; }
+.w-id { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12px; color: var(--muted); }
+.w-warn { color: var(--alert); }
+.w-good td { color: var(--ok); }
+.w-bad td, .w-bad th { color: var(--alert); }
+
+.w-btn {
+  min-height: var(--tap); padding: 0 16px; border-radius: 6px; border: 2px solid var(--ink);
+  background: var(--surface); color: var(--ink); font: 600 15px/1 var(--font); cursor: pointer;
+}
+.w-btn:hover { background: var(--bg); }
+.w-btn.is-on { background: var(--ink); color: var(--surface); }
+.w-btn:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.w-btnrow { display: flex; flex-wrap: wrap; gap: 8px; }
+.w-popbtns { margin-top: 8px; }
+.w-popbtns .w-btn { min-height: 40px; }
+
+/* Zeitregler */
+.w-timerow { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.w-play { min-width: 112px; }
+.w-clock {
+  font: 700 22px/1 ui-monospace, Menlo, Consolas, monospace; font-variant-numeric: tabular-nums;
+  padding: 10px 12px; border: 2px solid var(--line); border-radius: 6px; background: var(--bg); min-width: 104px; text-align: center;
+}
+.w-speed { display: flex; gap: 6px; margin-left: auto; }
+.w-speed .w-btn { min-width: 56px; padding: 0 10px; }
+.w-range { width: 100%; margin: 14px 0 0; height: 36px; accent-color: var(--accent); }
+.w-range::-webkit-slider-thumb { width: 28px; height: 28px; }
+.w-ticks { display: flex; justify-content: space-between; font-size: 12px; color: var(--muted); }
+
+/* Tabellen */
+.w-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+.w-table caption { text-align: left; caption-side: top; padding-bottom: 6px; }
+.w-table th, .w-table td { border-bottom: 1px solid var(--line); padding: 6px 4px; text-align: left; vertical-align: top; }
+.w-table thead th { font-size: 13px; color: var(--muted); border-bottom: 2px solid var(--line); }
+.w-table tbody th { font-weight: 600; }
+.w-src td { font-variant-numeric: tabular-nums; }
+.w-tag { display: inline-block; border: 1px solid var(--line); border-radius: 3px; padding: 0 5px; font-size: 12px; color: var(--muted); }
+.w-tag-warn { border-color: var(--alert); color: var(--alert); font-weight: 700; }
+
+/* Diagramm */
+.w-basin { border-top: 1px solid var(--line); padding-top: 10px; margin-top: 10px; }
+.w-basin:first-child { border-top: 0; }
+.w-basinhead { display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+.w-chart { width: 100%; display: block; }
+.w-legend { font-size: 12px; color: var(--muted); margin: 2px 0 0; display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.w-legend .k { width: 16px; height: 4px; border-radius: 2px; display: inline-block; margin-left: 8px; }
+.w-legend .k-level { background: var(--w-level); }
+.w-legend .k-in { background: var(--w-in); }
+.w-legend .k-out { background: var(--w-out); }
+
+/* Diagnose */
+.w-diag { list-style: none; margin: 0; padding: 0; }
+.w-diag li { border-left: 5px solid var(--line); padding: 6px 8px; margin-bottom: 6px; background: var(--bg); border-radius: 0 4px 4px 0; font-size: 14px; }
+.w-diag .d-kritisch { border-left-color: var(--alert); }
+.w-diag .d-warnung { border-left-color: var(--warn-bg); }
+.w-diag .d-ok { border-left-color: var(--ok); }
+.w-diag .d-info { border-left-color: var(--info); }
+.w-det summary { cursor: pointer; min-height: 40px; display: flex; align-items: center; font-size: 14px; }
+
+/* ------------------------------------------------------------------ Kartensymbole */
+.wsrc {
+  width: 30px; height: 30px; display: grid; place-items: center; font-weight: 900; font-size: 15px;
+  background: var(--surface); color: var(--info); border: 3px solid var(--info); position: relative;
+}
+.wsrc.t-hydrant { border-radius: 3px; }
+.wsrc.t-offen { border-radius: 50%; }
+.wsrc.t-behaelter { border-radius: 3px; background: var(--info); color: var(--surface); }
+.wsrc.t-unbekannt { border-radius: 50%; border-style: dotted; }
+.wsrc.t-aus { width: 26px; height: 26px; border-radius: 50%; border-color: var(--muted); color: var(--muted); opacity: .75; }
+.wsrc.unverified { border-style: dashed; }
+.wsrc .flag {
+  position: absolute; right: -7px; top: -9px; background: var(--warn-bg); color: var(--warn-ink);
+  border: 1px solid var(--warn-ink); border-radius: 50%; width: 15px; height: 15px; font-size: 11px; line-height: 13px; text-align: center;
+}
+.wcons {
+  width: 26px; height: 26px; display: grid; place-items: center; font-weight: 900; font-size: 13px;
+  background: var(--accent); color: var(--accent-ink); border: 2px solid var(--ink); border-radius: 50%;
+}
+.wpump {
+  width: 22px; height: 22px; display: grid; place-items: center; font-weight: 900; font-size: 12px;
+  background: var(--surface); color: var(--w-hose); border: 2px solid var(--w-hose); border-radius: 50%;
+}
+
+/* Becken mit Füllstandsanzeige */
+.wbasin { width: 38px; }
+.wbasin .tank {
+  position: relative; width: 38px; height: 36px; border: 3px solid var(--ink); border-radius: 4px;
+  background: var(--surface); overflow: hidden;
+}
+.wbasin .fill { position: absolute; left: 0; right: 0; bottom: 0; background: var(--w-level); opacity: .8; transition: height .1s linear; }
+.wbasin .pct {
+  position: absolute; inset: 0; display: grid; place-items: center; font: 700 11px/1 var(--font);
+  color: var(--ink); text-shadow: 0 0 3px var(--surface), 0 0 3px var(--surface);
+}
+.wbasin .lbl { text-align: center; font: 700 11px/14px var(--font); color: var(--ink); background: var(--surface); border: 1px solid var(--line); border-radius: 3px; }
+.wbasin.manual .tank { border-style: double; border-width: 5px; }
+.wbasin.empty .tank { border-color: var(--alert); animation: w-blink 1.4s steps(2, start) infinite; }
+@keyframes w-blink { 50% { background: var(--alert); } }
+@media (prefers-reduced-motion: reduce) { .wbasin.empty .tank { animation: none; } .wbasin .fill { transition: none; } }
+
+/* Fahrzeuge */
+.wveh {
+  width: 40px; height: 26px; border: 2px solid var(--ink); border-radius: 4px; background: var(--surface);
+  display: grid; grid-template-rows: 1fr 6px; align-items: center; justify-items: center; font: 700 11px/1 var(--font);
+}
+.wveh .bar { width: 100%; height: 6px; background: var(--line); display: block; }
+.wveh .bar i { display: block; height: 6px; background: var(--w-level); }
+.wveh.s-fahrt { background: var(--surface); }
+.wveh.s-voll { background: var(--w-level); color: #fff; border-color: var(--ink); }
+.wveh.s-fuellen { background: var(--info); color: #fff; }
+.wveh.s-entleeren { background: var(--ok); color: #fff; }
+.wveh.s-warten { background: var(--warn-bg); color: var(--warn-ink); }
+.wveh.s-pumpe { background: var(--w-hose); color: #fff; }
+.wveh.s-reserve { opacity: .5; }
+td.s-warten { color: #8a6d00; font-weight: 600; }
+:root[data-theme="dark"] td.s-warten { color: var(--warn-bg); }
+
+/* Popups */
+.w-pop { font: 14px/1.4 var(--font); max-width: 290px; }
+.w-pop b { display: block; }
+.w-pop div { margin-top: 4px; }
+
+/* ------------------------------------------------------------------ Reservestandort (Becken ohne Abnehmer) */
+/* Becken, die die Dimensionierungsregel erzeugt, denen aber kein Abnehmer zugeordnet ist: deutlich als
+   Reservestandort kenntlich (gestrichelt, blass) – sie werden nicht versorgt und nicht angefahren. */
+.wbasin.reserve .tank { border-style: dashed; opacity: .6; }
+.wbasin.reserve .lbl { font-style: italic; color: var(--muted); }
+
+/* ------------------------------------------------------------------ Hinweis im Reiter (ohne OSM, ohne Vorschläge) */
+#wasser-hinweis:empty { display: none; }
+#wasser-hinweis .msg { margin-bottom: 10px; }
+
+/* ------------------------------------------------------------------ Ausdruck */
+@media print {
+  /* Bedienelemente der Zeitachse und der Beckenbearbeitung sind im Ausdruck ohne Funktion */
+  .w-timerow, .w-range, .w-ticks, #w-speedhint, .w-btnrow, .w-popbtns { display: none !important; }
+  .w-card { break-inside: avoid; border-color: #000; }
+  .w-chart { max-height: 120px; }
+  .w-det[open] summary ~ * { display: block; }
+}
+
 </style>
-<script>window.WB_VERSION = "0.5.0-prototyp"; window.WB_ASSET = function (p) { return p; };</script>
+<script>window.WB_VERSION = "0.6.0-prototyp"; window.WB_ASSET = function (p) { return p; };</script>
 
 <div id="app">
   <header class="warnbar" role="note" aria-label="Pflichthinweis">
@@ -1075,6 +1249,7 @@ td.num, th.num { text-align: right; }
       <nav class="tabs" role="tablist">
         <button role="tab" class="tab" data-tab="lage" aria-selected="true" id="tab-lage">Lage</button>
         <button role="tab" class="tab" data-tab="fahrzeuge" aria-selected="false" id="tab-fahrzeuge">Fahrzeuge</button>
+        <button role="tab" class="tab" data-tab="wasser" aria-selected="false" id="tab-wasser">Wasser</button>
         <button role="tab" class="tab" data-tab="protokoll" aria-selected="false" id="tab-protokoll">Protokoll</button>
         <button role="tab" class="tab" data-tab="info" aria-selected="false" id="tab-info">Grenzen &amp; Quellen</button>
       </nav>
@@ -1211,6 +1386,16 @@ td.num, th.num { text-align: right; }
         </section>
       </div>
 
+      <div class="tabpanel" id="panel-wasser" hidden>
+        <section class="card">
+          <h2>Wasserversorgung (Simulation)</h2>
+          <!-- Inhalt kommt aus js/water-ui.js (WaterUI.create -> #wasser-panel); der Hinweis darüber wird
+               von js/app.js gefüllt (keine Prognose/Vorschläge, keine OSM-Daten, keine Entnahmestellen). -->
+          <div id="wasser-hinweis" role="status" aria-live="polite"></div>
+          <div id="wasser-panel"></div>
+        </section>
+      </div>
+
       <div class="tabpanel" id="panel-protokoll" hidden>
         <section class="card">
           <h2>Sitzungsprotokoll</h2>
@@ -1319,7 +1504,7 @@ window.APP_CONFIG = {
   const TPA = 0.0459137; // 1 ton/acre (US short ton) in lb/ft²
 
   const PARAMS = {
-    version: "0.5.0-prototyp",
+    version: "0.6.0-prototyp",
     modelName: "Rothermel-1972-Raster-MTT (vereinfachte Eigenimplementierung)",
 
     // Prognosehorizonte in Stunden (Spezifikation 2.3)
@@ -5931,6 +6116,1907 @@ out center;`;
 })(typeof globalThis !== "undefined" ? globalThis : this);
 
 </script>
+<script>/* js/water-params.js */
+/*
+ * Parameterblock "wasser" (Modul Wasserversorgung). Für die Integration wird der Inhalt von
+ * WASSER_PARAMS unverändert als PARAMS.wasser in js/params.js übernommen (siehe INTEGRATION.md).
+ * JEDE Zahl ist eine ANNAHME, solange sie nicht mit der Feuerwehr / dem Wasserversorger abgestimmt ist.
+ * Quellenangaben und Status: docs/assumptions.md (Abschnitt „Neu in 0.6.0 (Wasserversorgung)“). Kennzeichnung im Kommentar:
+ *   [A] Annahme ohne belegte Quelle, [F] Faustwert aus der Feuerwehrausbildung (Primärquelle nicht eingesehen),
+ *   [P] physikalisch, [V] Vorgabe Auftraggeber, [App] übernommen aus den bestehenden App-Parametern.
+ */
+(function (root) {
+  const WASSER_PARAMS = {
+    version: "0.1.0-entwurf",
+    hinweis: "Simulation mit Annahmen, keine Einsatzplanung.",
+    horizonMin: 360, // [V] Prognosezeitraum 6 h
+    dtMin: 1, // [V] Zeitschritt 1 min
+
+    // ---------------------------------------------------------------- Wasserbedarf der Abnehmer
+    bedarf: {
+      // [A] je Löschfahrzeug am Riegel: 2 C-Rohre à 150 l/min (Auftrag: 100–200 l/min je Rohr), durchgehend
+      riegel: { rohre: 2, lpmJeRohr: 150 },
+      // [A] Objektschutz: 2 C-Rohre à 100 l/min
+      objektschutz: { rohre: 2, lpmJeRohr: 100 },
+      // [A] alternativ Riegel mit Wenderohr (Abnehmer mit mode "wenderohr")
+      wenderohrLpm: 800,
+      // [A] Anteil der Zeit, in der tatsächlich Wasser abgegeben wird (1 = durchgehend, konservativ)
+      einsatzAnteil: 1,
+      // [A] eigener Tank des Abnehmers wird aus dem Becken nachgefüllt, solange das Becken >= 50 % voll ist
+      tankNachfuellLpm: 400,
+      tankNachfuellAbFuellstand: 0.5,
+      // [A] Hinweis, wenn der Schlauchweg Becken -> Abnehmer länger ist
+      maxAbstandBeckenM: 400,
+    },
+
+    // ---------------------------------------------------------------- Entnahmestellen
+    quellen: {
+      hydrant: {
+        // [A] Ergiebigkeit ohne OSM-Angabe. 800 l/min = 48 m³/h entspricht dem kleinsten Löschwasserbedarfswert
+        // der Tabelle in DVGW W 405 (Bedarf des Versorgungsgebiets für 2 h, KEINE Leistungszusage je Hydrant;
+        // Normtext nicht eingesehen, zu prüfen). Tatsächliche Werte: Wasserversorger/Löschwasserkataster.
+        defaultLpm: 800,
+        // [A] grobe Zuordnung nach fire_hydrant:diameter (mm), ohne Quelle; kleinster passender Eintrag gilt
+        nachDurchmesserLpm: [[80, 600], [100, 800], [150, 1200], [9999, 1600]],
+        maxGleichzeitig: 1, // [A] ein Standrohr/Füllvorgang je Hydrant gleichzeitig
+        ruestMin: 3, // [A] Standrohr setzen, kuppeln, abkuppeln je Füllung
+      },
+      offen: {
+        // offenes Gewässer / Saugstelle: Füllrate durch die Fahrzeugpumpe begrenzt (Saugbetrieb)
+        saugFaktor: 0.5, // [A] Füllrate = Nennförderstrom der Pumpe x 0,5 (Saughöhe, Saugleitung, Tankfüllleitung)
+        maxGleichzeitig: 2, // [A] zwei Fahrzeuge können gleichzeitig ansaugen
+        ruestMin: 6, // [A] Saugleitung kuppeln, ansaugen, abbauen je Füllung
+        unsicherStrafMin: 10, // [A] Auswahl: "unsicher" eingestufte Gewässer werden um 10 min schlechter bewertet
+      },
+      behaelter: {
+        // Löschwasserteich (fire_water_pond) / Löschwasserbehälter (water_tank): endliches Volumen, Saugbetrieb
+        defaultM3: 100, // [A] Volumen ohne OSM-Tag water_volume (Löschwasserkataster prüfen)
+      },
+      gewaesser: {
+        // [A] Einstufung natural=water nach Fläche, waterway nach Typ (Wasserführung im Sommer unbekannt)
+        flaecheAusreichendM2: 5000,
+        flaecheMinM2: 300, // kleiner: nicht berücksichtigt
+        fluss: "ausreichend", // waterway=river
+        bach: "unsicher", // waterway=stream
+        zugangMaxM: 30, // [A] Gewässer gilt als zugänglich, wenn ein befahrbarer Weg höchstens 30 m entfernt ist
+        zugangAbstandM: 300, // [A] Mindestabstand zwischen zwei Zugangspunkten am selben Gewässer
+      },
+      unbekannt: { defaultLpm: 800 }, // [A] manuell erfasste Stelle ohne Typ: wie Hydrant ohne Angabe
+      maxPendelM: 8000, // [A] Entnahmestellen weiter als 8 km Luftlinie vom Becken werden nicht angefahren
+    },
+
+    // ---------------------------------------------------------------- Schlauchleitung / Förderstrecke
+    schlauch: {
+      maxSchlauchwegM: 600, // [V/A] Grenze Schlauchleitung vs. Pendelverkehr (Auftrag: z. B. 600 m), konfigurierbar
+      umwegFaktor: 1.2, // [App] Schlauchweg = Luftlinie x 1,2 (wie suggestions: Länge +20 %)
+      reibungBarJe100mBei800: 1.0, // [F] B-Schlauch: ca. 1 bar je 100 m bei 800 l/min, quadratisch mit dem Durchfluss
+      maxLeitungLpm: 1200, // [A] eine B-Leitung
+      bedarfsReserve: 1.25, // [A] Auslegung = Bedarf des Beckens x 1,25 (min. 400 l/min)
+      pumpenAusgangBar: 8, // [F/A] Ausgangsdruck je Pumpe in der Förderstrecke
+      eingangMinBar: 1.5, // [F] Mindesteingangsdruck an der nächsten Pumpe bzw. am Leitungsende
+      barJeMeterHoehe: 0.1, // [P] 10 m Wassersäule ~ 1 bar (genauer 0,98 bar)
+      profilSchrittM: 25, // Höhenprofil entlang der Luftlinie aus dem DGM (25 m)
+      aufbauGrundMin: 10, // [A] Aufbau Förderstrecke: 10 min + 2 min je 100 m
+      aufbauMinJe100m: 2,
+    },
+
+    // ---------------------------------------------------------------- Pendelverkehr
+    pendel: {
+      umwegFaktor: 1.3, // [App] Weg = Luftlinie x 1,3 (wie suggest.waterText)
+      kmhStrasse: 25, // [App] mittlere Pendelgeschwindigkeit (suggestions.shuttleKmh)
+      kmhWaldweg: 10, // [A] auf Wald-/Wirtschaftswegen (Anteil = Abstand Becken/Quelle zur nächsten Straße)
+      fuellMaxLpm: 1600, // [A] Füllen über max. 2 B-Leitungen
+      fuellOhnePumpeLpm: 800, // [A] Fahrzeug ohne Pumpenangabe (TW, LTW): Füllen am Hydranten mit Netzdruck
+      entleerLpm: 1600, // [A] Entleeren ins Becken über 2 B-Leitungen (Auftrag: 1.600–2.000 l/min)
+      entleerOhnePumpeLpm: 800, // [A] freier Auslauf ohne Pumpe
+      entleerRuestMin: 2, // [A] Kuppeln/Abkuppeln am Becken
+      maxAnfahrtMin: 90, // [A] Wasserversorgungsfahrzeuge bis 90 min Anfahrt (Großtanker trotz längerer Anfahrt)
+      reserveFaktor: 1.15, // [A] geschätzte Lieferung soll den Bedarf um 15 % übersteigen
+      anfahrtVoll: true, // [A] Fahrzeuge kommen mit vollem Tank an und entleeren zuerst ins Becken
+      grosstankerMinL: 8000, // [A] Großtanker ab 8.000 l oder Typ-Präfix
+      grosstankerTypen: ["TW", "LTW", "WLF"],
+      tlfTypen: ["TLF", "PTLF"],
+      tlfMinL: 2400, // [A] wasserführend mit großem Tank wie TLF
+      beckenwechselNachMin: 3, // [A] Becken voll: nach 3 min Warten zu einem anderen Becken mit Platz
+      maxIterationen: 6, // Nachplanung: weitere Fahrzeuge, solange ein Defizit bleibt und Reserve vorhanden ist
+      defizitSchwelle: 0.05, // ab 5 % ungedecktem Bedarf im eingeschwungenen Zustand
+    },
+
+    // ---------------------------------------------------------------- Pufferbecken
+    becken: {
+      volumenL: 5000, // [V] Faltbehälter 5.000 l
+      aufbauMin: 5, // [A] Aufbau ab Eintreffen des ersten zugeordneten Versorgungsfahrzeugs
+      maxEntleerer: 1, // [A] ein Fahrzeug speist gleichzeitig ein
+      clusterM: 400, // [A] Abnehmer bis 400 m Abstand teilen sich eine Beckengruppe
+      bedarfJeBeckenLpm: 600, // [A] Anzahl Becken je Gruppe = Bedarf / 600 l/min, aufgerundet
+      maxJeGruppe: 4,
+      abstandHinterAbnehmerM: 80, // [A] Zielpunkt 80 m vom Abnehmer-Schwerpunkt weg vom Brand
+      suchRadiusM: 600, // [A] Suche nach befahrbarem Standort um den Abnehmer-Schwerpunkt
+      sicherheitM: 100, // [A] Abstand zur 6-h-"möglich"-Zone
+      ersatzVorlaufMin: 120, // [A] Ersatzkriterium, wenn kein Standort außerhalb der 6-h-Zone liegt
+      versatzM: 20, // [A] Mindestabstand zweier Becken einer Gruppe
+      waldwegStrafM: 50, // [A] Bewertung: Standort am Waldweg 50 m schlechter als an einer Straße
+    },
+
+    // ---------------------------------------------------------------- Fahrzeugauswahl (Ausschlüsse)
+    fahrzeuge: {
+      ausschlussKommune: "Neunkirchen-Seelscheid", // [V] NK-Fahrzeuge nicht für die Wasserversorgung
+      keinWasserTypen: ["ELW", "KdoW", "MTF", "MTW", "DLK", "DL", "GW", "RW"], // [App] suggestions.noWaterTypes
+    },
+
+    // ---------------------------------------------------------------- Engpassdiagnose
+    diagnose: {
+      quelleAuslastung: 0.9, // [A] Entnahmestelle überlastet ab 90 % Belegung ...
+      quelleWartenMin: 5, // [A] ... und mittlerer Wartezeit > 5 min je Füllung
+      beckenWartenMin: 10, // [A] Hinweis: Tanker warten im Mittel > 10 min an einem Becken
+      wartenAnteilEngpass: 0.25, // [A] Engpass, wenn Pendelfahrzeuge > 25 % ihrer Einsatzzeit warten (Quelle bzw. Becken)
+      fensterMinMin: 60, // eingeschwungener Zustand mindestens die letzten 60 min
+    },
+  };
+
+  root.WASSER_PARAMS = WASSER_PARAMS;
+  if (root.PARAMS && !root.PARAMS.wasser) root.PARAMS.wasser = WASSER_PARAMS;
+  if (typeof module !== "undefined" && module.exports) module.exports = WASSER_PARAMS;
+})(typeof globalThis !== "undefined" ? globalThis : this);
+
+</script>
+<script>/* js/water.js */
+/*
+ * Modul Wasserversorgung (Entwurf 0.1.0): Planung und zeitdiskrete Simulation der Löschwasserversorgung
+ * für Riegel/Objektschutz mit Pufferbecken (Faltbehälter), Schlauchleitungen (Förderstrecke) und Pendelverkehr.
+ * Reine Funktionen ohne DOM, deterministisch (keine Zufallszahlen, feste Reihenfolgen).
+ *
+ * SIMULATION MIT ANNAHMEN, KEINE EINSATZPLANUNG. Alle Zahlen stehen in PARAMS.wasser (js/water-params.js)
+ * und sind Annahmen (siehe docs/assumptions.md). Fahrwege: Luftlinie x Umwegfaktor, KEIN Routing.
+ *
+ * Schnittstelle:
+ *   Water.planSupply(input) -> plan
+ *   Water.simulate(plan)    -> sim
+ *   Water.run(input)        -> {plan, sim, iterations}  (Nachplanung mit Reservefahrzeugen bei Defizit)
+ *
+ * input = {
+ *   W: PARAMS.wasser,
+ *   consumers: [{id, label, lat, lon, readyMin, tankL, kind: "Riegel"|"Objektschutz", mode?: "wenderohr", demandLpm?}],
+ *   vehicles:  [{id, typ, bezeichnung, kommune, wache, tank_l, pumpe_lpm, anfahrtMin, originLat?, originLon?}]
+ *              (verfügbare Fahrzeuge; Ausschlüsse siehe exclude, werden zusätzlich geprüft)
+ *   exclude:   {grundschutzIds: [], pflichtIds: [], assignedIds: [], ids: []},
+ *   sources:   [{id, lat, lon, kind, tags, source, verified, areaM2?, wasserTyp?, lpm?, volumeM3?}],
+ *   basins:    null (automatisch) | [{id, lat, lon}] (vom Nutzer gesetzt/verschoben),
+ *   terrain:   {elevation(lat, lon) -> m | null} | null,
+ *   hazard:    {possibleMinAt(lat, lon) -> min | Infinity, center: {lat, lon}} | null,
+ *   roads:     Water.roadNet(...) | null,
+ *   extraShuttle: 0 (intern, Nachplanung)
+ * }
+ */
+(function (root) {
+  "use strict";
+
+  const M_PER_DEG = 111195;
+  const STATES = ["anfahrt", "rueckfahrt", "warten_quelle", "fuellen", "fahrt_beladen", "warten_becken", "entleeren", "pumpen", "reserve"];
+  const STATE_LABEL = {
+    anfahrt: "Anfahrt", rueckfahrt: "Rückfahrt (leer)", warten_quelle: "Warten an Entnahmestelle", fuellen: "Füllen",
+    fahrt_beladen: "Fahrt beladen", warten_becken: "Warten am Becken", entleeren: "Entleeren", pumpen: "Pumpen (Förderstrecke)",
+    reserve: "nicht benötigt",
+  };
+  const SI = Object.fromEntries(STATES.map((s, i) => [s, i]));
+  const ROLE_LABEL = { pendel: "Pendelverkehr", pumpe: "Pumpe Förderstrecke", verstaerker: "Verstärkerpumpe", reserve: "nicht benötigt" };
+
+  // ------------------------------------------------------------------ Geometrie (lokal äquidistant)
+  function distM(a, b) {
+    const k = Math.cos((((a.lat + b.lat) / 2) * Math.PI) / 180);
+    return Math.hypot((b.lon - a.lon) * M_PER_DEG * k, (b.lat - a.lat) * M_PER_DEG);
+  }
+  function makeProj(lat0, lon0) {
+    const k = Math.cos((lat0 * Math.PI) / 180);
+    return {
+      toXY: (lat, lon) => [(lon - lon0) * M_PER_DEG * k, (lat - lat0) * M_PER_DEG],
+      toLL: (x, y) => [lat0 + y / M_PER_DEG, lon0 + x / (M_PER_DEG * k)],
+    };
+  }
+  const lerpLL = (a, b, f) => ({ lat: a.lat + (b.lat - a.lat) * f, lon: a.lon + (b.lon - a.lon) * f });
+  const num = (v) => (v === null || v === undefined || v === "" || !Number.isFinite(Number(v)) ? null : Number(v));
+  const r1 = (v) => Math.round(v * 10) / 10;
+
+  // ------------------------------------------------------------------ Wegenetz (befahrbar)
+  /**
+   * Wegenetz aus Linien [{latlngs: [[lat, lon], ...], kind: 1 (Straße) | 2 (Wald-/Wirtschaftsweg), name?}]
+   * oder aus Punkten [{lat, lon, kind}] (z. B. befahrbare Rasterzellen der App). Punkte im Abstand sampleM.
+   */
+  function roadNet(lines, opt) {
+    const o = Object.assign({ sampleM: 25, points: null, cellM: 200 }, opt || {});
+    const pts = [];
+    if (o.points) for (const p of o.points) pts.push({ lat: p.lat, lon: p.lon, kind: p.kind || 1 });
+    for (const ln of lines || []) {
+      const ll = ln.latlngs || [];
+      for (let q = 0; q + 1 < ll.length; q++) {
+        const a = { lat: ll[q][0], lon: ll[q][1] }, b = { lat: ll[q + 1][0], lon: ll[q + 1][1] };
+        const n = Math.max(1, Math.ceil(distM(a, b) / o.sampleM));
+        for (let s = 0; s < n; s++) pts.push({ ...lerpLL(a, b, s / n), kind: ln.kind || 1 });
+        if (q + 2 === ll.length) pts.push({ ...b, kind: ln.kind || 1 });
+      }
+    }
+    if (!pts.length) return null;
+    const lat0 = pts[0].lat, lon0 = pts[0].lon, pr = makeProj(lat0, lon0);
+    const grid = new Map();
+    const key = (gx, gy) => gx + "," + gy;
+    pts.forEach((p, i) => {
+      const [x, y] = pr.toXY(p.lat, p.lon);
+      p.x = x; p.y = y; p.i = i;
+      const k = key(Math.floor(x / o.cellM), Math.floor(y / o.cellM));
+      if (!grid.has(k)) grid.set(k, []);
+      grid.get(k).push(p);
+    });
+    function near(lat, lon, radiusM, filter) {
+      const [x, y] = pr.toXY(lat, lon);
+      const c = Math.ceil(radiusM / o.cellM), gx = Math.floor(x / o.cellM), gy = Math.floor(y / o.cellM);
+      const out = [];
+      for (let dx = -c; dx <= c; dx++) for (let dy = -c; dy <= c; dy++) {
+        for (const p of grid.get(key(gx + dx, gy + dy)) || []) {
+          const d = Math.hypot(p.x - x, p.y - y);
+          if (d <= radiusM && (!filter || filter(p))) out.push({ p, d });
+        }
+      }
+      out.sort((a, b) => a.d - b.d || a.p.i - b.p.i);
+      return out;
+    }
+    function nearest(lat, lon, maxM, filter) {
+      let r = Math.min(100, maxM);
+      for (;;) {
+        const n = near(lat, lon, r, filter);
+        if (n.length) return n[0];
+        if (r >= maxM) return null;
+        r = Math.min(maxM, r * 2);
+      }
+    }
+    /** Abstand (m, Luftlinie) zur nächsten Straße (kind 1); 0 = an der Straße; maxM wenn keine gefunden. */
+    function slowDistM(lat, lon, maxM = 3000) {
+      const n = nearest(lat, lon, maxM, (p) => p.kind === 1);
+      return n ? n.d : maxM;
+    }
+    return { points: pts, near, nearest, slowDistM, count: pts.length };
+  }
+
+  // ------------------------------------------------------------------ Entnahmestellen
+  function parseFlow(tags) {
+    for (const k of ["flow_rate", "fire_hydrant:flow_capacity", "fire_hydrant:flow_rate", "flow_capacity"]) {
+      const raw = tags && tags[k];
+      if (raw === undefined || raw === null || raw === "") continue;
+      const s = String(raw).replace(",", ".").toLowerCase();
+      const m = s.match(/([0-9]+(?:\.[0-9]+)?)/);
+      if (!m) continue;
+      let v = Number(m[1]);
+      if (/m3\/h|m³\/h|cbm\/h/.test(s)) v = (v * 1000) / 60;
+      else if (/l\/s/.test(s)) v = v * 60;
+      if (v >= 50 && v <= 20000) return { lpm: v, key: k, raw: String(raw) };
+    }
+    return null;
+  }
+  function parseDiameter(tags) {
+    for (const k of ["fire_hydrant:diameter", "diameter"]) {
+      const raw = tags && tags[k];
+      if (raw === undefined || raw === null) continue;
+      const m = String(raw).match(/([0-9]+)/);
+      if (m && Number(m[1]) >= 25 && Number(m[1]) <= 1000) return { mm: Number(m[1]), key: k };
+    }
+    return null;
+  }
+  function parseVolumeM3(tags) {
+    for (const k of ["water_volume", "volume"]) {
+      const raw = tags && tags[k];
+      if (raw === undefined || raw === null) continue;
+      const s = String(raw).replace(",", ".").toLowerCase();
+      const m = s.match(/([0-9]+(?:\.[0-9]+)?)/);
+      if (!m) continue;
+      let v = Number(m[1]);
+      if (/\bl\b|liter/.test(s) && !/m3|m³/.test(s)) v = v / 1000;
+      if (v > 0 && v < 100000) return { m3: v, key: k };
+    }
+    return null;
+  }
+
+  /**
+   * Einstufung einer Entnahmestelle (OSM oder manuell, Format von osm.js/app.js waterPoints).
+   * @returns {id, lat, lon, typ: hydrant|offen|behaelter|unbekannt, label, capLpm (null = durch Pumpe begrenzt),
+   *           needsPump, volumeL (Infinity = unbegrenzt), maxConcurrent, ruestMin, status, verified, source, annahmen[]}
+   */
+  function classifySource(p, W) {
+    const Q = W.quellen;
+    const tags = p.tags || {};
+    const em = p.wasserTyp || tags.emergency || null;
+    const kindTxt = String(p.kind || "");
+    const base = { id: String(p.id), lat: Number(p.lat), lon: Number(p.lon), verified: !!p.verified, source: p.source || "OSM", annahmen: [], usable: true };
+    const pumpOpen = (o) => Object.assign(base, { needsPump: true, capLpm: null, maxConcurrent: Q.offen.maxGleichzeitig, ruestMin: Q.offen.ruestMin }, o);
+    if (em === "fire_hydrant" || em === "hydrant") {
+      let cap = num(p.lpm), why;
+      if (cap !== null) why = "Angabe am Punkt (manuell)";
+      else {
+        const f = parseFlow(tags);
+        if (f) { cap = f.lpm; why = `OSM-Tag ${f.key}=${f.raw} (ungeprüft)`; }
+        else {
+          const d = parseDiameter(tags);
+          if (d) {
+            const row = Q.hydrant.nachDurchmesserLpm.find(([mm]) => d.mm <= mm) || Q.hydrant.nachDurchmesserLpm[Q.hydrant.nachDurchmesserLpm.length - 1];
+            cap = row[1]; why = `ANNAHME nach ${d.key}=${d.mm} mm`;
+            base.annahmen.push("Ergiebigkeit");
+          } else { cap = Q.hydrant.defaultLpm; why = "ANNAHME (keine OSM-Angabe)"; base.annahmen.push("Ergiebigkeit"); }
+        }
+      }
+      const t = tags["fire_hydrant:type"];
+      const tl = t === "underground" ? "Unterflurhydrant" : t === "pillar" ? "Überflurhydrant" : t === "wall" ? "Wandhydrant" : "Hydrant";
+      return Object.assign(base, { typ: "hydrant", label: tl, capLpm: cap, capWhy: why, needsPump: false, volumeL: Infinity, maxConcurrent: Q.hydrant.maxGleichzeitig, ruestMin: Q.hydrant.ruestMin, status: why.startsWith("ANNAHME") ? "Annahme" : "Angabe" });
+    }
+    if (em === "suction_point") return pumpOpen({ typ: "offen", label: "Saugstelle", volumeL: Infinity, status: "ausreichend", statusWhy: "ANNAHME: ausgewiesene Saugstelle (Wasserstand prüfen)" });
+    if (em === "fire_water_pond" || em === "water_tank") {
+      const v = num(p.volumeM3) !== null ? { m3: num(p.volumeM3), key: "Angabe" } : parseVolumeM3(tags);
+      if (!v) base.annahmen.push("Volumen");
+      const m3 = v ? v.m3 : Q.behaelter.defaultM3;
+      return pumpOpen({ typ: "behaelter", label: em === "fire_water_pond" ? "Löschwasserteich" : "Löschwasserbehälter", volumeL: m3 * 1000, status: v ? "Angabe" : "Annahme", statusWhy: v ? `${v.key} ${m3} m³ (ungeprüft)` : `ANNAHME ${m3} m³ (kein OSM-Tag water_volume)` });
+    }
+    if (em === "waterway_river" || tags.waterway === "river") return pumpOpen({ typ: "offen", label: "Fluss (Zugang am Weg)", volumeL: Infinity, status: W.quellen.gewaesser.fluss, statusWhy: "ANNAHME nach Gewässertyp" });
+    if (em === "waterway_stream" || tags.waterway === "stream") return pumpOpen({ typ: "offen", label: "Bach (Zugang am Weg)", volumeL: Infinity, status: W.quellen.gewaesser.bach, statusWhy: "ANNAHME: Bach, Wasserführung/Stauung vor Ort prüfen" });
+    if (em === "natural_water" || tags.natural === "water" || /^Gewässer/.test(kindTxt)) {
+      const a = num(p.areaM2);
+      const G = W.quellen.gewaesser;
+      if (a !== null && a < G.flaecheMinM2) return Object.assign(base, { typ: "offen", label: "Gewässer (zu klein)", usable: false, why: `Fläche ${Math.round(a)} m² < ${G.flaecheMinM2} m²`, needsPump: true });
+      const st = a !== null && a >= G.flaecheAusreichendM2 ? "ausreichend" : "unsicher";
+      return pumpOpen({ typ: "offen", label: "Stillgewässer", volumeL: Infinity, status: st, statusWhy: a !== null ? `ANNAHME nach Fläche ca. ${Math.round(a)} m²` : "ANNAHME: Größe unbekannt" });
+    }
+    // manuell erfasst oder unbekannter Typ
+    const cap = num(p.lpm) ?? Q.unbekannt.defaultLpm;
+    base.annahmen.push("Typ", "Ergiebigkeit");
+    return Object.assign(base, { typ: "unbekannt", label: p.source === "manuell" ? "manuell erfasst (Typ offen)" : `Entnahmestelle (${kindTxt || "Typ offen"})`, capLpm: cap, capWhy: num(p.lpm) !== null ? "Angabe am Punkt" : "ANNAHME (Typ unbekannt, wie Hydrant)", needsPump: false, volumeL: Infinity, maxConcurrent: Q.hydrant.maxGleichzeitig, ruestMin: Q.hydrant.ruestMin, status: "Annahme" });
+  }
+
+  /**
+   * Entnahmestellen aus einer Overpass-Antwort (out geom/center): emergency-Objekte, natural=water (Fläche,
+   * Zugang am nächsten befahrbaren Weg), waterway=stream/river (Zugangspunkte, wo ein Weg das Gewässer berührt).
+   * Ergebnis im Punktformat der App (ungeprüft, source "OSM"). roads: Water.roadNet(...) oder null.
+   */
+  function sourcesFromOsm(json, roads, W) {
+    const G = W.quellen.gewaesser;
+    const out = [], rejected = [];
+    for (const el of (json && json.elements) || []) {
+      const t = el.tags || {};
+      const lat = el.lat ?? el.center?.lat, lon = el.lon ?? el.center?.lon;
+      if (t.emergency && /^(fire_hydrant|water_tank|suction_point|fire_water_pond)$/.test(t.emergency) && lat !== undefined) {
+        out.push({ id: `${el.type}/${el.id}`, lat, lon, kind: t.emergency, tags: t, source: "OSM", verified: false });
+        continue;
+      }
+      if (t.natural === "water" && el.type === "way" && el.geometry && el.geometry.length > 3) {
+        const g = el.geometry.filter(Boolean);
+        const pr = makeProj(g[0].lat, g[0].lon);
+        const xy = g.map((q) => pr.toXY(q.lat, q.lon));
+        let a = 0;
+        for (let i = 0, j = xy.length - 1; i < xy.length; j = i++) a += (xy[j][0] * xy[i][1] - xy[i][0] * xy[j][1]) / 2;
+        a = Math.abs(a);
+        if (a < G.flaecheMinM2) { rejected.push({ id: `way/${el.id}`, why: `Fläche ${Math.round(a)} m² zu klein` }); continue; }
+        let best = null;
+        if (roads) for (const q of g) { const n = roads.nearest(q.lat, q.lon, G.zugangMaxM); if (n && (!best || n.d < best.d)) best = { d: n.d, q }; }
+        if (roads && !best) { rejected.push({ id: `way/${el.id}`, why: `kein befahrbarer Weg innerhalb ${G.zugangMaxM} m` }); continue; }
+        const q = best ? best.q : g[0];
+        out.push({ id: `way/${el.id}`, lat: q.lat, lon: q.lon, kind: t.water ? `Gewässer (${t.water})` : "Gewässer", wasserTyp: "natural_water", areaM2: a, tags: t, source: "OSM", verified: false, zugang: best ? `Weg ${Math.round(best.d)} m` : "Zugang nicht geprüft (kein Wegenetz)" });
+        continue;
+      }
+      if ((t.waterway === "stream" || t.waterway === "river") && el.type === "way" && el.geometry && roads) {
+        const acc = [];
+        const g = el.geometry.filter(Boolean);
+        for (let q = 0; q + 1 < g.length; q++) {
+          const n = Math.max(1, Math.ceil(distM(g[q], g[q + 1]) / 20));
+          for (let s = 0; s <= n; s++) {
+            const p = lerpLL(g[q], g[q + 1], s / n);
+            const r = roads.nearest(p.lat, p.lon, G.zugangMaxM);
+            if (r && !acc.some((x) => distM(x, p) < G.zugangAbstandM)) acc.push({ ...p, d: r.d });
+          }
+        }
+        acc.forEach((p, k) => out.push({ id: `way/${el.id}#${k + 1}`, lat: p.lat, lon: p.lon, kind: t.waterway === "river" ? "Fluss" : "Bach", wasserTyp: t.waterway === "river" ? "waterway_river" : "waterway_stream", tags: t, source: "OSM", verified: false, zugang: `Weg ${Math.round(p.d)} m` }));
+      }
+    }
+    return { points: out, rejected };
+  }
+
+  // ------------------------------------------------------------------ Fahrzeuge
+  const up = (s) => String(s || "").toUpperCase();
+  const startsWithAny = (typ, list) => list.some((t) => { const T = up(t); const x = up(typ); return x === T || x.startsWith(T + " ") || x.startsWith(T + "-") || x.startsWith(T + "(") || x.startsWith(T); });
+  function vehicleClass(v, W) {
+    const P = W.pendel, tank = num(v.tank_l) || 0;
+    if (tank >= P.grosstankerMinL || startsWithAny(v.typ, P.grosstankerTypen)) return { stufe: 1, label: "Großtanker" };
+    if (startsWithAny(v.typ, P.tlfTypen) || tank >= P.tlfMinL) return { stufe: 2, label: "Tanklöschfahrzeug" };
+    return { stufe: 3, label: "Löschfahrzeug" };
+  }
+  const hasPump = (v) => (num(v.pumpe_lpm) || 0) > 0;
+
+  /**
+   * Prüft, welche Fahrzeuge für die Wasserversorgung eingeplant werden dürfen (Vorgabe Auftraggeber):
+   * nicht Grundschutz, nicht Pflichtfahrzeuge, nicht Fahrzeuge der eigenen Kommune, nicht bereits an Riegel/Objektschutz,
+   * nur wasserführend mit bekanntem Tank und bekannter Anfahrt bis pendel.maxAnfahrtMin.
+   * @returns {eligible: [], excluded: [{id, label, reason}]}
+   */
+  function eligibleSupplyVehicles(vehicles, exclude, W) {
+    const ex = exclude || {};
+    const set = (a) => new Set((a || []).map(String));
+    const gs = set(ex.grundschutzIds), pf = set(ex.pflichtIds), as = set(ex.assignedIds), ids = set(ex.ids);
+    const own = up(W.fahrzeuge.ausschlussKommune);
+    const eligible = [], excluded = [];
+    for (const v of vehicles || []) {
+      const id = String(v.id);
+      const label = v.bezeichnung || v.typ || id;
+      let reason = null;
+      if (v.verfuegbar === false) reason = "nicht verfügbar";
+      else if (gs.has(id)) reason = "Grundschutz an einem Gerätehaus";
+      else if (pf.has(id) || v.pflicht === true) reason = "Pflichtfahrzeug (Riegel/Objektschutz)";
+      else if (own && up(v.kommune) === own) reason = `Fahrzeug der eigenen Kommune (${W.fahrzeuge.ausschlussKommune})`;
+      else if (as.has(id)) reason = "bereits Riegel/Objektschutz zugeordnet";
+      else if (ids.has(id)) reason = "manuell ausgeschlossen";
+      else if (W.fahrzeuge.keinWasserTypen.some((t) => up(v.typ) === up(t) || up(v.typ).startsWith(up(t) + " ") || up(v.typ).startsWith(up(t) + "-"))) reason = "kein Löschwasser (Fahrzeugtyp)";
+      else if (!(num(v.tank_l) > 0)) reason = "Tankvolumen unbekannt oder 0";
+      else if (num(v.anfahrtMin) === null) reason = "Anfahrt nicht schätzbar";
+      else if (num(v.anfahrtMin) > W.pendel.maxAnfahrtMin) reason = `Anfahrt über ${W.pendel.maxAnfahrtMin} min`;
+      if (reason) excluded.push({ id, label, reason });
+      else eligible.push(v);
+    }
+    return { eligible, excluded };
+  }
+
+  // ------------------------------------------------------------------ Zeiten, Raten
+  function fillRate(v, s, W) {
+    const pump = hasPump(v) ? num(v.pumpe_lpm) : null;
+    if (s.needsPump) return pump ? Math.min(pump * W.quellen.offen.saugFaktor, W.pendel.fuellMaxLpm) : 0;
+    return Math.min(s.capLpm, pump ?? W.pendel.fuellOhnePumpeLpm, W.pendel.fuellMaxLpm);
+  }
+  const unloadRate = (v, W) => (hasPump(v) ? Math.min(W.pendel.entleerLpm, num(v.pumpe_lpm)) : W.pendel.entleerOhnePumpeLpm);
+
+  /** Fahrzeit (min) zwischen zwei Orten {lat, lon, slowM}: Luftlinie x Umweg; Anteil Waldweg langsamer. */
+  function driveMin(a, b, W) {
+    const P = W.pendel;
+    const d = distM(a, b) * P.umwegFaktor;
+    const slow = Math.min(d, ((a.slowM || 0) + (b.slowM || 0)) * P.umwegFaktor);
+    return ((slow / 1000) / P.kmhWaldweg + ((d - slow) / 1000) / P.kmhStrasse) * 60;
+  }
+
+  /**
+   * Analytischer Pendelumlauf eines Fahrzeugs zwischen Entnahmestelle s und Becken b (ohne Warten).
+   * Umlauf = Rüsten + Füllen (tank / Füllrate) + Fahrt beladen + Rüsten + Entleeren (tank / Entleerrate) + Rückfahrt.
+   */
+  function cycle(v, s, b, W) {
+    const tank = num(v.tank_l);
+    const fr = fillRate(v, s, W), ur = unloadRate(v, W);
+    if (!(fr > 0)) return { ok: false, reason: s.needsPump ? "Fahrzeug ohne Pumpe kann aus offenem Gewässer nicht füllen" : "keine Füllrate" };
+    const drive = driveMin(s, b, W);
+    const fillMin = s.ruestMin + tank / fr;
+    const unloadMin = W.pendel.entleerRuestMin + tank / ur;
+    const cycleMin = fillMin + drive + unloadMin + drive;
+    return { ok: true, driveMin: drive, fillMin, unloadMin, cycleMin, fillLpm: fr, unloadLpm: ur, lpm: tank / cycleMin, distM: distM(s, b) };
+  }
+
+  // ------------------------------------------------------------------ Förderstrecke
+  function hoseProfile(s, b, terrain, W) {
+    const S = W.schlauch;
+    const luft = distM(s, b);
+    if (!terrain || typeof terrain.elevation !== "function") return { luft, dhMax: 0, dhEnd: 0, z0: null, z1: null, ok: false };
+    const n = Math.max(1, Math.ceil(luft / S.profilSchrittM));
+    const z0 = terrain.elevation(s.lat, s.lon);
+    if (z0 === null || z0 === undefined || Number.isNaN(z0)) return { luft, dhMax: 0, dhEnd: 0, z0: null, z1: null, ok: false };
+    let dhMax = 0, z1 = z0, missing = 0;
+    for (let k = 1; k <= n; k++) {
+      const p = lerpLL(s, b, k / n);
+      const z = terrain.elevation(p.lat, p.lon);
+      if (z === null || z === undefined || Number.isNaN(z)) { missing++; continue; }
+      dhMax = Math.max(dhMax, z - z0);
+      if (k === n) z1 = z;
+    }
+    return { luft, dhMax, dhEnd: z1 - z0, z0, z1, ok: missing === 0 };
+  }
+
+  /**
+   * Auslegung einer Schlauchleitung (B) von Entnahmestelle s zum Becken b für den Durchfluss qWanted.
+   * Druckbedarf = Reibung (k x (Q/800)² je 100 m) x Länge + Höhe (höchster Punkt über der Entnahme) x 0,1 bar/m.
+   * Je Pumpe nutzbar: Ausgangsdruck - Mindesteingangsdruck. pumpsAvail begrenzt die Pumpenzahl (sonst Q reduziert).
+   */
+  function hoseDesign(s, b, terrain, W, qWanted, pumpsAvail) {
+    const S = W.schlauch;
+    const pf = hoseProfile(s, b, terrain, W);
+    const L = pf.luft * S.umwegFaktor;
+    const usable = S.pumpenAusgangBar - S.eingangMinBar;
+    const hBar = Math.max(0, pf.dhMax) * S.barJeMeterHoehe;
+    const loss = (q) => S.reibungBarJe100mBei800 * (q / 800) ** 2 * (L / 100);
+    let q = qWanted;
+    let pumps = Math.max(1, Math.ceil((loss(q) + hBar) / usable - 1e-9));
+    let reduced = false;
+    const maxP = pumpsAvail === undefined ? Infinity : pumpsAvail;
+    if (pumps > maxP) {
+      reduced = true;
+      pumps = maxP;
+      const head = pumps * usable - hBar;
+      q = head > 0 ? 800 * Math.sqrt(head / (S.reibungBarJe100mBei800 * (L / 100))) : 0;
+      q = Math.min(q, qWanted);
+    }
+    const setupMin = S.aufbauGrundMin + (S.aufbauMinJe100m * L) / 100;
+    // Pumpenstandorte: gleichmäßig entlang der Leitung (Näherung bei gleichmäßigem Druckverlust)
+    const pumpPos = Array.from({ length: pumps }, (_, k) => lerpLL(s, b, k / pumps));
+    return {
+      lengthM: L, luftM: pf.luft, dhMaxM: pf.dhMax, dhEndM: pf.dhEnd, terrainOk: pf.ok, flowLpm: Math.max(0, q), wantedLpm: qWanted,
+      pumps, boosters: pumps - 1, lossBar: loss(Math.max(q, 1)), heightBar: hBar, usableBar: usable, setupMin, reduced, pumpPos,
+      feasible: q >= 100,
+    };
+  }
+
+  // ------------------------------------------------------------------ Becken: Standortwahl
+  function siteSafety(lat, lon, hazard, W, horizonMin, latestStart) {
+    if (!hazard || typeof hazard.possibleMinAt !== "function") return { level: 0, text: "keine Prognose: Sicherheit nicht geprüft", untilMin: null };
+    const B = W.becken;
+    const pts = [{ lat, lon }];
+    const pr = makeProj(lat, lon);
+    for (let k = 0; k < 8; k++) { const a = (k * Math.PI) / 4; const [la, lo] = pr.toLL(Math.cos(a) * B.sicherheitM, Math.sin(a) * B.sicherheitM); pts.push({ lat: la, lon: lo }); }
+    let tmin = Infinity;
+    for (const p of pts) tmin = Math.min(tmin, hazard.possibleMinAt(p.lat, p.lon));
+    if (tmin > horizonMin) return { level: 1, text: `außerhalb der „möglich“-Zone bis Ende des Prognosezeitraums (${horizonMin / 60} h), Abstand ≥ ${B.sicherheitM} m`, untilMin: Infinity };
+    if (tmin >= latestStart + B.ersatzVorlaufMin) return { level: 2, text: `ACHTUNG: „möglich“-Zone erreicht den Standort (± ${B.sicherheitM} m) nach ca. ${Math.round(tmin)} min – nur bis dahin nutzbar, Räumung einplanen`, untilMin: tmin };
+    return { level: 3, text: `UNSICHER: „möglich“-Zone nach ca. ${Math.round(tmin)} min am Standort`, untilMin: tmin };
+  }
+
+  function clusterConsumers(cons, W) {
+    const n = cons.length, parent = cons.map((_, i) => i);
+    const find = (i) => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+    for (let i = 0; i < n; i++) for (let j = i + 1; j < n; j++) if (distM(cons[i], cons[j]) <= W.becken.clusterM) parent[find(j)] = find(i);
+    const groups = new Map();
+    cons.forEach((c, i) => { const r = find(i); if (!groups.has(r)) groups.set(r, []); groups.get(r).push(c); });
+    return [...groups.values()];
+  }
+
+  function autoBasins(cons, input, W, notes) {
+    const B = W.becken;
+    const center = input.hazard && input.hazard.center ? input.hazard.center : null;
+    const latestStart = Math.max(0, ...cons.map((c) => c.readyMin));
+    const basins = [];
+    clusterConsumers(cons, W).forEach((grp, gi) => {
+      const lat = grp.reduce((s, c) => s + c.lat, 0) / grp.length, lon = grp.reduce((s, c) => s + c.lon, 0) / grp.length;
+      const D = grp.reduce((s, c) => s + c.demandLpm, 0);
+      const extra = (input.basinExtra && input.basinExtra[gi + 1]) || 0;
+      const nB = Math.max(1, Math.min(B.maxJeGruppe, Math.ceil(D / B.bedarfJeBeckenLpm - 1e-9) + extra));
+      // Zielpunkt: vom Brand weg hinter den Abnehmern
+      const pr = makeProj(lat, lon);
+      let tx = 0, ty = 0;
+      if (center) { const [fx, fy] = pr.toXY(center.lat, center.lon); const d = Math.hypot(fx, fy) || 1; tx = (-fx / d) * B.abstandHinterAbnehmerM; ty = (-fy / d) * B.abstandHinterAbnehmerM; }
+      const [tLat, tLon] = pr.toLL(tx, ty);
+      const target = { lat: tLat, lon: tLon };
+      let cands = [];
+      if (input.roads) cands = input.roads.near(lat, lon, B.suchRadiusM).map(({ p }) => ({ lat: p.lat, lon: p.lon, kind: p.kind }));
+      if (!cands.length) { // ohne Wegenetz: Zielpunkt und Raster im Abstand versatzM (Befahrbarkeit nicht geprüft)
+        for (let dy = -2; dy <= 2; dy++) for (let dx = -2; dx <= 2; dx++) { const [la, lo] = pr.toLL(tx + dx * B.versatzM, ty + dy * B.versatzM); cands.push({ lat: la, lon: lo, kind: 0 }); }
+      }
+      const scored = cands.map((c, k) => {
+        const s = siteSafety(c.lat, c.lon, input.hazard, W, W.horizonMin, latestStart);
+        return { ...c, k, safety: s, score: distM(c, target) + (c.kind === 2 ? B.waldwegStrafM : 0) + (s.level === 2 ? 1e5 : s.level === 3 ? 1e7 : 0) };
+      }).sort((a, b) => a.score - b.score || a.k - b.k);
+      const chosen = [];
+      for (const c of scored) {
+        if (chosen.length >= nB) break;
+        if (chosen.some((x) => distM(x, c) < B.versatzM)) continue;
+        if (chosen.length && distM(chosen[0], c) > 150) continue; // Becken einer Gruppe nahe beieinander
+        chosen.push(c);
+      }
+      chosen.forEach((c, k) => basins.push({ id: `B${basins.length + 1}`, lat: c.lat, lon: c.lon, group: gi + 1, groupExtra: extra, manual: false, roadKind: c.kind, safety: c.safety, siteNote: c.kind === 0 ? "kein Wegenetz: Befahrbarkeit nicht geprüft" : c.kind === 2 ? "an Wald-/Wirtschaftsweg: Befahrbarkeit prüfen" : "an Straße (Daten ungeprüft)" }));
+      if (chosen.length < nB) notes.push(`Beckengruppe ${gi + 1}: nur ${chosen.length} statt ${nB} Standorte gefunden.`);
+    });
+    return basins;
+  }
+
+  // ------------------------------------------------------------------ Planung
+  function consumerDemand(c, W) {
+    if (num(c.demandLpm) !== null) return num(c.demandLpm);
+    const Bd = W.bedarf;
+    if (c.mode === "wenderohr") return Bd.wenderohrLpm * Bd.einsatzAnteil;
+    const k = c.kind === "Objektschutz" ? Bd.objektschutz : Bd.riegel;
+    return k.rohre * k.lpmJeRohr * Bd.einsatzAnteil;
+  }
+
+  function planSupply(input) {
+    const W = input.W;
+    const notes = [], warnings = [];
+    const consumers = (input.consumers || []).map((c, i) => ({
+      id: String(c.id ?? `A${i + 1}`), label: c.label || String(c.id), lat: Number(c.lat), lon: Number(c.lon), kind: c.kind || "Riegel", mode: c.mode || null,
+      readyMin: Math.max(0, num(c.readyMin) ?? 0), tankL: Math.max(0, num(c.tankL) ?? 0), demandLpm: consumerDemand(c, W),
+    }));
+    // Entnahmestellen
+    const allSources = (input.sources || []).filter((p) => !p.deleted).map((p) => classifySource(p, W));
+    const sources = allSources.filter((s) => s.usable);
+    for (const s of allSources) if (!s.usable) notes.push(`Entnahmestelle ${s.id} nicht berücksichtigt: ${s.why}.`);
+    // Fahrzeuge
+    const el = eligibleSupplyVehicles(input.vehicles, input.exclude, W);
+    const veh = el.eligible.map((v) => ({ v, id: String(v.id), cls: vehicleClass(v, W), pump: hasPump(v), anf: num(v.anfahrtMin) }));
+    // Becken
+    const manual = Array.isArray(input.basins);
+    const basins = manual
+      ? input.basins.map((b, i) => {
+        const latestStart = Math.max(0, ...consumers.map((c) => c.readyMin));
+        const near = input.roads ? input.roads.nearest(b.lat, b.lon, 50) : null;
+        return { id: String(b.id || `B${i + 1}`), lat: Number(b.lat), lon: Number(b.lon), group: null, manual: true, roadKind: near ? near.p.kind : 0, safety: siteSafety(b.lat, b.lon, input.hazard, W, W.horizonMin, latestStart), siteNote: input.roads ? (near ? (near.p.kind === 2 ? "manuell, an Wald-/Wirtschaftsweg" : "manuell, an Straße") : "manuell, KEIN befahrbarer Weg innerhalb 50 m") : "manuell, Befahrbarkeit nicht geprüft" };
+      })
+      : autoBasins(consumers, input, W, notes);
+    for (const b of basins) {
+      b.slowM = input.roads ? input.roads.slowDistM(b.lat, b.lon) : 0;
+      b.consumerIds = []; b.demandLpm = 0; b.reserve = false;
+      if (b.safety && b.safety.level >= 2) warnings.push(`Becken ${b.id}: ${b.safety.text}.`);
+    }
+    for (const s of sources) s.slowM = input.roads ? input.roads.slowDistM(s.lat, s.lon) : 0;
+    // Abnehmer -> nächstes Becken (bei gleich nahen Becken das mit dem geringsten Bedarf)
+    for (const c of consumers) {
+      if (!basins.length) { c.basinId = null; continue; }
+      const ds = basins.map((b) => distM(b, c));
+      const dmin = Math.min(...ds);
+      let best = null;
+      basins.forEach((b, k) => { if (ds[k] <= dmin + 30 && (!best || b.demandLpm < best.demandLpm)) best = b; });
+      c.basinId = best.id; c.basinDistM = distM(best, c);
+      best.consumerIds.push(c.id); best.demandLpm += c.demandLpm;
+      if (c.basinDistM > W.bedarf.maxAbstandBeckenM) warnings.push(`${c.label}: Becken ${best.id} ist ${Math.round(c.basinDistM)} m entfernt (> ${W.bedarf.maxAbstandBeckenM} m, Annahme).`);
+    }
+    if (!basins.length && consumers.length) warnings.push("Kein Becken: Abnehmer nur aus dem eigenen Tank.");
+
+    // ---------------- Versorgungsart je Becken: Schlauchleitung bis maxSchlauchwegM, sonst Pendelverkehr
+    const used = new Set();
+    const pumpPool = veh.filter((x) => x.pump && x.cls.stufe >= 2).sort((a, b) => b.cls.stufe - a.cls.stufe || a.anf - b.anf || (a.id < b.id ? -1 : 1));
+    const takePump = () => { const x = pumpPool.find((p) => !used.has(p.id)); if (x) used.add(x.id); return x || null; };
+    const roles = new Map(); // id -> {role, basinId, at}
+    const sortedBasins = [...basins].sort((a, b) => b.demandLpm - a.demandLpm || (a.id < b.id ? -1 : 1));
+    const hoseUseAtSource = new Map();
+    for (const b of sortedBasins) {
+      b.supply = { kind: "pendel", hose: null, sourceId: null };
+      // Becken ohne zugeordneten Abnehmer: Die Dimensionierungsregel (Bedarf / bedarfJeBeckenLpm) kann mehr
+      // Becken erzeugen, als die Zuordnung "Abnehmer -> nächstes Becken" nutzt. Solche Becken werden NICHT
+      // stillschweigend eingeplant, sondern als Reservestandort gekennzeichnet (kein Bedarf, keine Versorgung,
+      // keine Pendelfahrzeuge). Ob sie aufgebaut werden, entscheidet die Einsatzleitung (siehe ASSUMPTIONS).
+      if (!b.demandLpm) { b.supply.kind = "keine"; b.reserve = true; continue; }
+      const cands = sources.map((s) => ({ s, L: distM(s, b) * W.schlauch.umwegFaktor })).filter((x) => x.L <= W.schlauch.maxSchlauchwegM)
+        .map((x) => {
+          const capFree = (x.s.capLpm ?? Infinity) - (hoseUseAtSource.get(x.s.id) || 0);
+          const pumpCap = 2000; // grobe Obergrenze; Fahrzeugpumpe wird unten berücksichtigt
+          const qWanted = Math.min(capFree, W.schlauch.maxLeitungLpm, pumpCap, Math.max(400, Math.ceil(b.demandLpm * W.schlauch.bedarfsReserve)));
+          return { ...x, qWanted, pref: (x.s.status === "unsicher" ? 1 : 0) + (x.s.typ === "behaelter" ? 0.5 : 0) };
+        })
+        .filter((x) => x.qWanted >= 100)
+        .sort((a, b2) => a.pref - b2.pref || b2.qWanted - a.qWanted || a.L - b2.L || (a.s.id < b2.s.id ? -1 : 1));
+      if (!cands.length) continue;
+      const c = cands[0];
+      const freePumps = pumpPool.filter((p) => !used.has(p.id)).length;
+      if (!freePumps) { warnings.push(`Becken ${b.id}: Entnahmestelle ${c.s.label} (${Math.round(c.L)} m Schlauchweg) in Reichweite, aber kein Fahrzeug mit Pumpe frei – Pendelverkehr.`); continue; }
+      let h = hoseDesign(c.s, b, input.terrain, W, c.qWanted, freePumps);
+      if (!h.feasible) { warnings.push(`Becken ${b.id}: Förderstrecke von ${c.s.label} nicht möglich (Höhe ${Math.round(h.dhMaxM)} m, Pumpen ${freePumps}) – Pendelverkehr.`); continue; }
+      const pumps = [];
+      for (let k = 0; k < h.pumps; k++) pumps.push(takePump());
+      // Fahrzeugpumpe begrenzt den Förderstrom
+      const pmin = Math.min(...pumps.map((p) => num(p.v.pumpe_lpm)));
+      if (pmin < h.flowLpm) h = Object.assign(h, { flowLpm: pmin, pumpLimited: true });
+      pumps.forEach((p, k) => roles.set(p.id, { role: k === 0 ? "pumpe" : "verstaerker", basinId: b.id, sourceId: c.s.id, at: h.pumpPos[k] }));
+      b.supply = { kind: "schlauch", sourceId: c.s.id, hose: h, pumpIds: pumps.map((p) => p.id) };
+      hoseUseAtSource.set(c.s.id, (hoseUseAtSource.get(c.s.id) || 0) + h.flowLpm);
+      if (!h.terrainOk) notes.push(`Becken ${b.id}: Höhenunterschied der Förderstrecke ohne vollständiges DGM nicht geprüft.`);
+      if (h.reduced) warnings.push(`Becken ${b.id}: Förderstrecke liefert nur ca. ${Math.round(h.flowLpm)} l/min (zu wenige Pumpen für ${Math.round(h.wantedLpm)} l/min).`);
+    }
+    const reserveBasins = basins.filter((b) => b.reserve);
+    if (reserveBasins.length) notes.push(`${reserveBasins.length} Becken ohne Abnehmer (${reserveBasins.map((b) => b.id).join(", ")}): als Reservestandort gekennzeichnet, nicht eingeplant (keine Versorgung, keine Pendelfahrzeuge). Die Dimensionierung je Beckengruppe (Bedarf / ${W.becken.bedarfJeBeckenLpm} l/min, Annahme) kann mehr Becken erzeugen, als die Zuordnung der Abnehmer nutzt. Aufbau entscheidet die Einsatzleitung.`);
+    for (const b of basins) {
+      const q = b.supply.kind === "schlauch" ? b.supply.hose.flowLpm : 0;
+      b.shuttleTarget = b.supply.kind !== "keine" && q < b.demandLpm - 1e-9;
+      b.shuttleNeedLpm = b.shuttleTarget ? b.demandLpm - q : 0;
+      if (b.supply.kind === "schlauch" && b.shuttleTarget) b.supply.kind = "schlauch+pendel";
+    }
+
+    // ---------------- Pendelfahrzeuge: Großtanker zuerst, dann TLF, dann sonstige; innerhalb nach Lieferrate
+    const targets = basins.filter((b) => b.shuttleTarget);
+    const need = targets.reduce((s, b) => s + b.shuttleNeedLpm, 0) * W.pendel.reserveFaktor;
+    const main = targets.slice().sort((a, b) => b.shuttleNeedLpm - a.shuttleNeedLpm)[0] || null;
+    const est = (x) => {
+      if (!main) return null;
+      let best = null;
+      for (const s of sources) {
+        if (distM(s, main) > W.quellen.maxPendelM) continue;
+        const c = cycle(x.v, s, main, W);
+        if (c.ok && (!best || c.lpm > best.lpm)) best = { ...c, sourceId: s.id, sourceLabel: s.label };
+      }
+      return best;
+    };
+    const cand = veh.filter((x) => !used.has(x.id)).map((x) => ({ ...x, est: est(x) })).filter((x) => x.est);
+    cand.sort((a, b) => a.cls.stufe - b.cls.stufe || b.est.lpm - a.est.lpm || a.anf - b.anf || (a.id < b.id ? -1 : 1));
+    let sum = 0, nSh = 0;
+    const extra = input.extraShuttle || 0;
+    let extraLeft = extra;
+    for (const x of cand) {
+      if (!targets.length) break;
+      if (sum >= need && extraLeft <= 0) break;
+      if (sum >= need) extraLeft--;
+      used.add(x.id); sum += x.est.lpm; nSh++;
+      roles.set(x.id, { role: "pendel", est: x.est });
+    }
+    if (targets.length && !sources.length) warnings.push("Keine Entnahmestelle in den Daten: Pendelverkehr nicht möglich.");
+    else if (targets.length && sum < need / W.pendel.reserveFaktor) warnings.push(`Pendelverkehr: geschätzte Lieferung ${Math.round(sum)} l/min < Bedarf ${Math.round(need / W.pendel.reserveFaktor)} l/min (zu wenige geeignete Fahrzeuge).`);
+
+    const vehicles = veh.map((x) => {
+      const r = roles.get(x.id) || { role: "reserve" };
+      const cyc = r.role === "pendel" ? r.est : null;
+      return {
+        id: x.id, label: x.v.bezeichnung || x.v.typ || x.id, typ: x.v.typ, kommune: x.v.kommune || null, tankL: num(x.v.tank_l), pumpLpm: num(x.v.pumpe_lpm),
+        cls: x.cls, anfahrtMin: x.anf, origin: num(x.v.originLat) !== null && num(x.v.originLon) !== null ? { lat: num(x.v.originLat), lon: num(x.v.originLon) } : null,
+        role: r.role, basinId: r.basinId || null, sourceId: r.sourceId || null, at: r.at || null, estimate: cyc,
+        annahmen: x.v.annahmen || [], anfahrtText: x.v.anfahrtText || null,
+      };
+    });
+    const order = { pumpe: 0, verstaerker: 1, pendel: 2, reserve: 3 };
+    vehicles.sort((a, b) => order[a.role] - order[b.role] || a.cls.stufe - b.cls.stufe || a.anfahrtMin - b.anfahrtMin || (a.id < b.id ? -1 : 1));
+    return {
+      version: W.version, W, consumers, basins, sources, sourcesRejected: allSources.filter((s) => !s.usable), vehicles, excluded: el.excluded,
+      notes, warnings, manualBasins: manual, shuttleNeedLpm: need / W.pendel.reserveFaktor, shuttleEstLpm: sum, extraShuttle: extra,
+      reserveCount: vehicles.filter((v) => v.role === "reserve").length,
+    };
+  }
+
+  // ------------------------------------------------------------------ Simulation
+  function simulate(plan) {
+    const W = plan.W, dt = W.dtMin, T = W.horizonMin, N = Math.round(T / dt);
+    const B = plan.basins.map((b) => ({
+      b, level: 0, cap: W.becken.volumenL, readyMin: Infinity, active: [], queue: [], committed: 0,
+      s_level: new Float64Array(N + 1), s_in: new Float64Array(N), s_inHose: new Float64Array(N), s_out: new Float64Array(N), s_dem: new Float64Array(N),
+      firstFill: null, firstEmpty: null, waitMin: 0, throttledL: 0,
+    }));
+    const bIdx = new Map(B.map((x, i) => [x.b.id, i]));
+    const Sx = plan.sources.map((s) => ({
+      s, vol: s.volumeL, fillers: [], queue: [], pending: 0, hoseLpm: 0, usedL: 0, busyMin: 0, waitMin: 0, fills: 0, maxQueue: 0, firstUse: null, depletedAt: null, capStep: 0,
+    }));
+    const sIdx = new Map(Sx.map((x, i) => [x.s.id, i]));
+    const C = plan.consumers.map((c) => ({ c, tank: c.tankL, bi: c.basinId !== null && c.basinId !== undefined ? bIdx.get(c.basinId) : -1, servedL: 0, fromBasinL: 0, fromTankL: 0, unmetL: 0, firstDry: null, s_unmet: new Float64Array(N) }));
+    const hoses = [];
+    // Bereitschaft der Becken: erstes Eintreffen eines zugeordneten Versorgungsfahrzeugs + Aufbau
+    const vehById = new Map(plan.vehicles.map((v) => [v.id, v]));
+    for (const x of B) {
+      const sup = x.b.supply || { kind: "keine" };
+      if (sup.pumpIds && sup.pumpIds.length) {
+        const arr = Math.max(...sup.pumpIds.map((id) => vehById.get(id).anfahrtMin));
+        const h = sup.hose;
+        hoses.push({ bi: bIdx.get(x.b.id), si: sIdx.get(sup.sourceId), q: h.flowLpm, start: arr + h.setupMin });
+        x.readyMin = Math.min(x.readyMin, Math.min(...sup.pumpIds.map((id) => vehById.get(id).anfahrtMin)) + W.becken.aufbauMin);
+      }
+    }
+    for (const h of hoses) Sx[h.si].hoseLpm += h.q;
+    const shuttleTargets = B.map((x, i) => i).filter((i) => B[i].b.shuttleTarget);
+    const shuttle = plan.vehicles.filter((v) => v.role === "pendel");
+    const firstShuttle = shuttle.length ? Math.min(...shuttle.map((v) => v.anfahrtMin)) : Infinity;
+    for (const i of shuttleTargets) B[i].readyMin = Math.min(B[i].readyMin, firstShuttle + W.becken.aufbauMin);
+
+    // Fahrzeuge
+    const V = plan.vehicles.map((v, idx) => {
+      const o = {
+        v, idx, state: "reserve", timer: 0, timerTotal: 0, from: null, to: null, pos: null, load: 0, ruest: 0, stuck: 0,
+        target: null, // {t: "s"|"b", i}
+        s_state: new Uint8Array(N + 1), s_lat: new Float64Array(N + 1).fill(NaN), s_lon: new Float64Array(N + 1).fill(NaN), s_load: new Float64Array(N + 1),
+        stateMin: Object.fromEntries(STATES.map((s) => [s, 0])), deliveredL: 0, cycles: 0, waitSrcMin: 0, waitBasinMin: 0, alloc: 0, flowState: null,
+        unloadRate: unloadRate({ pumpe_lpm: v.pumpLpm }, W),
+      };
+      return o;
+    });
+    const vehPlace = (x) => (x.target && x.target.t === "s" ? Sx[x.target.i].s : x.target && x.target.t === "b" ? B[x.target.i].b : null);
+    const fr = (x, si) => fillRate({ pumpe_lpm: x.v.pumpLpm }, Sx[si].s, W);
+    const availCapLpm = (si) => (Sx[si].s.capLpm === null ? Infinity : Math.max(0, Sx[si].s.capLpm - Sx[si].hoseLpm));
+
+    function demandAt(bi, t) { let d = 0; for (const c of C) if (c.bi === bi && t >= c.c.readyMin) d += c.c.demandLpm; return d; }
+    function hoseQ(bi, t) { let q = 0; for (const h of hoses) if (h.bi === bi && t >= h.start) q += h.q; return q; }
+
+    function chooseBasin(x, from, t) {
+      let best = -1, bestScore = Infinity;
+      for (const i of shuttleTargets) {
+        const travel = driveMin(from, B[i].b, W);
+        const ta = t + travel;
+        const net = demandAt(i, ta) - hoseQ(i, ta);
+        const proj = B[i].level + B[i].committed - Math.max(0, net) * travel;
+        const score = proj + travel * 10; // Liter; Fahrzeit leicht gewichtet
+        if (score < bestScore - 1e-9) { bestScore = score; best = i; }
+      }
+      return best;
+    }
+    function chooseSource(x, from, t) {
+      let best = -1, bestScore = Infinity;
+      const refB = shuttleTargets.length ? B[shuttleTargets[0]].b : from;
+      for (let si = 0; si < Sx.length; si++) {
+        const S = Sx[si];
+        if (S.vol <= 1) continue;
+        const rate = Math.min(fr(x, si), availCapLpm(si));
+        if (!(rate > 0)) continue;
+        if (distM(S.s, refB) > W.quellen.maxPendelM) continue;
+        const toS = driveMin(from, S.s, W);
+        const wait = S.pending / Math.max(1, S.s.maxConcurrent);
+        const fillMin = S.s.ruestMin + (x.v.tankL - x.load) / rate;
+        let back = Infinity;
+        for (const i of shuttleTargets) back = Math.min(back, driveMin(S.s, B[i].b, W));
+        if (!Number.isFinite(back)) back = 0;
+        const pen = S.s.status === "unsicher" ? W.quellen.offen.unsicherStrafMin : 0;
+        const score = toS + Math.max(0, wait - toS) + fillMin + back + pen;
+        if (score < bestScore - 1e-9) { bestScore = score; best = si; }
+      }
+      return best;
+    }
+    function expFill(x, si) { const rate = Math.min(fr(x, si), availCapLpm(si)) || 1; return Sx[si].s.ruestMin + (x.v.tankL - x.load) / rate; }
+
+    function startDrive(x, from, to, state, total) {
+      x.state = state; x.from = { lat: from.lat, lon: from.lon }; x.to = { lat: to.lat, lon: to.lon };
+      x.timer = total; x.timerTotal = total;
+    }
+    function goToSource(x, from, t) {
+      const si = chooseSource(x, from, t);
+      if (si < 0) { x.state = "warten_becken"; x.target = null; x.idle = true; return; }
+      x.target = { t: "s", i: si }; x.pendingAdd = expFill(x, si); Sx[si].pending += x.pendingAdd;
+      startDrive(x, from, Sx[si].s, "rueckfahrt", driveMin(from, Sx[si].s, W));
+    }
+    function goToBasin(x, from, t) {
+      const bi = chooseBasin(x, from, t);
+      if (bi < 0) { x.state = "warten_quelle"; x.idle = true; return; }
+      x.target = { t: "b", i: bi }; B[bi].committed += x.load;
+      startDrive(x, from, B[bi].b, "fahrt_beladen", driveMin(from, B[bi].b, W));
+    }
+    function arrive(x, t) {
+      const tg = x.target;
+      if (!tg) return;
+      if (tg.t === "b") {
+        const Bb = B[tg.i];
+        x.pos = { lat: Bb.b.lat, lon: Bb.b.lon };
+        if (Bb.active.length < W.becken.maxEntleerer && t >= Bb.readyMin) { Bb.active.push(x.idx); x.state = "entleeren"; x.ruest = W.pendel.entleerRuestMin; x.stuck = 0; }
+        else { Bb.queue.push(x.idx); x.state = "warten_becken"; }
+      } else {
+        const S = Sx[tg.i];
+        x.pos = { lat: S.s.lat, lon: S.s.lon };
+        if (S.fillers.length < S.s.maxConcurrent) { S.fillers.push(x.idx); x.state = "fuellen"; x.ruest = S.s.ruestMin; S.fills++; }
+        else { S.queue.push(x.idx); x.state = "warten_quelle"; }
+      }
+    }
+    // Startzustand
+    for (const x of V) {
+      const v = x.v;
+      if (v.role === "reserve") continue;
+      let dest;
+      if (v.role === "pumpe" || v.role === "verstaerker") dest = v.at;
+      else {
+        x.load = W.pendel.anfahrtVoll ? v.tankL : 0;
+        if (x.load > 0) {
+          const bi = chooseBasin(x, shuttleTargets.length ? B[shuttleTargets[0]].b : { lat: 0, lon: 0 }, v.anfahrtMin);
+          if (bi < 0) { x.state = "reserve"; continue; }
+          x.target = { t: "b", i: bi }; B[bi].committed += x.load; dest = B[bi].b;
+        } else {
+          const ref = shuttleTargets.length ? B[shuttleTargets[0]].b : null;
+          const si = ref ? chooseSource(x, ref, v.anfahrtMin) : -1;
+          if (si < 0) { x.state = "reserve"; continue; }
+          x.target = { t: "s", i: si }; x.pendingAdd = expFill(x, si); Sx[si].pending += x.pendingAdd; dest = Sx[si].s;
+        }
+      }
+      startDrive(x, v.origin || dest, dest, "anfahrt", v.anfahrtMin);
+      x.hidden = !v.origin;
+    }
+
+    const record = (k) => {
+      for (const x of B) x.s_level[k] = x.level;
+      for (const x of V) {
+        let st = x.state;
+        if (st === "entleeren" && x.flowState === "voll") st = "warten_becken";
+        x.s_state[k] = SI[st];
+        let p = null;
+        if (x.state === "reserve") p = null;
+        else if (x.from && x.to && (x.state === "anfahrt" || x.state === "rueckfahrt" || x.state === "fahrt_beladen")) {
+          if (x.state === "anfahrt" && x.hidden) p = null;
+          else p = lerpLL(x.from, x.to, x.timerTotal > 0 ? 1 - x.timer / x.timerTotal : 1);
+        } else p = x.pos;
+        if (p) { x.s_lat[k] = p.lat; x.s_lon[k] = p.lon; }
+        x.s_load[k] = x.load;
+      }
+    };
+    record(0);
+
+    for (let k = 0; k < N; k++) {
+      const t = k * dt;
+      // 1) Warteschlangen nachrücken
+      for (const Bb of B) {
+        if (t < Bb.readyMin) continue;
+        while (Bb.active.length < W.becken.maxEntleerer && Bb.queue.length) {
+          const x = V[Bb.queue.shift()]; Bb.active.push(x.idx); x.state = "entleeren"; x.ruest = W.pendel.entleerRuestMin; x.stuck = 0;
+        }
+      }
+      for (const S of Sx) {
+        while (S.fillers.length < S.s.maxConcurrent && S.queue.length && S.vol > 1) {
+          const x = V[S.queue.shift()]; S.fillers.push(x.idx); x.state = "fuellen"; x.ruest = S.s.ruestMin; S.fills++;
+        }
+        S.maxQueue = Math.max(S.maxQueue, S.queue.length);
+      }
+      // 2) Abnehmer: Becken anteilig, Rest aus eigenem Tank; Nachfüllen des Tanks bei vollem Becken
+      const needB = new Float64Array(B.length);
+      for (const c of C) if (t >= c.c.readyMin && c.bi >= 0) needB[c.bi] += c.c.demandLpm * dt;
+      const fracB = B.map((Bb, i) => (needB[i] > 0 && t >= Bb.readyMin ? Math.min(1, Bb.level / needB[i]) : 0));
+      for (const c of C) {
+        if (t < c.c.readyMin) continue;
+        const need = c.c.demandLpm * dt;
+        let fromB = 0;
+        if (c.bi >= 0) { fromB = need * fracB[c.bi]; B[c.bi].level -= fromB; B[c.bi].s_out[k] += fromB / dt; B[c.bi].s_dem[k] += c.c.demandLpm; }
+        const fromT = Math.min(need - fromB, c.tank);
+        c.tank -= fromT;
+        const unmet = need - fromB - fromT;
+        c.fromBasinL += fromB; c.fromTankL += fromT; c.servedL += fromB + fromT; c.unmetL += unmet; c.s_unmet[k] = unmet / dt;
+        if (unmet > 1e-6 && c.firstDry === null) c.firstDry = t;
+      }
+      for (const c of C) {
+        if (c.bi < 0 || t < c.c.readyMin) continue;
+        const Bb = B[c.bi];
+        if (t < Bb.readyMin || Bb.level < Bb.cap * W.bedarf.tankNachfuellAbFuellstand) continue;
+        const r = Math.min(W.bedarf.tankNachfuellLpm * dt, c.c.tankL - c.tank, Bb.level - Bb.cap * W.bedarf.tankNachfuellAbFuellstand);
+        if (r > 0) { c.tank += r; Bb.level -= r; Bb.s_out[k] += r / dt; }
+      }
+      for (const Bb of B) if (Bb.level < 1e-9) Bb.level = 0;
+      // 3) Förderstrecken (Vorrang an der Entnahmestelle)
+      for (const S of Sx) S.capStep = S.s.capLpm === null ? Infinity : S.s.capLpm * dt;
+      for (const h of hoses) {
+        if (t < h.start) continue;
+        const Bb = B[h.bi], S = Sx[h.si];
+        const space = Bb.cap - Bb.level;
+        const want = h.q * dt;
+        const q = Math.max(0, Math.min(want, space, S.capStep, S.vol));
+        Bb.throttledL += want - q;
+        Bb.level += q; Bb.s_in[k] += q / dt; Bb.s_inHose[k] += q / dt;
+        S.capStep -= q; S.vol -= q; S.usedL += q;
+        if (q > 0 && S.firstUse === null) S.firstUse = t;
+      }
+      // 4) Zuteilung der Entnahmeleistung an füllende Fahrzeuge (FIFO)
+      for (const S of Sx) {
+        let rem = S.capStep;
+        for (const xi of S.fillers) {
+          const x = V[xi];
+          const tl = Math.max(0, dt - x.ruest);
+          const want = Math.min(fr(x, sIdx.get(S.s.id)) * tl, x.v.tankL - x.load);
+          const a = Math.max(0, Math.min(want, rem, S.vol));
+          x.alloc = a; rem -= a;
+        }
+      }
+      // 5) Fahrzeuge
+      for (const x of V) {
+        let budget = dt;
+        x.flowState = null;
+        let guard = 0;
+        while (budget > 1e-9 && guard++ < 20) {
+          const tNow = t + (dt - budget);
+          if (x.state === "reserve" || x.state === "pumpen") { break; }
+          if (x.idle) { // ohne Ziel: erneut versuchen
+            x.idle = false;
+            const here = x.pos || x.to;
+            if (x.load > 0.5 * x.v.tankL) goToBasin(x, here, tNow); else goToSource(x, here, tNow);
+            if (x.idle) { const ws = x.load > 0.5 * x.v.tankL ? "warten_becken" : "warten_quelle"; x.state = ws; x.stateMin[ws] += budget; budget = 0; break; }
+            continue;
+          }
+          if (x.state === "anfahrt" || x.state === "rueckfahrt" || x.state === "fahrt_beladen") {
+            const use = Math.min(budget, x.timer);
+            x.timer -= use; budget -= use; x.stateMin[x.state] += use;
+            if (x.timer <= 1e-9) {
+              x.hidden = false;
+              if (x.v.role === "pumpe" || x.v.role === "verstaerker") { x.state = "pumpen"; x.pos = { ...x.to }; x.stateMin.pumpen += budget; budget = 0; break; }
+              arrive(x, tNow + use);
+            }
+            continue;
+          }
+          if (x.state === "warten_quelle") { x.stateMin.warten_quelle += budget; x.waitSrcMin += budget; if (x.target && x.target.t === "s") Sx[x.target.i].waitMin += budget; budget = 0; break; }
+          if (x.state === "warten_becken") { x.stateMin.warten_becken += budget; x.waitBasinMin += budget; if (x.target && x.target.t === "b") B[x.target.i].waitMin += budget; budget = 0; break; }
+          if (x.state === "fuellen") {
+            const si = x.target.i, S = Sx[si];
+            if (x.ruest > 1e-9) { const use = Math.min(budget, x.ruest); x.ruest -= use; budget -= use; x.stateMin.fuellen += use; continue; }
+            const rate = fr(x, si);
+            const want = Math.min(rate * budget, x.v.tankL - x.load);
+            const a = Math.max(0, Math.min(want, x.alloc, S.vol));
+            x.alloc -= a; x.load += a; S.vol -= a; S.usedL += a;
+            if (a > 0 && S.firstUse === null) S.firstUse = tNow;
+            if (S.vol <= 1 && S.depletedAt === null) S.depletedAt = tNow;
+            const full = x.v.tankL - x.load < 1e-6;
+            const timeUsed = full ? Math.min(budget, a / rate) : budget;
+            budget -= timeUsed; x.stateMin.fuellen += timeUsed;
+            if (full || (S.vol <= 1)) {
+              S.fillers = S.fillers.filter((i) => i !== x.idx); S.pending = Math.max(0, S.pending - (x.pendingAdd || 0)); x.pendingAdd = 0;
+              if (x.load >= 0.3 * x.v.tankL) goToBasin(x, S.s, t + (dt - budget));
+              else goToSource(x, S.s, t + (dt - budget));
+            }
+            continue;
+          }
+          if (x.state === "entleeren") {
+            const bi = x.target.i, Bb = B[bi];
+            if (x.ruest > 1e-9) { const use = Math.min(budget, x.ruest); x.ruest -= use; budget -= use; x.stateMin.entleeren += use; continue; }
+            const possible = x.unloadRate * budget;
+            const space = Math.max(0, Bb.cap - Bb.level);
+            const a = Math.min(possible, x.load, space);
+            x.load -= a; Bb.level += a; Bb.committed -= a; Bb.s_in[k] += a / dt; x.deliveredL += a;
+            if (Bb.firstFill === null && a > 0) Bb.firstFill = t;
+            if (x.load < 1e-6) {
+              const timeUsed = Math.min(budget, a / x.unloadRate);
+              budget -= timeUsed; x.stateMin.entleeren += timeUsed; x.load = 0; x.cycles++;
+              Bb.committed = Math.max(0, Bb.committed);
+              Bb.active = Bb.active.filter((i) => i !== x.idx);
+              goToSource(x, Bb.b, t + (dt - budget));
+              continue;
+            }
+            // Becken voll: warten (gedrosselt) oder zu einem anderen Becken mit Platz
+            const frac = possible > 0 ? 1 - a / possible : 1;
+            x.stuck += budget * frac;
+            x.stateMin[frac > 0.5 ? "warten_becken" : "entleeren"] += budget; if (frac > 0.5) { x.flowState = "voll"; x.waitBasinMin += budget * frac; Bb.waitMin += budget * frac; }
+            budget = 0;
+            if (x.stuck >= W.pendel.beckenwechselNachMin) {
+              const alt = shuttleTargets.filter((i) => i !== bi && B[i].cap - B[i].level - B[i].committed >= Math.min(x.load, 2000) && t >= B[i].readyMin)
+                .sort((i, j) => driveMin(Bb.b, B[i].b, W) - driveMin(Bb.b, B[j].b, W) || i - j)[0];
+              if (alt !== undefined) {
+                Bb.active = Bb.active.filter((i) => i !== x.idx); Bb.committed = Math.max(0, Bb.committed - x.load);
+                x.target = { t: "b", i: alt }; B[alt].committed += x.load; x.stuck = 0;
+                startDrive(x, Bb.b, B[alt].b, "fahrt_beladen", driveMin(Bb.b, B[alt].b, W));
+              }
+            }
+            continue;
+          }
+          break;
+        }
+        if (x.state === "pumpen" && budget > 1e-9) x.stateMin.pumpen += budget;
+        if (x.state === "reserve") x.stateMin.reserve += dt;
+      }
+      // Belegung der Entnahmestellen
+      for (const S of Sx) {
+        if (S.fillers.length || hoses.some((h) => Sx[h.si] === S && t >= h.start)) S.busyMin += dt;
+      }
+      // Kennwerte Becken
+      for (const Bb of B) {
+        if (Bb.level > Bb.cap) Bb.level = Bb.cap; // numerische Sicherheit (Zuflüsse sind auf den freien Platz begrenzt)
+        if (Bb.firstFill === null && Bb.s_inHose[k] > 0) Bb.firstFill = t;
+        if (Bb.firstEmpty === null && Bb.firstFill !== null && t > Bb.firstFill && Bb.level <= 1 && needB[bIdx.get(Bb.b.id)] > 0) Bb.firstEmpty = t;
+      }
+      record(k + 1);
+    }
+
+    return finish(plan, { N, dt, T, B, Sx, C, V, hoses });
+  }
+
+  // ------------------------------------------------------------------ Kennzahlen und Engpassdiagnose
+  function finish(plan, st) {
+    const W = plan.W, { N, dt, T, B, Sx, C, V } = st;
+    const lastStart = Math.max(0, ...C.map((c) => c.c.readyMin));
+    const lastArr = Math.max(0, ...V.filter((x) => x.v.role !== "reserve").map((x) => x.v.anfahrtMin));
+    let w0 = Math.min(T - W.diagnose.fensterMinMin, Math.max(lastStart, lastArr));
+    w0 = Math.max(0, Math.floor(w0 / dt) * dt);
+    const k0 = Math.round(w0 / dt), nW = N - k0;
+    let dem = 0, inflow = 0, unmet = 0, out = 0;
+    for (const x of B) for (let k = k0; k < N; k++) { dem += x.s_dem[k]; inflow += x.s_in[k]; out += x.s_out[k]; }
+    for (const c of C) for (let k = k0; k < N; k++) unmet += c.s_unmet[k];
+    // Abnehmer ohne Becken zählen beim Bedarf mit
+    for (const c of C) if (c.bi < 0) for (let k = k0; k < N; k++) if (k * dt >= c.c.readyMin) dem += c.c.demandLpm;
+    const kpi = {
+      window: [w0, T], demandLpm: dem / nW, deliveredLpm: inflow / nW, outflowLpm: out / nW, unmetLpm: unmet / nW,
+      coveragePct: dem > 0 ? 100 * (1 - unmet / dem) : 100,
+      totalDemandL: C.reduce((s, c) => s + c.servedL + c.unmetL, 0), totalUnmetL: C.reduce((s, c) => s + c.unmetL, 0),
+      totalDeliveredL: B.reduce((s, x) => s + x.s_in.reduce((a, v) => a + v * dt, 0), 0),
+    };
+    const shuttleV = V.filter((x) => x.v.role === "pendel");
+    let shIn = 0;
+    for (const x of B) for (let k = k0; k < N; k++) shIn += x.s_in[k] - x.s_inHose[k];
+    const perTanker = shuttleV.length ? shIn / nW / shuttleV.length : null;
+    kpi.shuttleLpm = shIn / nW; kpi.perTankerLpm = perTanker;
+
+    const sources = Sx.map((S) => {
+      const active = S.firstUse === null ? 0 : T - S.firstUse;
+      const capL = S.s.capLpm === null ? null : S.s.capLpm * active;
+      return {
+        id: S.s.id, label: S.s.label, typ: S.s.typ, status: S.s.status, capLpm: S.s.capLpm, usedL: S.usedL, fills: S.fills, busyMin: S.busyMin,
+        utilization: active > 0 ? S.busyMin / active : 0, flowUtilization: capL ? S.usedL / capL : null, waitMin: S.waitMin,
+        meanWaitMin: S.fills ? S.waitMin / S.fills : 0, maxQueue: S.maxQueue, depletedAt: S.depletedAt, hoseLpm: S.hoseLpm, remainingL: S.vol,
+      };
+    });
+    const basins = B.map((x) => ({
+      id: x.b.id, readyMin: x.readyMin, level: x.s_level, inflow: x.s_in, inflowHose: x.s_inHose, outflow: x.s_out, demand: x.s_dem,
+      firstFillMin: x.firstFill, firstEmptyMin: x.firstEmpty, minLevel: Math.min(...x.s_level.slice(Math.max(1, x.firstFill ?? N))),
+      maxLevel: Math.max(...x.s_level), waitMin: x.waitMin, throttledL: x.throttledL, demandLpm: x.b.demandLpm,
+    }));
+    const vehicles = V.map((x) => ({
+      id: x.v.id, role: x.v.role, state: x.s_state, lat: x.s_lat, lon: x.s_lon, load: x.s_load, stateMin: x.stateMin, deliveredL: x.deliveredL,
+      cycles: x.cycles, waitSrcMin: x.waitSrcMin, waitBasinMin: x.waitBasinMin,
+    }));
+    const consumers = C.map((c) => ({ id: c.c.id, label: c.c.label, demandLpm: c.c.demandLpm, servedL: c.servedL, fromBasinL: c.fromBasinL, fromTankL: c.fromTankL, unmetL: c.unmetL, firstDryMin: c.firstDry, unmet: c.s_unmet }));
+
+    // ---------------- Engpasskennwerte Pendelverkehr: Anteil Wartezeit an der Einsatzzeit (nach Eintreffen)
+    let actMin = 0, wSrc = 0, wBas = 0;
+    for (const x of V) if (x.v.role === "pendel") { actMin += Math.max(0, T - x.v.anfahrtMin); wSrc += x.waitSrcMin; wBas += x.waitBasinMin; }
+    const shuttleStats = { n: shuttleV.length, activeMin: actMin, waitSrcShare: actMin ? wSrc / actMin : 0, waitBasinShare: actMin ? wBas / actMin : 0 };
+    kpi.waitSrcShare = shuttleStats.waitSrcShare; kpi.waitBasinShare = shuttleStats.waitBasinShare;
+
+    // ---------------- Diagnose
+    const D = [], G = W.diagnose;
+    const fmtT = (m) => `${Math.floor(m / 60)}:${String(Math.round(m % 60)).padStart(2, "0")} h`;
+    const pct = (v) => `${Math.round(v * 100)} %`;
+    const overloaded = sources.filter((s) => s.utilization >= G.quelleAuslastung && s.meanWaitMin > G.quelleWartenMin);
+    // Engpass: Wartezeit gesamt über der Schwelle; benannt wird jeder Anteil ab einem Drittel der Schwelle
+    const thr = G.wartenAnteilEngpass, wTot = shuttleStats.waitSrcShare + shuttleStats.waitBasinShare;
+    const srcBottleneck = overloaded.length > 0 || shuttleStats.waitSrcShare > thr || (wTot > thr && shuttleStats.waitSrcShare >= thr / 3);
+    const basinBottleneck = shuttleStats.waitBasinShare > thr || (wTot > thr && shuttleStats.waitBasinShare >= thr / 3);
+    for (const s of overloaded) D.push({ level: "warnung", code: "quelle_ueberlastet", sourceId: s.id, text: `${s.label} ${s.id} überlastet: ${pct(s.utilization)} belegt, mittlere Wartezeit ${r1(s.meanWaitMin)} min je Füllung (max. ${s.maxQueue} wartend). Weitere Entnahmestelle einplanen bzw. Ergiebigkeit prüfen.` });
+    if (!overloaded.length && srcBottleneck) {
+      const worst = sources.filter((s) => s.waitMin > 0).sort((a, b) => b.waitMin - a.waitMin)[0];
+      D.push({ level: "warnung", code: "quelle_engpass", sourceId: worst ? worst.id : null, text: `Engpass Entnahmestelle: Pendelfahrzeuge warten ${pct(shuttleStats.waitSrcShare)} ihrer Einsatzzeit an der Entnahmestelle${worst ? ` (v. a. ${worst.label} ${worst.id}: mittlere Wartezeit ${r1(worst.meanWaitMin)} min je Füllung, max. ${worst.maxQueue} wartend)` : ""}. Zweite Entnahmestelle bzw. zweiten Füllplatz einplanen.` });
+    }
+    if (basinBottleneck) D.push({ level: "warnung", code: "becken_engpass", text: `Engpass Becken: Pendelfahrzeuge warten ${pct(shuttleStats.waitBasinShare)} ihrer Einsatzzeit am vollen bzw. belegten Becken (Tankerinhalt größer als Beckenplatz, nur ${W.becken.maxEntleerer} Einspeisestelle je Becken). Weiteres Becken koppeln oder zweite Einspeisestelle.` });
+    for (const s of sources) if (s.depletedAt !== null) D.push({ level: "warnung", code: "quelle_leer", sourceId: s.id, text: `${s.label} ${s.id} nach ca. ${fmtT(s.depletedAt)} erschöpft (Volumen Annahme/OSM).` });
+    const deficit = kpi.unmetLpm;
+    const hasDeficit = deficit > Math.max(1, W.pendel.defizitSchwelle * kpi.demandLpm);
+    if (hasDeficit) {
+      const shuttleBasins = plan.basins.filter((b) => b.shuttleTarget).length;
+      if (shuttleBasins && !srcBottleneck && !basinBottleneck) {
+        let ref = perTanker;
+        let refTxt = "mittlere Lieferung je eingesetztem Pendelfahrzeug";
+        if (!(ref > 0)) {
+          const tb = plan.basins.find((b) => b.shuttleTarget);
+          let best = null;
+          for (const s of plan.sources) { const c = cycle({ tank_l: 4000, pumpe_lpm: 2000 }, s, tb, W); if (c.ok && (!best || c.lpm > best.lpm)) best = c; }
+          ref = best ? best.lpm : null; refTxt = "Referenz TLF 4000 (4.000 l, 2.000 l/min), Umlauf ohne Warten";
+        }
+        if (ref > 0) {
+          const X = Math.ceil(deficit / ref - 1e-9);
+          D.push({ level: "kritisch", code: "tanker_fehlen", count: X, text: `Defizit ca. ${Math.round(deficit)} l/min im eingeschwungenen Zustand (ab ${fmtT(w0)}): zusätzlich ca. ${X} Tanker nötig (${refTxt}: ${Math.round(ref)} l/min).${plan.reserveCount ? ` ${plan.reserveCount} weitere verfügbare Fahrzeuge sind nicht eingeplant (Nachplanung ausgeschöpft bzw. zu geringe Wirkung).` : " Keine weiteren geeigneten Fahrzeuge in der Liste."}` });
+        } else D.push({ level: "kritisch", code: "defizit", text: `Defizit ca. ${Math.round(deficit)} l/min: keine nutzbare Entnahmestelle für Pendelverkehr.` });
+      } else if (shuttleBasins) {
+        D.push({ level: "kritisch", code: "defizit_engpass", text: `Defizit ca. ${Math.round(deficit)} l/min im eingeschwungenen Zustand (ab ${fmtT(w0)}): Engpass ${[srcBottleneck ? "Entnahmestelle" : null, basinBottleneck ? "Becken" : null].filter(Boolean).join(" und ")}; zusätzliche Tanker helfen erst nach Beseitigung des Engpasses.` });
+      } else D.push({ level: "kritisch", code: "defizit", text: `Defizit ca. ${Math.round(deficit)} l/min ohne Pendelverkehr (Förderstrecke/Becken prüfen).` });
+    }
+    const tankersN = shuttleV.length;
+    for (const b of plan.basins) {
+      const r = basins.find((x) => x.id === b.id);
+      if (b.supply && b.supply.hose && b.supply.hose.flowLpm < b.demandLpm) D.push({ level: "warnung", code: "schlauch_zu_wenig", basinId: b.id, text: `Förderstrecke zu Becken ${b.id} liefert ${Math.round(b.supply.hose.flowLpm)} l/min < Bedarf ${Math.round(b.demandLpm)} l/min${b.supply.hose.reduced ? " (zu wenige Pumpen: Verstärkerpumpe ergänzen)" : ""}; Rest per Pendelverkehr.` });
+      if (b.supply && b.supply.hose && b.supply.hose.boosters > 0) D.push({ level: "info", code: "verstaerker", basinId: b.id, text: `Förderstrecke zu Becken ${b.id}: ${b.supply.hose.boosters} Verstärkerpumpe(n) nötig (${Math.round(b.supply.hose.lengthM)} m Schlauchweg, höchster Punkt +${Math.round(b.supply.hose.dhMaxM)} m, ${Math.round(b.supply.hose.flowLpm)} l/min).` });
+      if (r.firstEmptyMin !== null) D.push({ level: "warnung", code: "becken_leer", basinId: b.id, text: `Becken ${b.id} läuft erstmals nach ${fmtT(r.firstEmptyMin)} leer.` });
+      if (r.readyMin === Infinity && b.demandLpm > 0) D.push({ level: "kritisch", code: "becken_ohne_versorgung", basinId: b.id, text: `Becken ${b.id} ohne Versorgung (kein Fahrzeug bzw. keine Entnahmestelle).` });
+      if (tankersN && r.waitMin / tankersN > G.beckenWartenMin && !basinBottleneck) D.push({ level: "info", code: "becken_warten", basinId: b.id, text: `Am Becken ${b.id} warten Pendelfahrzeuge im Mittel ${Math.round(r.waitMin / tankersN)} min.` });
+    }
+    for (const c of consumers) if (c.firstDryMin !== null) D.push({ level: "warnung", code: "abnehmer_trocken", consumerId: c.id, text: `${c.label}: erste Unterversorgung nach ${fmtT(c.firstDryMin)} (ungedeckt gesamt ca. ${Math.round(c.unmetL / 100) * 100} l).` });
+    if (!D.some((d) => d.level === "kritisch")) D.unshift({ level: "ok", code: "gedeckt", text: `Bedarf im eingeschwungenen Zustand (ab ${fmtT(w0)}) zu ${Math.round(kpi.coveragePct)} % gedeckt (Simulation mit Annahmen).` });
+    const order = { kritisch: 0, warnung: 1, ok: 2, info: 3 };
+    D.sort((a, b) => order[a.level] - order[b.level]);
+    const bottleneck = { source: srcBottleneck, basin: basinBottleneck, deficit: hasDeficit };
+    return { N, dt, T, basins, vehicles, consumers, sources, kpi, diagnosis: D, bottleneck, shuttleStats, hoses: st.hoses };
+  }
+
+  /**
+   * Planung + Simulation mit Nachplanung "nach Bedarf" (deterministisch, max. pendel.maxIterationen Läufe):
+   *  1. Becken-Engpass (Pendelfahrzeuge warten am vollen Becken) und automatische Becken: ein Becken in der
+   *     Gruppe mit der größten Wartezeit ergänzen (bis becken.maxJeGruppe).
+   *  2. sonst Defizit ohne Engpass an der Entnahmestelle und Reserve vorhanden: weitere Pendelfahrzeuge.
+   * Vom Nutzer gesetzte Becken werden nie verändert.
+   */
+  function run(input) {
+    const W = input.W;
+    let extra = 0;
+    const basinExtra = {};
+    let plan = planSupply({ ...input, extraShuttle: 0, basinExtra }), sim = simulate(plan), it = 1;
+    const log = [];
+    while (it < W.pendel.maxIterationen) {
+      const bn = sim.bottleneck;
+      if (!bn.deficit && !bn.basin) break;
+      let changed = false;
+      if (bn.basin && !plan.manualBasins) {
+        // Gruppe mit der größten Wartezeit am Becken, die noch ein Becken aufnehmen kann
+        const groups = new Map();
+        for (const b of plan.basins) {
+          if (!b.shuttleTarget || !b.group) continue;
+          const r = sim.basins.find((x) => x.id === b.id);
+          const g = groups.get(b.group) || { wait: 0, n: 0 };
+          g.wait += r.waitMin; g.n++;
+          groups.set(b.group, g);
+        }
+        const cand = [...groups.entries()].filter(([, g]) => g.n < W.becken.maxJeGruppe).sort((a, b) => b[1].wait - a[1].wait || a[0] - b[0])[0];
+        if (cand) { basinExtra[cand[0]] = (basinExtra[cand[0]] || 0) + 1; changed = true; log.push(`Becken-Engpass: Gruppe ${cand[0]} +1 Becken`); }
+      }
+      if (!changed && bn.deficit && !bn.source && plan.reserveCount && plan.basins.some((b) => b.shuttleTarget)) {
+        const per = sim.kpi.perTankerLpm > 0 ? sim.kpi.perTankerLpm : 150;
+        extra += Math.max(1, Math.ceil(sim.kpi.unmetLpm / per - 1e-9));
+        changed = true; log.push(`Defizit: +${extra} Pendelfahrzeug(e) über der Schätzung`);
+      }
+      if (!changed) break;
+      const p2 = planSupply({ ...input, extraShuttle: extra, basinExtra: { ...basinExtra } });
+      const s2 = simulate(p2);
+      it++;
+      // nur übernehmen, wenn es besser wird (weniger Defizit oder gleich mit weniger Warten)
+      if (s2.kpi.unmetLpm <= sim.kpi.unmetLpm + 1e-6) { plan = p2; sim = s2; }
+      else { log.push("Nachplanung ohne Verbesserung verworfen"); break; }
+    }
+    return { plan, sim, iterations: it, log };
+  }
+
+  /** Zustand eines Fahrzeugs zur (gebrochenen) Zeit tMin, Position linear zwischen den Minutenwerten. */
+  function vehicleAt(sim, vi, tMin) {
+    const v = sim.vehicles[vi];
+    const f = Math.max(0, Math.min(sim.N, tMin / sim.dt));
+    const k0 = Math.floor(f), k1 = Math.min(sim.N, k0 + 1), a = f - k0;
+    const la0 = v.lat[k0], la1 = v.lat[k1], lo0 = v.lon[k0], lo1 = v.lon[k1];
+    let lat = la0, lon = lo0;
+    if (!Number.isNaN(la0) && !Number.isNaN(la1)) { lat = la0 + (la1 - la0) * a; lon = lo0 + (lo1 - lo0) * a; }
+    else if (Number.isNaN(la0)) { lat = NaN; lon = NaN; }
+    return { state: STATES[v.state[k0]], lat, lon, load: v.load[k0] + (v.load[k1] - v.load[k0]) * a };
+  }
+
+  /** Kompakte, JSON-taugliche Zusammenfassung für Protokoll und Export (ohne Zeitreihen). */
+  function summary(plan, sim) {
+    return {
+      version: plan.version, hinweis: plan.W.hinweis,
+      becken: plan.basins.map((b) => { const r = sim.basins.find((x) => x.id === b.id); return { id: b.id, lat: +b.lat.toFixed(6), lon: +b.lon.toFixed(6), manuell: b.manual, reservestandort: !!b.reserve, versorgung: b.supply.kind, entnahmestelle: b.supply.sourceId, schlauch_m: b.supply.hose ? Math.round(b.supply.hose.lengthM) : null, foerderstrom_lpm: b.supply.hose ? Math.round(b.supply.hose.flowLpm) : null, verstaerker: b.supply.hose ? b.supply.hose.boosters : null, bedarf_lpm: Math.round(b.demandLpm), erstes_leerlaufen_min: r.firstEmptyMin, sicherheit: b.safety ? b.safety.text : null }; }),
+      fahrzeuge: plan.vehicles.map((v) => ({ id: v.id, rolle: v.role, anfahrt_min: Math.round(v.anfahrtMin), umlauf_min: v.estimate ? r1(v.estimate.cycleMin) : null, geliefert_l: Math.round((sim.vehicles.find((x) => x.id === v.id) || {}).deliveredL || 0) })),
+      ausgeschlossen: plan.excluded,
+      kennzahlen: { fenster_min: sim.kpi.window, bedarf_lpm: Math.round(sim.kpi.demandLpm), lieferung_lpm: Math.round(sim.kpi.deliveredLpm), defizit_lpm: Math.round(sim.kpi.unmetLpm), deckung_pct: Math.round(sim.kpi.coveragePct), defizit_l: Math.round(sim.kpi.totalUnmetL) },
+      diagnose: sim.diagnosis.map((d) => d.text), warnungen: plan.warnings, hinweise: plan.notes,
+    };
+  }
+
+  const Water = {
+    STATES, STATE_LABEL, ROLE_LABEL, distM, makeProj, roadNet, classifySource, sourcesFromOsm, parseFlow, parseDiameter,
+    vehicleClass, hasPump, eligibleSupplyVehicles, fillRate, unloadRate, driveMin, cycle, hoseDesign, hoseProfile, siteSafety,
+    consumerDemand, planSupply, simulate, run, vehicleAt, summary,
+  };
+  root.Water = Water;
+  if (typeof module !== "undefined" && module.exports) module.exports = Water;
+})(typeof globalThis !== "undefined" ? globalThis : this);
+
+</script>
+<script>/* js/water-ui.js */
+/*
+ * Modul Wasserversorgung – Oberfläche (Leaflet-Ebenen, Zeitregler, Diagramme, Kennzahlen).
+ * Entwurf 0.1.0, passend zu js/water.js. Keine zusätzliche Abhängigkeit außer Leaflet (vendor/).
+ *
+ * SIMULATION MIT ANNAHMEN, KEINE EINSATZPLANUNG.
+ *
+ * Verwendung:
+ *   const ui = WaterUI.create({ map, L, W: PARAMS.wasser, panel: document.getElementById("wasser-panel") });
+ *   ui.setInput({ consumers, sources, vehicles, exclude, roads, terrain, hazard });  // rechnet sofort
+ *   ui.setTime(90); ui.play(); ui.pause();
+ *   ui.on("recompute", (res) => ...);   // res = {plan, sim, iterations, log}
+ *
+ * Die Ebenen liegen in ui.layers (sources, hoses, routes, basins, vehicles) und können einzeln in die
+ * Layer-Steuerung der App gehängt werden. Alle Zahlen stammen aus js/water.js bzw. PARAMS.wasser.
+ */
+(function (root) {
+  "use strict";
+  const Water = root.Water;
+
+  // ------------------------------------------------------------------ Hilfen
+  const esc = (s) => String(s === null || s === undefined ? "" : s).replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const r0 = (v) => Math.round(v);
+  const nf = (v, d) => (v === null || v === undefined || Number.isNaN(v) ? "–" : Number(v).toLocaleString("de-DE", { minimumFractionDigits: d || 0, maximumFractionDigits: d || 0 }));
+  /** Minuten -> "h:mm" */
+  function fmtTime(min) {
+    if (min === null || min === undefined || !isFinite(min)) return "–";
+    const m = Math.max(0, Math.round(min));
+    return `${Math.floor(m / 60)}:${String(m % 60).padStart(2, "0")} h`;
+  }
+  const css = (name, fallback) => {
+    try {
+      const v = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+      return v || fallback;
+    } catch { return fallback; }
+  };
+
+  const SRC_SYMBOL = { hydrant: "H", offen: "≈", behaelter: "T", unbekannt: "?" };
+  const SRC_TITLE = { hydrant: "Hydrant", offen: "offenes Gewässer / Saugstelle", behaelter: "Löschwasserbehälter/-teich", unbekannt: "Entnahmestelle, Typ offen" };
+  const STATE_CLASS = {
+    anfahrt: "s-fahrt", rueckfahrt: "s-fahrt", fahrt_beladen: "s-voll", fuellen: "s-fuellen",
+    entleeren: "s-entleeren", warten_quelle: "s-warten", warten_becken: "s-warten", pumpen: "s-pumpe", reserve: "s-reserve",
+  };
+
+  /**
+   * Tatsächlich gefahrene Pendelrouten aus der Simulation ableiten (Quelle -> Becken je Fahrzeug).
+   * Grundlage sind die Positionen in den Zuständen fuellen/entleeren; es gibt keine Routenplanung,
+   * die Linie ist die LUFTLINIE (Fahrweg = Luftlinie x Umwegfaktor, siehe water.js).
+   */
+  function routesFromSim(plan, sim) {
+    const near = (lat, lon, list) => {
+      let best = null;
+      for (const o of list) { const d = Water.distM({ lat, lon }, o); if (d < 30 && (!best || d < best.d)) best = { o, d }; }
+      return best ? best.o : null;
+    };
+    const map = new Map();
+    for (const v of sim.vehicles) {
+      if (v.role !== "pendel") continue;
+      let lastSrc = null, prev = null;
+      for (let k = 0; k <= sim.N; k++) {
+        const st = Water.STATES[v.state[k]];
+        if (st === prev) continue;
+        prev = st;
+        if (Number.isNaN(v.lat[k])) continue;
+        if (st === "fuellen") { const s = near(v.lat[k], v.lon[k], plan.sources); if (s) lastSrc = s; }
+        if (st === "entleeren" && lastSrc) {
+          const b = near(v.lat[k], v.lon[k], plan.basins);
+          if (b) {
+            const key = lastSrc.id + "\u0000" + b.id;
+            const e = map.get(key) || { source: lastSrc, basin: b, trips: 0, vehicles: new Set() };
+            e.trips++; e.vehicles.add(v.id); map.set(key, e);
+          }
+        }
+      }
+    }
+    return [...map.values()].sort((a, b) => b.trips - a.trips);
+  }
+
+  // ------------------------------------------------------------------ Diagramm (Canvas, ohne Bibliothek)
+  /**
+   * Zeitdiagramm je Becken: Füllstand (Fläche, linke Achse, l), Zufluss und Verbrauch (Linien, rechte
+   * Achse, l/min). Gezeichnet wird in einen Offscreen-Canvas; bei Zeitänderung wird nur der Cursor neu
+   * gesetzt (deshalb auch bei 60-facher Geschwindigkeit flüssig).
+   */
+  function makeChart(canvas, opt) {
+    const off = document.createElement("canvas");
+    let data = null, dpr = 1, W = 0, H = 0;
+    const PAD = { l: 48, r: 62, t: 10, b: 18 };
+
+    function layout() {
+      dpr = Math.min(2, root.devicePixelRatio || 1);
+      W = Math.max(240, canvas.clientWidth || 320);
+      H = opt && opt.height ? opt.height : 132;
+      canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+      canvas.style.height = H + "px";
+      off.width = canvas.width; off.height = canvas.height;
+    }
+    function drawStatic() {
+      layout();
+      const c = off.getContext("2d");
+      c.setTransform(dpr, 0, 0, dpr, 0, 0);
+      c.clearRect(0, 0, W, H);
+      if (!data) return;
+      const ink = css("--ink", "#111820"), muted = css("--muted", "#4a5662"), line = css("--line", "#c3ccd5");
+      const colLevel = css("--w-level", "#2b7cd3"), colIn = css("--w-in", "#1d6b3a"), colOut = css("--w-out", "#b3261e");
+      const x0 = PAD.l, x1 = W - PAD.r, y0 = PAD.t, y1 = H - PAD.b;
+      const T = data.T, cap = data.cap;
+      const fmax = Math.max(100, Math.ceil(Math.max(data.maxFlow, 1) / 100) * 100);
+      const X = (t) => x0 + ((x1 - x0) * t) / T;
+      const YL = (l) => y1 - ((y1 - y0) * Math.max(0, Math.min(cap, l))) / cap;
+      const YF = (q) => y1 - ((y1 - y0) * Math.max(0, Math.min(fmax, q))) / fmax;
+      // Raster: Stunden
+      c.strokeStyle = line; c.fillStyle = muted; c.lineWidth = 1; c.font = "11px system-ui, sans-serif"; c.textAlign = "center";
+      for (let h = 0; h <= T / 60; h++) {
+        const x = Math.round(X(h * 60)) + 0.5;
+        c.beginPath(); c.moveTo(x, y0); c.lineTo(x, y1); c.stroke();
+        c.fillText(h + " h", x, H - 5);
+      }
+      c.beginPath(); c.moveTo(x0, y1 + 0.5); c.lineTo(x1, y1 + 0.5); c.stroke();
+      // Füllstand als Fläche
+      c.beginPath(); c.moveTo(X(0), YL(data.level[0]));
+      for (let k = 1; k < data.level.length; k++) c.lineTo(X(k * data.dt), YL(data.level[k]));
+      c.lineTo(X((data.level.length - 1) * data.dt), y1); c.lineTo(X(0), y1); c.closePath();
+      c.fillStyle = colLevel + "33"; c.fill();
+      c.beginPath(); c.moveTo(X(0), YL(data.level[0]));
+      for (let k = 1; k < data.level.length; k++) c.lineTo(X(k * data.dt), YL(data.level[k]));
+      c.strokeStyle = colLevel; c.lineWidth = 2; c.stroke();
+      // Zufluss / Verbrauch (Treppe)
+      const step = (arr, col) => {
+        c.beginPath();
+        for (let k = 0; k < arr.length; k++) {
+          const xa = X(k * data.dt), xb = X((k + 1) * data.dt), y = YF(arr[k]);
+          if (k === 0) c.moveTo(xa, y); else c.lineTo(xa, y);
+          c.lineTo(xb, y);
+        }
+        c.strokeStyle = col; c.lineWidth = 1.6; c.stroke();
+      };
+      step(data.inflow, colIn);
+      step(data.outflow, colOut);
+      // Achsen
+      c.fillStyle = muted; c.textAlign = "right"; c.font = "11px system-ui, sans-serif";
+      c.fillText(nf(cap) + " l", x0 - 4, y0 + 9);
+      c.fillText("0", x0 - 4, y1);
+      c.textAlign = "left";
+      c.fillStyle = colIn;
+      c.fillText(nf(fmax) + " l/min", x1 + 4, y0 + 9);
+      c.fillStyle = ink;
+    }
+    function paint(tMin) {
+      const c = canvas.getContext("2d");
+      c.setTransform(1, 0, 0, 1, 0, 0);
+      c.clearRect(0, 0, canvas.width, canvas.height);
+      c.drawImage(off, 0, 0);
+      if (!data) return;
+      c.setTransform(dpr, 0, 0, dpr, 0, 0);
+      const x0 = PAD.l, x1 = W - PAD.r, y0 = PAD.t, y1 = H - PAD.b;
+      const x = Math.round(x0 + ((x1 - x0) * Math.max(0, Math.min(data.T, tMin))) / data.T) + 0.5;
+      c.strokeStyle = css("--w-cursor", "#b3261e"); c.lineWidth = 1.5;
+      c.beginPath(); c.moveTo(x, y0 - 2); c.lineTo(x, y1 + 2); c.stroke();
+      const k = Math.min(data.level.length - 1, Math.round(tMin / data.dt));
+      c.fillStyle = css("--surface", "#fff"); c.strokeStyle = css("--line", "#c3ccd5");
+      const lbl = nf(data.level[k]) + " l";
+      c.font = "600 11px system-ui, sans-serif";
+      const w = c.measureText(lbl).width + 8;
+      const bx = Math.min(x1 - w, Math.max(x0, x - w / 2));
+      c.fillRect(bx, y0 - 2, w, 14); c.strokeRect(bx, y0 - 2, w, 14);
+      c.fillStyle = css("--ink", "#111820"); c.textAlign = "left";
+      c.fillText(lbl, bx + 4, y0 + 9);
+    }
+    return {
+      set(d) { data = d; drawStatic(); },
+      resize() { drawStatic(); },
+      paint,
+    };
+  }
+
+  // ------------------------------------------------------------------ Hauptobjekt
+  function create(opts) {
+    const L = opts.L || root.L;
+    const map = opts.map;
+    const panel = opts.panel;
+    const W = opts.W || (root.PARAMS && root.PARAMS.wasser) || root.WASSER_PARAMS;
+    if (!Water) throw new Error("js/water.js fehlt");
+    if (!L || !map) throw new Error("Leaflet-Karte fehlt");
+
+    const listeners = {};
+    const emit = (ev, a) => { (listeners[ev] || []).forEach((f) => { try { f(a); } catch (e) { console.error(e); } }); };
+
+    const layers = {
+      sources: L.layerGroup(), hoses: L.layerGroup(), routes: L.layerGroup(),
+      basins: L.layerGroup(), vehicles: L.layerGroup(),
+    };
+    for (const k of ["routes", "hoses", "sources", "basins", "vehicles"]) layers[k].addTo(map);
+
+    const S = {
+      input: null, res: null, manualBasins: null, t: 0, playing: false, speed: 60,
+      addMode: false, charts: [], basinMarkers: new Map(), vehMarkers: new Map(), raf: null, last: 0, basinSeq: 0,
+    };
+
+    // ---------------------------------------------------------------- Bedienfeld aufbauen
+    panel.innerHTML = `
+      <div class="w-ui">
+        <p class="w-disclaimer" role="note"><strong>Simulation mit Annahmen, keine Einsatzplanung.</strong>
+          Fahrwege sind Luftlinie × Umwegfaktor (kein Routing), Ergiebigkeiten und Zeiten sind Annahmen (docs/assumptions.md).</p>
+
+        <section class="w-card" id="w-timecard">
+          <h3>Zeitverlauf</h3>
+          <div class="w-timerow">
+            <button type="button" class="w-btn w-play" id="w-play" aria-label="Simulation abspielen" aria-pressed="false">▶ Start</button>
+            <output class="w-clock" id="w-clock">0:00 h</output>
+            <div class="w-speed" role="group" aria-label="Geschwindigkeit">
+              <button type="button" class="w-btn w-sp" data-speed="1">1×</button>
+              <button type="button" class="w-btn w-sp" data-speed="10">10×</button>
+              <button type="button" class="w-btn w-sp is-on" data-speed="60">60×</button>
+            </div>
+          </div>
+          <input type="range" id="w-time" class="w-range" min="0" max="360" step="1" value="0"
+                 aria-label="Zeitpunkt der Simulation in Minuten nach Alarm">
+          <div class="w-ticks" aria-hidden="true"><span>0</span><span>1 h</span><span>2 h</span><span>3 h</span><span>4 h</span><span>5 h</span><span>6 h</span></div>
+          <p class="w-small" id="w-speedhint">1× = Echtzeit (1 Minute Simulation je Minute), 60× = 1 Stunde Simulation je Minute.</p>
+        </section>
+
+        <section class="w-card">
+          <h3>Pufferbecken (<span id="w-bcount">0</span>)</h3>
+          <div class="w-btnrow">
+            <button type="button" class="w-btn" id="w-add">Becken hinzufügen</button>
+            <button type="button" class="w-btn" id="w-auto">Automatisch neu setzen</button>
+          </div>
+          <p class="w-small">Becken auf der Karte verschieben (ziehen) oder über das Marker-Menü löschen – es wird jedes Mal neu gerechnet. Volumen je Becken ${nf((W && W.becken && W.becken.volumenL) || 5000)} l (Faltbehälter, Annahme/Vorgabe).</p>
+          <div id="w-basinlist"></div>
+        </section>
+
+        <section class="w-card">
+          <h3>Kennzahlen</h3>
+          <div id="w-kpi"></div>
+          <h4>Entnahmestellen</h4>
+          <div id="w-srctable"></div>
+        </section>
+
+        <section class="w-card">
+          <h3>Engpassdiagnose</h3>
+          <div id="w-diag"></div>
+        </section>
+
+        <section class="w-card">
+          <h3>Fahrzeuge (Zustand zum Zeitpunkt)</h3>
+          <div id="w-vehtable"></div>
+          <div id="w-excluded"></div>
+        </section>
+      </div>`;
+
+    const $ = (id) => panel.querySelector("#" + id);
+    const elClock = $("w-clock"), elRange = $("w-time"), elPlay = $("w-play");
+
+    elRange.max = String((W && W.horizonMin) || 360);
+    elRange.addEventListener("input", () => { pause(); setTime(Number(elRange.value)); });
+    elPlay.addEventListener("click", () => (S.playing ? pause() : play()));
+    panel.querySelectorAll(".w-sp").forEach((b) => b.addEventListener("click", () => {
+      S.speed = Number(b.dataset.speed);
+      panel.querySelectorAll(".w-sp").forEach((x) => x.classList.toggle("is-on", x === b));
+    }));
+    $("w-add").addEventListener("click", () => setAddMode(!S.addMode));
+    $("w-auto").addEventListener("click", () => { S.manualBasins = null; recompute("automatische Becken", { aktion: "automatisch neu gesetzt", id: null, lat: null, lon: null }); });
+
+    map.on("click", (e) => {
+      if (!S.addMode) return;
+      addBasin(e.latlng.lat, e.latlng.lng);
+      setAddMode(false);
+    });
+
+    function setAddMode(on) {
+      S.addMode = on;
+      $("w-add").classList.toggle("is-on", on);
+      $("w-add").textContent = on ? "Becken: Punkt auf der Karte antippen" : "Becken hinzufügen";
+      const c = map.getContainer();
+      c.style.cursor = on ? "crosshair" : "";
+    }
+
+    // ---------------------------------------------------------------- Becken bearbeiten
+    function currentBasinsAsManual() {
+      if (S.manualBasins) return S.manualBasins.slice();
+      const bs = (S.res && S.res.plan.basins) || [];
+      S.basinSeq = Math.max(S.basinSeq, bs.length);
+      return bs.map((b) => ({ id: b.id, lat: b.lat, lon: b.lon }));
+    }
+    function addBasin(lat, lon) {
+      const list = currentBasinsAsManual();
+      S.basinSeq++;
+      list.push({ id: "B" + (S.basinSeq + 100), lat, lon });
+      S.manualBasins = list;
+      recompute("Becken hinzugefügt", { aktion: "hinzugefügt", id: list[list.length - 1].id, lat, lon });
+    }
+    function moveBasin(id, lat, lon) {
+      const list = currentBasinsAsManual();
+      const b = list.find((x) => x.id === id);
+      if (!b) return;
+      b.lat = lat; b.lon = lon;
+      S.manualBasins = list;
+      recompute("Becken verschoben", { aktion: "verschoben", id, lat, lon });
+    }
+    function deleteBasin(id) {
+      const list = currentBasinsAsManual().filter((x) => x.id !== id);
+      S.manualBasins = list;
+      recompute("Becken gelöscht", { aktion: "gelöscht", id, lat: null, lon: null });
+    }
+
+    // ---------------------------------------------------------------- Rechnen
+    function setInput(input) {
+      S.input = input;
+      S.manualBasins = input && Array.isArray(input.basins) ? input.basins.slice() : null;
+      recompute("Eingabe gesetzt");
+    }
+
+    /** why: Grund (Text); change: Beckenänderung für Protokoll/Export (oder null). */
+    function recompute(why, change) {
+      if (!S.input) return null;
+      const t0 = (root.performance || Date).now();
+      const res = Water.run(Object.assign({}, S.input, { W, basins: S.manualBasins }));
+      const ms = (root.performance || Date).now() - t0;
+      S.res = res; S.res.ms = ms; S.res.why = why || null; S.res.change = change || null;
+      drawStatic();
+      setTime(Math.min(S.t, res.sim.T));
+      emit("recompute", res);
+      return res;
+    }
+
+    // ---------------------------------------------------------------- Karte: statische Ebenen
+    function sourceMarker(s) {
+      const sym = SRC_SYMBOL[s.typ] || "?";
+      const unverified = !s.verified;
+      const html = `<div class="wsrc t-${esc(s.typ)}${unverified ? " unverified" : ""}" title="${esc(SRC_TITLE[s.typ] || "")}">
+          <span class="sym">${esc(sym)}</span>${unverified ? '<span class="flag" aria-hidden="true">?</span>' : ""}</div>`;
+      const icon = L.divIcon({ className: "", html, iconSize: [30, 30], iconAnchor: [15, 15] });
+      const m = L.marker([s.lat, s.lon], { icon, keyboard: false, zIndexOffset: 100 });
+      const cap = s.capLpm === null ? "durch Fahrzeugpumpe begrenzt (Saugbetrieb)" : nf(s.capLpm) + " l/min";
+      const vol = s.volumeL === Infinity ? "unbegrenzt (Annahme)" : nf(s.volumeL) + " l";
+      m.bindPopup(`<div class="w-pop"><b>${esc(s.label)} <span class="w-id">${esc(s.id)}</span></b>
+        <div>${s.verified ? "<b>geprüft</b>" : '<b class="w-warn">ungeprüft</b> (Quelle: ' + esc(s.source) + ")"}</div>
+        <div>Ergiebigkeit: ${esc(cap)}<br><span class="w-small">${esc(s.capWhy || s.statusWhy || "")}</span></div>
+        <div>Vorrat: ${esc(vol)}</div>
+        <div>Füllplätze gleichzeitig: ${s.maxConcurrent} · Rüstzeit ${s.ruestMin} min (Annahme)</div>
+        ${s.annahmen && s.annahmen.length ? `<div class="w-warn">Annahme ohne Beleg: ${esc(s.annahmen.join(", "))}</div>` : ""}
+      </div>`);
+      return m;
+    }
+
+    function basinMarker(b, sim) {
+      const r = sim.basins.find((x) => x.id === b.id) || null;
+      const html = `<div class="wbasin${b.manual ? " manual" : ""}${b.reserve ? " reserve" : ""}" data-basin="${esc(b.id)}">
+          <div class="tank"><div class="fill" style="height:0%"></div><span class="pct">0%</span></div>
+          <div class="lbl">${esc(b.id)}</div></div>`;
+      const icon = L.divIcon({ className: "", html, iconSize: [38, 50], iconAnchor: [19, 46] });
+      const m = L.marker([b.lat, b.lon], { icon, draggable: true, keyboard: false, zIndexOffset: 300, autoPan: true });
+      m.on("dragend", (e) => { const ll = e.target.getLatLng(); moveBasin(b.id, ll.lat, ll.lng); });
+      const sup = b.supply || {};
+      const supTxt = sup.kind === "schlauch" ? `Förderstrecke von ${esc(sup.sourceId)} (${nf(sup.hose.lengthM)} m, ${nf(sup.hose.flowLpm)} l/min, ${sup.hose.pumps} Pumpe(n))`
+        : sup.kind === "schlauch+pendel" ? `Förderstrecke von ${esc(sup.sourceId)} (${nf(sup.hose.flowLpm)} l/min) + Pendelverkehr`
+          : sup.kind === "pendel" ? "Pendelverkehr" : "keine Versorgung";
+      m.bindPopup(`<div class="w-pop"><b>Pufferbecken ${esc(b.id)}</b> ${b.manual ? "(gesetzt)" : "(automatisch)"}
+        ${b.reserve ? '<div class="w-warn">Reservestandort: kein Abnehmer zugeordnet. Nicht eingeplant (keine Versorgung, keine Pendelfahrzeuge) – Aufbau entscheidet die Einsatzleitung.</div>' : ""}
+        <div>Volumen ${nf(W.becken.volumenL)} l · Bedarf ${nf(b.demandLpm)} l/min</div>
+        <div>Versorgung: ${supTxt}</div>
+        <div>Abnehmer: ${esc((b.consumerIds || []).join(", ") || "keine")}</div>
+        <div>Standort: ${esc(b.siteNote || "")}</div>
+        <div class="${b.safety && b.safety.level >= 2 ? "w-warn" : "w-small"}">${esc(b.safety ? b.safety.text : "")}</div>
+        ${r && r.firstEmptyMin !== null ? `<div class="w-warn">läuft erstmals leer nach ${fmtTime(r.firstEmptyMin)}</div>` : ""}
+        <div class="w-popbtns"><button type="button" class="w-btn w-del" data-del="${esc(b.id)}">Becken löschen</button></div>
+      </div>`);
+      m.on("popupopen", (e) => {
+        const btn = e.popup.getElement().querySelector(".w-del");
+        if (btn) btn.addEventListener("click", () => { map.closePopup(); deleteBasin(b.id); });
+      });
+      return m;
+    }
+
+    function drawStatic() {
+      for (const k of Object.keys(layers)) layers[k].clearLayers();
+      S.basinMarkers.clear(); S.vehMarkers.clear();
+      if (!S.res) return;
+      const { plan, sim } = S.res;
+
+      for (const s of plan.sources) sourceMarker(s).addTo(layers.sources);
+      for (const s of plan.sourcesRejected || []) {
+        const icon = L.divIcon({ className: "", html: `<div class="wsrc t-aus" title="nicht berücksichtigt">×</div>`, iconSize: [26, 26], iconAnchor: [13, 13] });
+        L.marker([s.lat, s.lon], { icon, keyboard: false }).bindPopup(`<div class="w-pop"><b>${esc(s.label)}</b><div>nicht berücksichtigt: ${esc(s.why || "")}</div></div>`).addTo(layers.sources);
+      }
+
+      // Schlauchleitungen: durchgezogen
+      for (const b of plan.basins) {
+        const h = b.supply && b.supply.hose;
+        if (!h) continue;
+        const s = plan.sources.find((x) => x.id === b.supply.sourceId);
+        if (!s) continue;
+        L.polyline([[s.lat, s.lon], [b.lat, b.lon]], { className: "w-hose", color: css("--w-hose", "#1d6b3a"), weight: 5, opacity: 0.95 })
+          .bindPopup(`<div class="w-pop"><b>Förderstrecke ${esc(s.id)} → ${esc(b.id)}</b>
+            <div>${nf(h.lengthM)} m Schlauchweg (Luftlinie ${nf(h.luftM)} m × ${W.schlauch.umwegFaktor})</div>
+            <div>${nf(h.flowLpm)} l/min, ${h.pumps} Pumpe(n), davon ${h.boosters} Verstärker</div>
+            <div>höchster Punkt +${nf(h.dhMaxM)} m${h.terrainOk ? " (DGM)" : " (Höhe nicht vollständig geprüft)"}</div>
+            <div class="w-small">Aufbau ca. ${nf(h.setupMin)} min (Annahme)</div></div>`)
+          .addTo(layers.hoses);
+        (h.pumpPos || []).forEach((p, i) => {
+          const icon = L.divIcon({ className: "", html: `<div class="wpump">${i === 0 ? "P" : "V"}</div>`, iconSize: [22, 22], iconAnchor: [11, 11] });
+          L.marker([p.lat, p.lon], { icon, keyboard: false }).bindTooltip(i === 0 ? "Pumpe an der Entnahmestelle" : "Verstärkerpumpe").addTo(layers.hoses);
+        });
+      }
+
+      // Pendelrouten: gestrichelt
+      for (const r of routesFromSim(plan, sim)) {
+        L.polyline([[r.source.lat, r.source.lon], [r.basin.lat, r.basin.lon]], {
+          className: "w-route", color: css("--w-route", "#0b4f8a"), weight: 3, opacity: 0.85, dashArray: "10 8",
+        }).bindTooltip(`Pendelroute ${r.source.id} → ${r.basin.id}: ${r.trips} Fahrten, ${r.vehicles.size} Fahrzeug(e) (Luftlinie, kein Routing)`).addTo(layers.routes);
+      }
+
+      // Abnehmer
+      for (const c of plan.consumers) {
+        const icon = L.divIcon({ className: "", html: `<div class="wcons">${c.kind === "Objektschutz" ? "O" : "R"}</div>`, iconSize: [26, 26], iconAnchor: [13, 13] });
+        L.marker([c.lat, c.lon], { icon, keyboard: false })
+          .bindTooltip(`${c.label}: ${nf(c.demandLpm)} l/min ab ${fmtTime(c.readyMin)}`).addTo(layers.sources);
+      }
+
+      // Becken
+      for (const b of plan.basins) {
+        const m = basinMarker(b, sim);
+        m.addTo(layers.basins);
+        S.basinMarkers.set(b.id, m);
+      }
+
+      // Fahrzeuge
+      sim.vehicles.forEach((v, i) => {
+        const p = plan.vehicles[i];
+        if (p.role === "reserve") return;
+        const icon = L.divIcon({ className: "", html: `<div class="wveh s-reserve"><span class="t">${esc(shortType(p))}</span><span class="bar"><i style="width:0%"></i></span></div>`, iconSize: [40, 26], iconAnchor: [-6, -2] });
+        const m = L.marker([p.origin ? p.origin.lat : plan.basins[0] ? plan.basins[0].lat : 0, p.origin ? p.origin.lon : plan.basins[0] ? plan.basins[0].lon : 0], { icon, keyboard: false, zIndexOffset: 500 });
+        m.bindTooltip(`${p.label} (${p.id})`, { direction: "top" });
+        m.addTo(layers.vehicles);
+        S.vehMarkers.set(p.id, { m, p, v });
+      });
+
+      renderBasinList();
+      renderKpi();
+      renderSources();
+      renderDiagnosis();
+      renderExcluded();
+    }
+
+    const shortType = (p) => {
+      const t = String(p.typ || "");
+      if (/^TW|^LTW|^WLF/.test(t)) return "TW";
+      if (/^PTLF/.test(t)) return "PTLF";
+      if (/^TLF/.test(t)) return "TLF";
+      if (/^HLF/.test(t)) return "HLF";
+      if (/^LF/.test(t)) return "LF";
+      return t.split(" ")[0] || "FZ";
+    };
+
+    // ---------------------------------------------------------------- Panel-Inhalte
+    function renderBasinList() {
+      const { plan, sim } = S.res;
+      $("w-bcount").textContent = String(plan.basins.length);
+      const host = $("w-basinlist");
+      host.innerHTML = "";
+      S.charts = [];
+      if (!plan.basins.length) { host.innerHTML = '<p class="w-small">Kein Becken geplant.</p>'; return; }
+      for (const b of plan.basins) {
+        const r = sim.basins.find((x) => x.id === b.id);
+        const box = document.createElement("div");
+        box.className = "w-basin";
+        const sup = b.supply || {};
+        box.innerHTML = `
+          <div class="w-basinhead">
+            <b>${esc(b.id)}</b> <span class="w-tag">${b.manual ? "gesetzt" : "automatisch"}</span>
+            <span class="w-tag${b.reserve ? " w-tag-warn" : ""}">${esc(b.reserve ? "Reservestandort (ohne Abnehmer)" : sup.kind)}</span>
+            <span class="w-small">Bedarf ${nf(b.demandLpm)} l/min</span>
+          </div>
+          <canvas class="w-chart" role="img"
+            aria-label="Zeitdiagramm Becken ${esc(b.id)}: Füllstand, Zufluss und Verbrauch über 6 Stunden"></canvas>
+          <p class="w-legend"><span class="k k-level"></span>Füllstand (l)
+             <span class="k k-in"></span>Zufluss (l/min)
+             <span class="k k-out"></span>Verbrauch (l/min)</p>
+          <p class="w-small">${r && r.firstEmptyMin !== null ? `<b class="w-warn">erstes Leerlaufen ${fmtTime(r.firstEmptyMin)}</b> · ` : ""}bereit ab ${fmtTime(r.readyMin)} · Warten der Pendelfahrzeuge am Becken ${nf(r.waitMin)} min (Summe aller Fahrzeuge)</p>`;
+        host.appendChild(box);
+        const ch = makeChart(box.querySelector("canvas"));
+        const dt = sim.dt;
+        ch.set({
+          T: sim.T, dt, cap: W.becken.volumenL, level: Array.from(r.level), inflow: Array.from(r.inflow), outflow: Array.from(r.outflow),
+          maxFlow: Math.max(1, ...r.inflow, ...r.outflow, b.demandLpm),
+        });
+        S.charts.push(ch);
+      }
+    }
+
+    function renderKpi() {
+      const { plan, sim } = S.res;
+      const k = sim.kpi;
+      const firstEmpty = sim.basins.filter((b) => b.firstEmptyMin !== null).sort((a, b) => a.firstEmptyMin - b.firstEmptyMin)[0] || null;
+      const hoseLpm = sim.basins.reduce((s, b) => s + b.inflowHose.reduce((a, v) => a + v, 0), 0) / Math.max(1, sim.N);
+      $("w-kpi").innerHTML = `<table class="w-table">
+        <caption class="w-small">Eingeschwungener Zustand ab ${fmtTime(k.window[0])} (Mittelwerte bis ${fmtTime(k.window[1])}).</caption>
+        <tbody>
+        <tr><th scope="row">Bedarf</th><td>${nf(k.demandLpm)} l/min</td></tr>
+        <tr><th scope="row">Lieferung</th><td>${nf(k.deliveredLpm)} l/min <span class="w-small">(Pendel ${nf(k.shuttleLpm)}, Schlauch ${nf(hoseLpm)})</span></td></tr>
+        <tr class="${k.unmetLpm > 1 ? "w-bad" : "w-good"}"><th scope="row">Defizit</th><td>${nf(k.unmetLpm)} l/min · Deckung ${nf(k.coveragePct)} %</td></tr>
+        <tr><th scope="row">erstes Leerlaufen</th><td>${firstEmpty ? `Becken ${esc(firstEmpty.id)} nach ${fmtTime(firstEmpty.firstEmptyMin)}` : "kein Becken läuft leer"}</td></tr>
+        <tr><th scope="row">Pendelfahrzeuge</th><td>${sim.shuttleStats.n} · je Fahrzeug ${nf(k.perTankerLpm)} l/min · Warten ${nf(100 * (k.waitSrcShare + k.waitBasinShare))} % der Einsatzzeit</td></tr>
+        <tr><th scope="row">ungedeckt gesamt</th><td>${nf(k.totalUnmetL)} l von ${nf(k.totalDemandL)} l</td></tr>
+        <tr><th scope="row">Rechenzeit</th><td>${nf(S.res.ms, 1)} ms (${S.res.iterations} Nachplanung(en))</td></tr>
+        </tbody></table>`;
+    }
+
+    function renderSources() {
+      const { sim } = S.res;
+      const rows = sim.sources.map((s) => {
+        const src = S.res.plan.sources.find((x) => x.id === s.id);
+        const ausl = `${nf(s.utilization * 100)} %`;
+        return `<tr class="${s.utilization >= 0.9 ? "w-bad" : ""}">
+          <th scope="row">${esc(s.label)} <span class="w-id">${esc(s.id)}</span>${src && !src.verified ? ' <span class="w-tag w-tag-warn">ungeprüft</span>' : ""}</th>
+          <td>${s.capLpm === null ? "Pumpe" : nf(s.capLpm) + " l/min"}</td>
+          <td>${ausl}</td><td>${s.fills}</td><td>${nf(s.meanWaitMin, 1)} min</td>
+          <td>${s.depletedAt !== null ? '<b class="w-warn">leer ' + fmtTime(s.depletedAt) + "</b>" : s.remainingL === Infinity ? "–" : nf(s.remainingL) + " l"}</td></tr>`;
+      }).join("");
+      $("w-srctable").innerHTML = `<table class="w-table w-src">
+        <thead><tr><th scope="col">Entnahmestelle</th><th scope="col">Ergiebigkeit</th><th scope="col">Auslastung</th><th scope="col">Füllungen</th><th scope="col">Ø Warten</th><th scope="col">Rest</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="6">keine Entnahmestelle</td></tr>'}</tbody></table>`;
+    }
+
+    function renderDiagnosis() {
+      const { plan, sim } = S.res;
+      const items = sim.diagnosis.map((d) => `<li class="d-${esc(d.level)}"><b>${esc(d.level === "ok" ? "In Ordnung" : d.level === "kritisch" ? "Kritisch" : d.level === "warnung" ? "Warnung" : "Hinweis")}:</b> ${esc(d.text)}</li>`).join("");
+      const warn = plan.warnings.map((t) => `<li class="d-warnung">${esc(t)}</li>`).join("");
+      const notes = plan.notes.map((t) => `<li class="d-info">${esc(t)}</li>`).join("");
+      $("w-diag").innerHTML = `<ul class="w-diag">${items}${warn}${notes}</ul>`;
+    }
+
+    function renderExcluded() {
+      const ex = S.res.plan.excluded || [];
+      $("w-excluded").innerHTML = ex.length
+        ? `<details class="w-det"><summary>${ex.length} Fahrzeuge nicht für die Wasserversorgung (Grundschutz, Pflichtfahrzeuge, eigene Kommune)</summary>
+            <ul class="w-small">${ex.map((e) => `<li>${esc(e.label)} <span class="w-id">${esc(e.id)}</span>: ${esc(e.reason)}</li>`).join("")}</ul></details>`
+        : "";
+    }
+
+    // ---------------------------------------------------------------- Zeitabhängige Anzeige
+    function setTime(min) {
+      if (!S.res) return;
+      const T = S.res.sim.T;
+      S.t = Math.max(0, Math.min(T, min));
+      elRange.value = String(Math.round(S.t));
+      elClock.textContent = fmtTime(S.t);
+      elClock.setAttribute("data-min", String(Math.round(S.t)));
+      paintTime();
+    }
+
+    function paintTime() {
+      const { plan, sim } = S.res;
+      const k = Math.min(sim.N, Math.round(S.t / sim.dt));
+      // Becken
+      for (const b of plan.basins) {
+        const r = sim.basins.find((x) => x.id === b.id);
+        const m = S.basinMarkers.get(b.id);
+        if (!m || !r) continue;
+        const el = m.getElement();
+        if (!el) continue;
+        const lvl = r.level[k] || 0;
+        const pct = Math.max(0, Math.min(100, (100 * lvl) / W.becken.volumenL));
+        const fill = el.querySelector(".fill"), txt = el.querySelector(".pct");
+        if (fill) fill.style.height = pct.toFixed(0) + "%";
+        if (txt) txt.textContent = Math.round(pct) + "%";
+        const box = el.querySelector(".wbasin");
+        if (box) box.classList.toggle("empty", S.t >= r.readyMin && lvl < 1);
+      }
+      // Fahrzeuge
+      for (const [, o] of S.vehMarkers) {
+        const vi = plan.vehicles.indexOf(o.p);
+        const st = Water.vehicleAt(sim, vi, S.t);
+        const el = o.m.getElement();
+        if (Number.isNaN(st.lat)) { if (el) el.style.display = "none"; continue; }
+        if (el) el.style.display = "";
+        o.m.setLatLng([st.lat, st.lon]);
+        if (!el) continue;
+        const box = el.querySelector(".wveh");
+        if (box) {
+          box.className = "wveh " + (STATE_CLASS[st.state] || "s-reserve");
+          const bar = box.querySelector(".bar i");
+          if (bar) bar.style.width = Math.round((100 * st.load) / Math.max(1, o.p.tankL || 1)) + "%";
+        }
+        o.m.setTooltipContent(`${o.p.label} (${o.p.id})<br>${Water.STATE_LABEL[st.state]} · ${nf(st.load)} l`);
+      }
+      // Diagramme
+      for (const c of S.charts) c.paint(S.t);
+      renderVehTable(k);
+    }
+
+    function renderVehTable(k) {
+      const { plan, sim } = S.res;
+      const rows = plan.vehicles.map((p, i) => {
+        const v = sim.vehicles[i];
+        const st = Water.STATES[v.state[Math.min(sim.N, k)]];
+        const load = v.load[Math.min(sim.N, k)];
+        return { p, v, st, load };
+      }).filter((x) => x.p.role !== "reserve")
+        .map((x) => `<tr><th scope="row">${esc(x.p.label)}</th><td>${esc(Water.ROLE_LABEL[x.p.role])}</td>
+          <td class="${STATE_CLASS[x.st]}">${esc(Water.STATE_LABEL[x.st])}</td>
+          <td>${nf(x.load)} l</td><td>${nf(x.v.deliveredL)} l</td></tr>`).join("");
+      const res = plan.vehicles.filter((p) => p.role === "reserve").length;
+      $("w-vehtable").innerHTML = `<table class="w-table"><thead><tr><th scope="col">Fahrzeug</th><th scope="col">Rolle</th><th scope="col">Zustand</th><th scope="col">Inhalt</th><th scope="col">geliefert gesamt</th></tr></thead>
+        <tbody>${rows || '<tr><td colspan="5">keine Fahrzeuge eingeplant</td></tr>'}</tbody></table>
+        ${res ? `<p class="w-small">${res} geeignete Fahrzeuge nicht benötigt (Reserve).</p>` : ""}`;
+    }
+
+    // ---------------------------------------------------------------- Abspielen
+    function play() {
+      if (S.playing || !S.res) return;
+      S.playing = true; S.last = (root.performance || Date).now();
+      elPlay.textContent = "❚❚ Pause"; elPlay.setAttribute("aria-pressed", "true"); elPlay.classList.add("is-on");
+      const step = (ts) => {
+        if (!S.playing) return;
+        const now = ts || (root.performance || Date).now();
+        const dSec = Math.min(0.5, (now - S.last) / 1000);
+        S.last = now;
+        // Geschwindigkeit bezogen auf Echtzeit: 1x = 1 Simulationsminute je Minute
+        setTime(S.t + (dSec * S.speed) / 60);
+        if (S.t >= S.res.sim.T) { pause(); return; }
+        S.raf = root.requestAnimationFrame(step);
+      };
+      S.raf = root.requestAnimationFrame(step);
+    }
+    function pause() {
+      if (!S.playing) return;
+      S.playing = false;
+      if (S.raf) root.cancelAnimationFrame(S.raf);
+      elPlay.textContent = "▶ Start"; elPlay.setAttribute("aria-pressed", "false"); elPlay.classList.remove("is-on");
+    }
+
+    function fitBounds(pad) {
+      if (!S.res) return;
+      const pts = [];
+      for (const b of S.res.plan.basins) pts.push([b.lat, b.lon]);
+      for (const s of S.res.plan.sources) pts.push([s.lat, s.lon]);
+      for (const c of S.res.plan.consumers) pts.push([c.lat, c.lon]);
+      if (pts.length) map.fitBounds(L.latLngBounds(pts).pad(pad === undefined ? 0.25 : pad));
+    }
+
+    function redraw() { if (S.res) { drawStatic(); paintTime(); } }
+
+    const api = {
+      layers, setInput, recompute, setTime, play, pause, fitBounds, redraw,
+      get result() { return S.res; },
+      get time() { return S.t; },
+      get playing() { return S.playing; },
+      setSpeed(x) { const b = panel.querySelector(`.w-sp[data-speed="${x}"]`); if (b) b.click(); },
+      addBasin, deleteBasin, moveBasin, setAddMode,
+      get addMode() { return S.addMode; },
+      on(ev, fn) { (listeners[ev] = listeners[ev] || []).push(fn); return api; },
+      /** Kompakte Zusammenfassung für Protokoll/Export (ohne Zeitreihen). */
+      summary() { return S.res ? Water.summary(S.res.plan, S.res.sim) : null; },
+    };
+    root.addEventListener("resize", () => { for (const c of S.charts) c.resize(); paintTime(); });
+    return api;
+  }
+
+  root.WaterUI = { create, fmtTime, routesFromSim };
+  if (typeof module !== "undefined" && module.exports) module.exports = root.WaterUI;
+})(typeof globalThis !== "undefined" ? globalThis : this);
+
+</script>
 <script>/* js/app.js */
 /*
  * UI-Steuerung: Karte, Zeichnen, Wetter, OSM, Prognose, Vorschläge, Protokoll.
@@ -6092,6 +8178,8 @@ out center;`;
 
   function setMode(m) {
     S.mode = m;
+    // „Becken hinzufügen“ (Wassermodul) und die Kartenmodi hier schließen sich gegenseitig aus
+    if (m && waterUI && waterUI.addMode) waterUI.setAddMode(false);
     $("btn-draw").classList.toggle("active", m === "poly");
     $("btn-point").classList.toggle("active", m === "point");
     $("btn-addwater").classList.toggle("active", m === "water");
@@ -6163,7 +8251,7 @@ out center;`;
       store.set("wb_water_manual", S.manualWater);
       Protocol.add("entnahmestelle", { aktion: "hinzugefügt", ...w });
       setMode(null);
-      renderWater(); refreshProtocol();
+      renderWater(); refreshProtocol(); updateWater();
     }
   });
 
@@ -6732,6 +8820,7 @@ out center;`;
     });
     refreshProtocol();
     renderSuggestions();
+    updateWater();
   }
   $("btn-resuggest").onclick = () => computeSuggestions(true);
 
@@ -6836,6 +8925,9 @@ out center;`;
    * behalten und die übrigen Label ausweichen.
    */
   const LABEL_SEL = ".veh-marker,.veh-group,.line-label,.ready-label,.hz-label";
+  // feste Marker, denen die Beschriftungen ausweichen (Wassermodul: Becken, Entnahmestellen, Abnehmer, Pumpen).
+  // .wveh bleibt bewusst draußen: Wasserfahrzeuge bewegen sich im Zeitverlauf, eine Entzerrung je Frame wäre teuer.
+  const FIXED_SEL = ".vx-marker,.water-marker,.wbasin,.wsrc,.wcons,.wpump";
   let declutterPending = false;
   function declutterLabels() {
     const els = [...document.querySelectorAll(`#map ${LABEL_SEL.split(",").join(",#map ")}`)];
@@ -6846,7 +8938,7 @@ out center;`;
       .filter((it) => it.r.width > 0 && it.r.height > 0)
       .sort((a, b) => a.rank - b.rank || a.r.top - b.r.top);
     // feste Hindernisse (nicht verschiebbar): Stützpunkte der Brandfläche, Entnahmestellen
-    const placed = [...document.querySelectorAll("#map .vx-marker, #map .water-marker")]
+    const placed = [...document.querySelectorAll(`#map ${FIXED_SEL.split(",").join(",#map ")}`)]
       .map((el) => el.getBoundingClientRect()).filter((r) => r.width > 0)
       .map((r) => ({ left: r.left, right: r.right, top: r.top, bottom: r.bottom }));
     const hits = (r) => placed.some((q) => r.left < q.right + 2 && r.right > q.left - 2 && r.top < q.bottom + 2 && r.bottom > q.top - 2);
@@ -7028,9 +9120,210 @@ out center;`;
       S.waterEdits[id] = ed;
       store.set("wb_water_edits", S.waterEdits);
       Protocol.add("entnahmestelle", { id, aenderung: ed });
-      map.closePopup(); renderWater(); refreshProtocol();
+      map.closePopup(); renderWater(); refreshProtocol(); updateWater();
     }));
   });
+
+  // ---------------------------------------------------------------- Wasserversorgung (Modul 0.6.0)
+  // Rechenkern js/water.js, Oberfläche js/water-ui.js, Parameter PARAMS.wasser (js/water-params.js).
+  // SIMULATION MIT ANNAHMEN, KEINE EINSATZPLANUNG (eigener Hinweis im Reiter).
+  let waterUI = null;        // erst nach der ersten Vorschlagsrechnung erzeugt (die Ebenen hängen sich an die Karte)
+  let waterUnmet = null;     // Defizit der letzten Rechnung (für den Protokolleintrag wasser_becken)
+  let waterNoteLogged = false;
+  let waterSourcesSwapped = false;
+
+  // Abnehmer mit Löschwasserbedarf: Fahrzeugaufgaben aus suggest.js -> Bedarfsart des Wassermoduls.
+  // Riegel umfasst die Auffanglinie der zweiten Bereitschaftsstufe und Verstärkungen (taskKind "Riegel").
+  // ANNAHME: Flankensicherung gibt Wasser wie eine Riegelstellung ab (zu prüfen, siehe docs/assumptions.md).
+  // Wasserversorgung/Pendelverkehr und Bereitstellungsraum sind KEINE Abnehmer.
+  const WATER_CONSUMER = { Riegel: "Riegel", Flanke: "Riegel", Objektschutz: "Objektschutz" };
+
+  /**
+   * Adapter App -> Modul: baut die Eingabe für Water.run() aus dem aktuellen Lagebild.
+   * Alle Zeiten in Minuten nach Alarm/Prognosebeginn (wie im übrigen Lagebild).
+   */
+  function waterInput() {
+    const run = S.run, sug = S.sug;
+    if (!run || !sug) return null;
+    const g = run.grid;
+    // 1) Abnehmer aus den Fahrzeugvorschlägen, jeder mit seiner eigenen Bereitschaftszeit (readyMin)
+    const consumers = sug.vehicles.filter((v) => WATER_CONSUMER[v.taskKind]).map((v) => ({
+      id: v.vehicleId || v.id,
+      label: `${v.vehicle.bezeichnung || v.vehicle.typ} – ${v.task}`,
+      lat: v.lat, lon: v.lon,
+      readyMin: Math.max(0, Math.round(v.readyMin || 0)),
+      tankL: v.vehicle.tank_l || 0,
+      kind: WATER_CONSUMER[v.taskKind],
+    }));
+    // 2) Entnahmestellen: vorhandene Punkte der App (OSM + manuell + Bearbeitungen/Verifizierung).
+    //    Ohne OSM-Daten bleibt die Liste leer – es wird KEINE Entnahmestelle angenommen (Hinweis im Reiter).
+    const sources = allWaterPoints();
+    // 3) Fahrzeuge mit geschätzter Anfahrt zum Brandschwerpunkt (Luftlinie × Umwegfaktor, kein Routing)
+    const stMap = Dispatch.stationMap(S.stations);
+    const [fLat, fLon] = sug.dispatch.firePoint;
+    const vehicles = S.vehicles.filter((v) => v.verfuegbar !== false).map((v) => {
+      const e = Dispatch.estimate(v, stMap, fLat, fLon, P);
+      const o = Dispatch.origin(v, stMap);
+      return {
+        ...v, anfahrtMin: e.ok ? e.min : null, anfahrtText: e.ok ? e.text : `unbekannt (${e.reason})`,
+        originLat: o.missing ? null : o.lat, originLon: o.missing ? null : o.lon,
+      };
+    });
+    // 4) Ausschlüsse (Vorgabe Auftraggeber). Fahrzeuge im Bereitstellungsraum und die Vorschläge
+    //    „Wasserversorgung“ bleiben verfügbar – sie sind Reserve bzw. für genau diese Aufgabe gedacht.
+    //    Fahrzeuge der Kommune Neunkirchen-Seelscheid schließt das Modul selbst aus (PARAMS.wasser).
+    const exclude = {
+      pflichtIds: sug.dispatch.pflicht || [],
+      grundschutzIds: currentGrundschutz().list.map((a) => a.vehicle && a.vehicle.id).filter(Boolean),
+      assignedIds: sug.vehicles.filter((v) => WATER_CONSUMER[v.taskKind]).map((v) => v.vehicleId).filter(Boolean),
+    };
+    // 5) Befahrbare Wege aus dem OSM-Raster (1 = Straße, 2 = Wald-/Wirtschaftsweg). Ohne OSM: keine
+    //    Befahrbarkeitsprüfung (Becken-Standorte und Zugänge sind dann ungeprüft).
+    let roads = null, roadCells = 0;
+    const drv = run.osmApplied && run.osmApplied.drivable;
+    if (drv) {
+      const pts = [];
+      for (let k = 0; k < drv.length; k++) {
+        if (!drv[k]) continue;
+        const [lat, lon] = Grid.cellLatLng(g, k);
+        pts.push({ lat, lon, kind: drv[k] });
+      }
+      roadCells = pts.length;
+      roads = pts.length ? Water.roadNet(null, { points: pts, cellM: 200 }) : null;
+    }
+    // 6) Gelände (DGM 25 m) für das Höhenprofil der Förderstrecke
+    const terrain = S.dem ? { elevation: (lat, lon) => Dem.sample(S.dem, lat, lon) } : null;
+    // 7) Gefahrenzone: Zeitpunkt, zu dem die „möglich“-Zone eine Zelle erreicht (Becken-Standortprüfung)
+    const tP = Suggest.possibleTimes(run.result, P);
+    const hazard = {
+      center: { lat: fLat, lon: fLon },
+      possibleMinAt(lat, lon) {
+        const [x, y] = g.proj.toXY(lat, lon);
+        const k = Grid.cellOf(g, x, y);
+        return k < 0 ? Infinity : tP[k];
+      },
+    };
+    return { consumers, sources, vehicles, exclude, roads, terrain, hazard, basins: null, meta: { roadCells, osm: !!drv, dem: !!S.dem } };
+  }
+
+  /** Hinweis über dem Modul: fehlende Prognose, fehlende OSM-Daten, fehlende Entnahmestellen. */
+  function renderWaterHint(input) {
+    const host = $("wasser-hinweis");
+    if (!host) return;
+    const out = [];
+    if (!S.run || !S.sug) {
+      host.innerHTML = msg("warn", "Noch keine Prognose: erst im Reiter „Lage“ <b>Prognose berechnen</b> (Schritt 4). Die Wasserversorgung wird aus den Fahrzeugvorschlägen, den Entnahmestellen und dem Gelände abgeleitet.");
+      return;
+    }
+    if (!input || !input.consumers.length) out.push(msg("warn", "Keine Abnehmer: Es sind keine Fahrzeuge für Riegel/Auffanglinie, Flanke oder Objektschutz vorgeschlagen (z. B. keine geeignete Riegelstellung). Ohne Abnehmer gibt es keinen Wasserbedarf zu versorgen."));
+    if (input && !input.meta.osm) {
+      out.push(msg("err", "<b>Keine OSM-Daten geladen.</b> Deshalb: <b>keine Entnahmestellen aus OpenStreetMap</b> (Hydranten, Gewässer, Löschwasserbehälter), <b>keine Prüfung der Befahrbarkeit</b> für Beckenstandorte und Zugänge und keine Wald-/Wirtschaftswege im Pendelweg. Es werden <b>keine Entnahmestellen angenommen</b>. Entweder im Reiter „Lage“ (Schritt 3) <b>OSM-Daten laden</b> oder Entnahmestellen mit „Entnahmestelle setzen“ von Hand erfassen."));
+    } else if (input && !input.sources.length) {
+      out.push(msg("err", "<b>Keine Entnahmestelle in den Daten.</b> In den geladenen OSM-Daten ist im Rechengebiet keine Entnahmestelle enthalten und es wurde keine von Hand erfasst. Pendelverkehr und Förderstrecke sind damit nicht berechenbar – Entnahmestellen vor Ort klären und mit „Entnahmestelle setzen“ erfassen (Löschwasserkataster, siehe docs/assumptions.md)."));
+    }
+    if (input && input.meta.osm && !input.meta.roadCells) out.push(msg("warn", "OSM-Daten enthalten keine befahrbaren Wege im Rechengebiet: Befahrbarkeit der Beckenstandorte nicht geprüft."));
+    if (input && !input.meta.dem) out.push(msg("warn", "Kein Geländemodell: Höhenunterschiede der Förderstrecke werden nicht geprüft (Pumpenzahl kann zu niedrig sein)."));
+    host.innerHTML = out.join("");
+  }
+
+  /** WaterUI einmalig erzeugen, Ebenen in den Ebenenschalter hängen, Protokoll anbinden. */
+  function ensureWaterUI() {
+    if (waterUI) return waterUI;
+    waterUI = WaterUI.create({ map, L, W: P.wasser, panel: $("wasser-panel") });
+    layerCtl.addOverlay(waterUI.layers.basins, "Pufferbecken (Wasser)");
+    layerCtl.addOverlay(waterUI.layers.hoses, "Schlauchleitungen (Wasser)");
+    layerCtl.addOverlay(waterUI.layers.routes, "Pendelrouten (Luftlinie)");
+    layerCtl.addOverlay(waterUI.layers.vehicles, "Wasserfahrzeuge (Zeitverlauf)");
+    layerCtl.addOverlay(waterUI.layers.sources, "Wasser: Entnahmestellen + Abnehmer (Modul)");
+    // Doppelte Darstellung vermeiden: die Modul-Ebene zeigt dieselben Punkte wie „Wasserentnahmestellen“
+    // (dort liegt das Bearbeiten/Verifizieren). Sie wird erst beim Öffnen des Reiters eingeschaltet.
+    map.removeLayer(waterUI.layers.sources);
+    // Kartenmodus entflechten: „Becken hinzufügen“ beendet „Entnahmestelle setzen“ (und umgekehrt, siehe setMode)
+    const addBtn = $("wasser-panel").querySelector("#w-add");
+    if (addBtn) addBtn.addEventListener("click", () => { if (S.mode) setMode(null); });
+    waterUI.on("recompute", (res) => {
+      const unmet = Math.round(res.sim.kpi.unmetLpm);
+      if (res.change) {
+        Protocol.add("wasser_becken", {
+          aktion: res.change.aktion, id: res.change.id,
+          lat: res.change.lat === null || res.change.lat === undefined ? null : +res.change.lat.toFixed(6),
+          lon: res.change.lon === null || res.change.lon === undefined ? null : +res.change.lon.toFixed(6),
+          becken_gesamt: res.plan.basins.length,
+          defizit_vorher_lpm: waterUnmet, defizit_nachher_lpm: unmet,
+        });
+      }
+      const sum = Water.summary(res.plan, res.sim);
+      // Ausschluss- und Reserveliste nur gezählt ins Protokoll (bei >100 Fahrzeugen sonst mehrere kB je Eintrag,
+      // und jede Beckenänderung schreibt einen Eintrag). Die vollständigen Listen stehen im Reiter und im Export.
+      const ex = sum.ausgeschlossen || [];
+      const byReason = {};
+      for (const e of ex) byReason[e.reason] = (byReason[e.reason] || 0) + 1;
+      sum.ausgeschlossen = { anzahl: ex.length, nach_grund: byReason };
+      const reserve = sum.fahrzeuge.filter((v) => v.rolle === "reserve");
+      sum.fahrzeuge = sum.fahrzeuge.filter((v) => v.rolle !== "reserve");
+      sum.fahrzeuge_reserve = { anzahl: reserve.length, hinweis: "geeignet, aber nicht benötigt (Liste im Reiter „Wasser“)" };
+      Protocol.add("wasser_plan", {
+        grund: res.why, becken: res.plan.basins.length,
+        reservestandorte: res.plan.basins.filter((b) => b.reserve).map((b) => b.id),
+        entnahmestellen: res.plan.sources.length,
+        pendelfahrzeuge: res.plan.vehicles.filter((v) => v.role === "pendel").length,
+        pumpenfahrzeuge: res.plan.vehicles.filter((v) => v.role === "pumpe" || v.role === "verstaerker").length,
+        abnehmer: res.plan.consumers.length,
+        bedarf_lpm: sum.kennzahlen.bedarf_lpm, lieferung_lpm: sum.kennzahlen.lieferung_lpm,
+        defizit_lpm: sum.kennzahlen.defizit_lpm, deckung_pct: sum.kennzahlen.deckung_pct,
+        erstes_leerlaufen_min: (res.sim.basins.filter((b) => b.firstEmptyMin !== null).sort((a, b) => a.firstEmptyMin - b.firstEmptyMin)[0] || {}).firstEmptyMin ?? null,
+        osm: !!(S.run && S.run.osmApplied), gelaendemodell: !!S.dem,
+        nachplanungen: res.iterations, rechenzeit_ms: Math.round(res.ms),
+        ...sum,
+      });
+      waterUnmet = unmet;
+      refreshProtocol();
+    });
+    return waterUI;
+  }
+
+  /** Nach jeder Vorschlagsrechnung: Eingabe neu setzen (rechnet sofort) oder Hinweis zeigen. */
+  function updateWater() {
+    const input = waterInput();
+    renderWaterHint(input);
+    if (!input || !input.consumers.length) return;
+    try {
+      ensureWaterUI().setInput(input);
+    } catch (e) {
+      $("wasser-hinweis").innerHTML = msg("err", `Wassermodul nicht gerechnet (${esc(e.message)}).`);
+      console.error(e);
+    }
+  }
+
+  /** Reiter „Wasser“ geöffnet: Annahmen protokollieren, Diagramme/Karte neu zeichnen, Ebenen umschalten. */
+  function onWaterTab(active) {
+    if (!active) {
+      if (waterUI && waterSourcesSwapped) {
+        map.removeLayer(waterUI.layers.sources);
+        if (!map.hasLayer(waterLayer)) map.addLayer(waterLayer);
+        waterSourcesSwapped = false;
+      }
+      return;
+    }
+    if (!waterNoteLogged) {
+      waterNoteLogged = true;
+      Protocol.add("wasser_annahmen", {
+        hinweis: P.wasser.hinweis, parameterversion: P.wasser.version, app_version: P.version,
+        grundlagen: "Fahrwege Luftlinie × Umwegfaktor (kein Routing), Ergiebigkeiten/Zeiten sind Annahmen, nur ein Fahrzeug speist gleichzeitig in ein Becken ein (größter Engpass im Modell)",
+        quelle: "docs/assumptions.md, Abschnitt Wasserversorgung",
+      });
+      refreshProtocol();
+    }
+    if (waterUI) {
+      if (!waterSourcesSwapped) {
+        map.addLayer(waterUI.layers.sources);
+        if (map.hasLayer(waterLayer)) map.removeLayer(waterLayer);
+        waterSourcesSwapped = true;
+      }
+      waterUI.redraw();
+    }
+    scheduleDeclutter();
+  }
 
   // ---------------------------------------------------------------- Fahrzeuge
   async function loadVehicles(forceBundled) {
@@ -7350,8 +9643,67 @@ out center;`;
       const st = S.stations.find((x) => x.name === a.geraetehaus || x.id === a.geraetehaus);
       feats.push({ type: "Feature", properties: { typ: "grundschutz", ...a }, geometry: st && Dispatch.hasCoord(st) ? { type: "Point", coordinates: [Number(st.lon), Number(st.lat)] } : null });
     }
-    allWaterPoints().forEach((w) => feats.push({ type: "Feature", properties: { typ: "entnahmestelle", art: w.kind, quelle: w.source, verifiziert: !!w.verified }, geometry: { type: "Point", coordinates: [w.lon, w.lat] } }));
-    Protocol.add("export", { format: "GeoJSON", features: feats.length }); refreshProtocol();
+    // Entnahmestellen: zusätzlich die Einstufung des Wassermoduls, damit im Export sichtbar bleibt,
+    // welche Ergiebigkeit eine Annahme ist (classifySource ist eine reine Funktion, auch ohne Wasser-Reiter nutzbar).
+    allWaterPoints().forEach((w) => {
+      let c = null;
+      try { c = Water.classifySource(w, P.wasser); } catch { c = null; }
+      feats.push({ type: "Feature", properties: {
+        typ: "entnahmestelle", art: w.kind, quelle: w.source, verifiziert: !!w.verified,
+        einstufung: c ? c.typ : null, bezeichnung: c ? c.label : null,
+        ergiebigkeit_lpm: c && c.capLpm !== null && c.capLpm !== undefined ? Math.round(c.capLpm) : null,
+        grundlage: c ? (c.capWhy || c.statusWhy || null) : null,
+        annahme_ohne_beleg: c && c.annahmen && c.annahmen.length ? c.annahmen.join(", ") : null,
+        beruecksichtigt: c ? c.usable : null, hinweis_modul: P.wasser.hinweis,
+      }, geometry: { type: "Point", coordinates: [w.lon, w.lat] } });
+    });
+    // Wassermodul: Pufferbecken, Schlauchleitungen (Förderstrecken) und Pendelrouten (LUFTLINIEN!)
+    let nWasser = 0;
+    if (waterUI && waterUI.result) {
+      const { plan, sim } = waterUI.result;
+      const W = P.wasser;
+      plan.basins.forEach((b) => {
+        const r = sim.basins.find((x) => x.id === b.id) || {};
+        feats.push({ type: "Feature", properties: {
+          typ: "pufferbecken", id: b.id, manuell: !!b.manual,
+          rolle: b.reserve ? "Reservestandort (kein Abnehmer zugeordnet, nicht eingeplant)" : "eingeplant",
+          volumen_l: W.becken.volumenL, bedarf_lpm: Math.round(b.demandLpm), versorgung: b.supply.kind,
+          abnehmer: (b.consumerIds || []).join(", "), erstes_leerlaufen_min: r.firstEmptyMin ?? null,
+          standort: b.siteNote || null, sicherheit: b.safety ? b.safety.text : null, hinweis: W.hinweis,
+        }, geometry: { type: "Point", coordinates: [b.lon, b.lat] } });
+        nWasser++;
+      });
+      plan.basins.filter((b) => b.supply && b.supply.hose).forEach((b) => {
+        const src = plan.sources.find((x) => x.id === b.supply.sourceId);
+        if (!src) return;
+        const h = b.supply.hose;
+        feats.push({ type: "Feature", properties: {
+          typ: "schlauchleitung", becken: b.id, entnahmestelle: src.id, laenge_m: Math.round(h.lengthM),
+          foerderstrom_lpm: Math.round(h.flowLpm), pumpen: h.pumps, verstaerker: h.boosters,
+          hoehe_m: Math.round(h.dhMaxM), aufbau_min: Math.round(h.setupMin),
+          geometrie: "LUFTLINIE Entnahmestelle–Becken, kein Schlauchverlauf", hinweis: W.hinweis,
+        }, geometry: { type: "LineString", coordinates: [[src.lon, src.lat], [b.lon, b.lat]] } });
+        nWasser++;
+      });
+      WaterUI.routesFromSim(plan, sim).forEach((r) => {
+        feats.push({ type: "Feature", properties: {
+          typ: "pendelroute", entnahmestelle: r.source.id, becken: r.basin.id, fahrten: r.trips,
+          fahrzeuge: [...r.vehicles].join(", "),
+          geometrie: "LUFTLINIE, KEIN Fahrweg (Fahrzeit = Luftlinie × Umwegfaktor, kein Routing)", hinweis: W.hinweis,
+        }, geometry: { type: "LineString", coordinates: [[r.source.lon, r.source.lat], [r.basin.lon, r.basin.lat]] } });
+        nWasser++;
+      });
+      plan.consumers.forEach((c) => {
+        feats.push({ type: "Feature", properties: {
+          typ: "wasserabnehmer", id: c.id, bezeichnung: c.label, art: c.kind, bedarf_lpm: Math.round(c.demandLpm),
+          ab_min: c.readyMin, becken: c.basinId, abstand_becken_m: c.basinDistM === undefined ? null : Math.round(c.basinDistM), hinweis: W.hinweis,
+        }, geometry: { type: "Point", coordinates: [c.lon, c.lat] } });
+        nWasser++;
+      });
+    }
+    Protocol.add("export", { format: "GeoJSON", features: feats.length });
+    if (nWasser) Protocol.add("wasser_export", { format: "GeoJSON", features: nWasser, hinweis: "Pendelrouten und Schlauchleitungen sind Luftlinien, keine Wege" });
+    refreshProtocol();
     openExport("lage.geojson", JSON.stringify({ type: "FeatureCollection", features: feats }));
   };
 
@@ -7489,7 +9841,7 @@ out center;`;
   // Kartenebene Rettungspunkte (lädt die Daten erst beim Einschalten; Nummern weichen vorhandenen Label aus)
   const rpLayer = SearchUI.rettungspunkteLayer(map, {
     // Nummern weichen allen vorhandenen Kartenbeschriftungen und festen Markern aus (sonst verdecken sie Lageinformation)
-    minZoom: 13, labelZoom: 14, obstacleSelector: `${LABEL_SEL},.st-group,.gs-marker,.vx-marker,.water-marker,.gps-marker`,
+    minZoom: 13, labelZoom: 14, obstacleSelector: `${LABEL_SEL},${FIXED_SEL},.st-group,.gs-marker,.gps-marker,.wveh`,
     onWarn: (t) => { renderSearchSources(); $("hdr-status").textContent = t; },
   });
   if (searchUsable) layerCtl.addOverlay(rpLayer, "Rettungspunkte (KWF, ab Zoom 13)");
@@ -7523,6 +9875,7 @@ out center;`;
     document.querySelectorAll(".tab").forEach((x) => x.setAttribute("aria-selected", x === t ? "true" : "false"));
     document.querySelectorAll(".tabpanel").forEach((p) => { p.hidden = p.id !== `panel-${t.dataset.tab}`; });
     store.set("wb_tab", t.dataset.tab);
+    onWaterTab(t.dataset.tab === "wasser");
   }));
   const savedTheme = store.get("wb_theme", null);
   if (savedTheme) document.documentElement.setAttribute("data-theme", savedTheme);
@@ -7530,6 +9883,7 @@ out center;`;
     const cur = document.documentElement.getAttribute("data-theme") || (matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
     const nxt = cur === "dark" ? "light" : "dark";
     document.documentElement.setAttribute("data-theme", nxt); store.set("wb_theme", nxt);
+    if (waterUI) waterUI.redraw();
   };
 
   // ---------------------------------------------------------------- Start
@@ -7594,6 +9948,9 @@ out center;`;
     grenzenReady() { return S.grenzen; },
     setVehicles(data) { applyVehicleData(data, "Testdaten (synthetisch)"); saveVehicles(); },
     search: searchUI,
+    water() { return waterUI; },
+    waterInput,
+    waterTab(on) { onWaterTab(on !== false); },
     rpLayer,
     setRpLayer(on) { if (on) map.addLayer(rpLayer); else map.removeLayer(rpLayer); },
     map,
