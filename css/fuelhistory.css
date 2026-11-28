@@ -1,0 +1,122 @@
+/* Modul Vorgeschichte/Trockenheit – Oberfläche. Ergänzt css/app.css (gleiche Variablen, gleicher
+   Dark/Light-Mechanismus). Tablet-tauglich: Bedienelemente mindestens --tap hoch, Schrift >= 15 px,
+   hoher Kontrast für Sonnenlicht. */
+
+:root {
+  --fh-rain: #2b7cd3;    /* Niederschlagsbalken */
+  --fh-d1: #b3261e;      /* 1-h-Feuchte */
+  --fh-d10: #c77b16;     /* 10-h */
+  --fh-d100: #1d6b3a;    /* 100-h */
+  --fh-last7: rgba(179, 38, 30, 0.10); /* Hervorhebung der letzten 7 Tage */
+  --fh-gruen: #1d6b3a;
+  --fh-gelb: #c77b16;
+  --fh-rot: #9c1c13;
+  --fh-grau: #6b7784;
+  /* Alle übrigen Variablen (--bg, --ink, --tap, --font …) kommen aus css/app.css. Hier NICHT
+     wiederholen: sonst überschreibt dieses Modul die Farben der ganzen App. */
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --fh-rain: #6fb3ff; --fh-d1: #ff8a80; --fh-d10: #ffc46b; --fh-d100: #7fd49b;
+    --fh-last7: rgba(255, 138, 128, 0.14);
+    --fh-gruen: #7fd49b; --fh-gelb: #ffc46b; --fh-rot: #ff8a80; --fh-grau: #a5b1bd;
+  }
+}
+:root[data-theme="dark"] {
+  --fh-rain: #6fb3ff; --fh-d1: #ff8a80; --fh-d10: #ffc46b; --fh-d100: #7fd49b;
+  --fh-last7: rgba(255, 138, 128, 0.14);
+  --fh-gruen: #7fd49b; --fh-gelb: #ffc46b; --fh-rot: #ff8a80; --fh-grau: #a5b1bd;
+}
+
+/* ------------------------------------------------------------------ Bedienfeld */
+.fh-ui { font: 15px/1.45 var(--font); color: var(--ink); }
+.fh-ui h3 { font-size: 17px; margin: 0 0 8px; }
+.fh-ui h4 { font-size: 15px; margin: 0 0 6px; }
+.fh-disclaimer {
+  background: var(--warn-bg); color: var(--warn-ink); border: 2px solid var(--warn-ink);
+  border-radius: 6px; padding: 8px 10px; margin: 0 0 10px; font-size: 14px;
+}
+.fh-card { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 12px; margin: 0 0 12px; }
+.fh-small { font-size: 13px; color: var(--muted); margin: 6px 0 0; }
+.fh-small code { font-family: ui-monospace, Menlo, Consolas, monospace; }
+
+.fh-row { display: flex; flex-wrap: wrap; gap: 10px 14px; align-items: center; }
+.fh-check { display: inline-flex; align-items: center; gap: 8px; min-height: var(--tap); font-weight: 600; cursor: pointer; }
+.fh-check input { width: 24px; height: 24px; accent-color: var(--accent); flex: none; }
+.fh-sel { display: inline-flex; align-items: center; gap: 6px; font-size: 14px; color: var(--muted); }
+.fh-sel select {
+  min-height: var(--tap); padding: 0 8px; border: 2px solid var(--ink); border-radius: 6px;
+  background: var(--surface); color: var(--ink); font: 600 15px/1 var(--font);
+}
+.fh-btn {
+  min-height: var(--tap); padding: 0 16px; border-radius: 6px; border: 2px solid var(--ink);
+  background: var(--surface); color: var(--ink); font: 600 15px/1 var(--font); cursor: pointer;
+}
+.fh-btn:hover { background: var(--bg); }
+.fh-btn:focus-visible, .fh-ui select:focus-visible, .fh-ui input:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+/* ------------------------------------------------------------------ Trockenheitsampel */
+.fh-ampel { display: flex; align-items: center; gap: 12px; min-height: var(--tap); }
+.fh-ampel-txt { font-size: 17px; }
+.fh-dot {
+  width: 30px; height: 30px; border-radius: 50%; flex: none;
+  border: 2px solid var(--ink); background: var(--fh-grau);
+}
+.fh-dot.fh-gruen { background: var(--fh-gruen); }
+.fh-dot.fh-gelb { background: var(--fh-gelb); }
+.fh-dot.fh-rot { background: var(--fh-rot); }
+/* Zusätzliches Muster, damit die Ampel nicht nur über Farbe erkennbar ist (Farbfehlsichtigkeit) */
+.fh-dot.fh-gelb { background-image: repeating-linear-gradient(45deg, rgba(0,0,0,.28) 0 3px, transparent 3px 6px); }
+.fh-dot.fh-rot { background-image: repeating-linear-gradient(90deg, rgba(255,255,255,.4) 0 2px, transparent 2px 6px); }
+
+/* ------------------------------------------------------------------ Diagramm */
+.fh-chartwrap { width: 100%; overflow: hidden; }
+.fh-chartwrap canvas { display: block; max-width: 100%; }
+.fh-legend { list-style: none; display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 8px 0 0; padding: 0; font-size: 13px; color: var(--muted); }
+.fh-legend li { display: inline-flex; align-items: center; gap: 6px; }
+.fh-sw { width: 20px; height: 10px; display: inline-block; border: 1px solid var(--ink); flex: none; }
+.fh-sw-rain { background: var(--fh-rain); }
+.fh-sw-d1 { background: var(--fh-d1); }
+.fh-sw-d10 { background: var(--fh-d10); }
+.fh-sw-d100 { background: var(--fh-d100); }
+.fh-sw-last7 { background: var(--fh-last7); border-style: dashed; }
+
+/* Aufklappbare Karten (Kennzahlen, Ersatzeingabe): halten den Abschnitt in der schmalen
+   Seitenleiste kurz. Gleiche Bedienhöhe wie die übrigen Elemente (--tap). */
+.fh-det > summary {
+  display: flex; align-items: center; gap: 8px; min-height: var(--tap);
+  cursor: pointer; font-weight: 600; list-style: none;
+}
+.fh-det > summary::-webkit-details-marker { display: none; }
+.fh-det > summary::before { content: "\25B8"; color: var(--muted); font-size: 15px; }
+.fh-det[open] > summary::before { content: "\25BE"; }
+.fh-det > summary h4 { margin: 0; }
+.fh-det > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+
+/* ------------------------------------------------------------------ Kennzahlen */
+.fh-tab { width: 100%; border-collapse: collapse; font-size: 14px; }
+.fh-tab th, .fh-tab td { text-align: left; padding: 5px 6px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.fh-tab th { font-weight: 500; color: var(--muted); width: 58%; }
+.fh-tab td { font-variant-numeric: tabular-nums; }
+.fh-tab tr.fh-sep th, .fh-tab tr.fh-sep td { border-top: 2px solid var(--line); }
+
+/* ------------------------------------------------------------------ Manuelle Ersatzeingabe */
+.fh-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 8px 12px; margin-top: 8px; }
+.fh-grid label { display: grid; gap: 4px; font-size: 13px; color: var(--muted); }
+.fh-grid input {
+  min-height: var(--tap); padding: 0 10px; border: 2px solid var(--ink); border-radius: 6px;
+  background: var(--surface); color: var(--ink); font: 15px/1 var(--font); width: 100%; box-sizing: border-box;
+}
+.fh-grid.fh-off { opacity: 0.55; }
+
+/* ------------------------------------------------------------------ Meldungen */
+.fh-msg { border-radius: 6px; padding: 8px 10px; margin: 0 0 8px; font-size: 14px; border: 1px solid var(--line); background: var(--surface); }
+.fh-msg.fh-warn { border-color: var(--warn-ink); background: var(--warn-bg); color: var(--warn-ink); }
+.fh-msg.fh-err { border: 2px solid var(--alert); color: var(--alert); font-weight: 600; }
+.fh-msg.fh-info { color: var(--muted); }
+
+/* Schmale Geräte: Kennzahlen zweizeilig lesbar halten */
+@media (max-width: 460px) {
+  .fh-tab th { width: 52%; }
+  .fh-row { gap: 8px; }
+}

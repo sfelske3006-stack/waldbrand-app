@@ -193,22 +193,28 @@
    *           slopeK: Float32Array[classes] Hangkoeffizient 5.275*beta^-0.3,
    *           info: [{hour, headRos per class}]}
    */
-  function precomputeRates(weatherHours, classList, P, pert) {
+  function precomputeRates(weatherHours, classList, P, pert, hist) {
     const hours = weatherHours.length;
     const nc = classList.length;
     const rates = [];
     const info = [];
     const r0 = [];
     const slopeK = new Float32Array(nc);
+    // Dürre-Effekt aus der Wettervorgeschichte (0.9.0, js/fuelhistory.js): begrenzter Faktor auf die
+    // Reaktionsintensität und damit auf die Rate (Rothermel 1972: R ~ I_R bei gleicher Packungsdichte).
+    // hist = undefined/null -> kIR = 1, Rechnung bitgenau wie bisher.
+    const kIR = hist && hist.irFaktor ? hist.irFaktor : 1;
     for (let h = 0; h < hours; h++) {
       const w = weatherHours[h];
-      const dm = deadMoisture(w, P.moisture);
+      // Basisfeuchte je Stunde: aus der Wettervorgeschichte (FuelHistory.baseMoistureForHours, in %),
+      // sonst wie bisher (Gleichgewichtsfeuchte + Regenzuschlag).
+      const dm = (hist && hist.moistureSeries && hist.moistureSeries[h]) || deadMoisture(w, P.moisture);
       const M = {
         d1: Math.max(1, dm.d1 + pert.dMoist) / 100,
         d10: Math.max(1, dm.d10 + pert.dMoist) / 100,
         d100: Math.max(1, dm.d100 + pert.dMoist) / 100,
-        lh: P.moisture.liveHerb / 100,
-        lw: P.moisture.liveWoody / 100,
+        lh: (dm.lh ?? P.moisture.liveHerb) / 100,
+        lw: (dm.lw ?? P.moisture.liveWoody) / 100,
       };
       const wind10Kmh = w.windKmh * pert.windFactor;
       const headDeg = (w.windDirDeg + pert.dDir + 180) % 360; // Wind KOMMT aus windDirDeg
@@ -223,8 +229,8 @@
         const waf = P.waf[cls.waf] ?? 0.4;
         const uMidKmh = wind10Kmh * waf;
         const r = rothermel(fm, M, uMidKmh * FTMIN_PER_KMH, 0, P.tonPerAcreToLbFt2);
-        const headMMin = r.R * M_PER_FT;
-        r0h[c] = r.R0 * M_PER_FT;
+        const headMMin = r.R * M_PER_FT * kIR;
+        r0h[c] = r.R0 * M_PER_FT * kIR;
         slopeK[c] = r.slopeK;
         const e = eccentricity(lengthToWidth(uMidKmh / 1.609344));
         heads.push(headMMin);
@@ -360,7 +366,7 @@
    * Da Dijkstra die Zellen in nicht fallender Zeit abarbeitet, wächst die Stunde monoton: lokale Werte
    * werden je Stunde lazy berechnet und beim Stundenwechsel verworfen.
    */
-  function travelTimeTerrain(grid, classList, weatherHours, P, pert, field, ignition, tMaxMin, slopeOpt) {
+  function travelTimeTerrain(grid, classList, weatherHours, P, pert, field, ignition, tMaxMin, slopeOpt, hist) {
     const { nx, ny, cell, fuel } = grid;
     const n = nx * ny;
     const nc = classList.length;
@@ -375,15 +381,19 @@
     const fms = cls.map((c) => (c && c.model ? P.fuelModels[c.model] : null));
     const wafs = cls.map((c) => (c ? P.waf[c.waf] ?? 0.4 : 0.4));
     const hours = weatherHours.length;
-    const dms = weatherHours.map((w) => deadMoisture(w, P.moisture));
+    // Basisfeuchte je Stunde: aus der Wettervorgeschichte (0.9.0), sonst wie bisher. Die
+    // Expositionskorrektur dM aus js/terrain.js wird DANACH addiert (keine doppelte Austrocknung,
+    // siehe docs/architecture.md); der Dürre-Faktor kIR wirkt nicht über die Feuchte, sondern auf die Rate.
+    const dms = weatherHours.map((w, h) => (hist && hist.moistureSeries && hist.moistureSeries[h]) || deadMoisture(w, P.moisture));
+    const kIR = hist && hist.irFaktor ? hist.irFaktor : 1;
     const moistOf = (h, dM) => {
       const dm = dms[h];
       return {
         d1: Math.max(1, dm.d1 + pert.dMoist + dM * ap.d1) / 100,
         d10: Math.max(1, dm.d10 + pert.dMoist + dM * ap.d10) / 100,
         d100: Math.max(1, dm.d100 + pert.dMoist + dM * ap.d100) / 100,
-        lh: P.moisture.liveHerb / 100,
-        lw: P.moisture.liveWoody / 100,
+        lh: (dm.lh ?? P.moisture.liveHerb) / 100,
+        lw: (dm.lw ?? P.moisture.liveWoody) / 100,
       };
     };
     // brennbar wie travelTime(): Klasse mit Rate > 0 in Stunde 0 (ohne Geländekorrektur)
@@ -418,8 +428,8 @@
       const uMidKmh = o.spd * wafs[c];
       const U = Math.min(Math.max(0, uMidKmh * FTMIN_PER_KMH), 0.9 * tIR[key]);
       const phiW = U > 0 ? tK[key] * Math.pow(U, tB[key]) : 0;
-      cR0[i] = tR0[key] * M_PER_FT;
-      cHead[i] = tR0[key] * (1 + phiW) * M_PER_FT;
+      cR0[i] = tR0[key] * M_PER_FT * kIR;
+      cHead[i] = tR0[key] * (1 + phiW) * M_PER_FT * kIR;
       cEcc[i] = eccentricity(lengthToWidth(uMidKmh / 1.609344));
       cUx[i] = o.ux; cUy[i] = o.uy;
     }
@@ -525,7 +535,10 @@
   /**
    * Ensemble-Rechnung. Schnittstelle des Modells.
    * input: {grid, classList, ignition, weatherHours[{windKmh, windDirDeg, tempC, rh, rain24, rain72}],
-   *         horizonsH, P, runs?, seed?}
+   *         horizonsH, P, runs?, seed?, moistureSeries?, drought?}
+   * moistureSeries/drought (0.9.0, optional): Basisfeuchte je Prognosestunde in % und die
+   * Dürre-Faktoren aus der Wettervorgeschichte (js/fuelhistory.js). Fehlen sie, rechnet das Modell
+   * wie bisher (Gleichgewichtsfeuchte + Regenzuschlag, Faktoren 1).
    * onProgress(doneRuns, totalRuns) wird nach jedem Lauf aufgerufen; Rückgabe ist ein Promise.
    */
   async function runEnsemble(input, onProgress) {
@@ -536,6 +549,15 @@
     const runs = input.runs ?? E.runs;
     const rand = rng(input.seed ?? E.seed);
     const n = grid.nx * grid.ny;
+    // Wettervorgeschichte/Trockenheit (0.9.0, js/fuelhistory.js). Beide Felder sind optional:
+    //   input.moistureSeries: [{d1,d10,d100,lh,lw}] in PROZENT je Prognosestunde (Basisfeuchte ohne
+    //     Exposition, aus FuelHistory.baseMoistureForHours) - null/undefined = Herleitung wie bisher.
+    //   input.drought: {irFaktor, ensembleFaktor} aus FuelHistory.couplingFactors.
+    // Ohne beide Felder ist das Ergebnis bitgenau wie ohne dieses Modul (Test in tests/fuelhistory.test.mjs).
+    const hist = (input.moistureSeries || input.drought)
+      ? { moistureSeries: input.moistureSeries || null, irFaktor: (input.drought && input.drought.irFaktor) || 1 }
+      : null;
+    const mAmp = input.drought && input.drought.ensembleFaktor ? input.drought.ensembleFaktor : 1;
     const counts = horizons.map(() => new Uint16Array(n));
     const earliest = new Float32Array(n).fill(Infinity);
     // Ordnungsstatistik je Zelle: die m kleinsten Ankunftszeiten über alle Läufe (aufsteigend).
@@ -560,7 +582,7 @@
     const runOne = (pert, pre) => {
       if (!tOpt) return travelTime(grid, classList, pre.rates, ignition, tMax, slopeOf(pre));
       const field = TW.makeRunField(prep, weatherHours, P, { strength: pert.terrainStrength, dDir: pert.dDir, windFactor: pert.windFactor, wind: tOpt.wind, moisture: tOpt.moisture, lat: grid.proj ? grid.proj.lat0 : NaN, lon: grid.proj ? grid.proj.lon0 : NaN });
-      const arr = travelTimeTerrain(grid, classList, weatherHours, P, pert, field, ignition, tMax, useSlope ? { maxTan } : null);
+      const arr = travelTimeTerrain(grid, classList, weatherHours, P, pert, field, ignition, tMax, useSlope ? { maxTan } : null, hist);
       if (!terrainHours) terrainHours = field.hourInfo.filter(Boolean);
       return arr;
     };
@@ -568,19 +590,21 @@
     // Referenzlauf (unveränderte Eingangswerte)
     const refPert = { dDir: 0, windFactor: 1, dMoist: 0 };
     if (tOpt) refPert.terrainStrength = 1;
-    const refPre = precomputeRates(weatherHours, classList, P, refPert);
+    const refPre = precomputeRates(weatherHours, classList, P, refPert, hist);
     const reference = runOne(refPert, refPre);
     const perturbations = [];
     for (let r = 0; r < runs; r++) {
       const pert = {
         dDir: (rand() * 2 - 1) * E.windDirDeg,
         windFactor: E.windSpeedFactor[0] + rand() * (E.windSpeedFactor[1] - E.windSpeedFactor[0]),
-        dMoist: (rand() * 2 - 1) * E.deadMoistureAbs,
+        // Spannweite der toten Feuchte; bei Dürre bzw. fehlender Vorgeschichte breiter (0.9.0).
+        // Die Zufallsfolge bleibt unverändert (gleiche Zahl rand()-Aufrufe), nur die Amplitude ändert sich.
+        dMoist: (rand() * 2 - 1) * E.deadMoistureAbs * mAmp,
       };
       // Stärke der Geländekorrektur nur ziehen, wenn aktiv (sonst bleibt die Zufallsfolge wie 0.3.0)
       if (tOpt) pert.terrainStrength = tStr[0] + rand() * (tStr[1] - tStr[0]);
       perturbations.push(pert);
-      const pre = precomputeRates(weatherHours, classList, P, pert);
+      const pre = precomputeRates(weatherHours, classList, P, pert, hist);
       const arr = runOne(pert, pre);
       for (let i = 0; i < n; i++) {
         const a = arr[i];
@@ -601,6 +625,11 @@
     return {
       horizons, runs, counts, earliest, reference, perturbations, tPossible, tLikely, quantileRuns: { possible: mP, likely: mL },
       refInfo: refPre.info, durationMs: Date.now() - t0, slopeUsed: useSlope, maxTanSlope: useSlope ? maxTan : null,
+      // Wettervorgeschichte/Trockenheit (0.9.0): was tatsächlich in die Rechnung eingegangen ist
+      drought: hist
+        ? { active: true, irFaktor: hist.irFaktor, ensembleFaktor: mAmp, moistureSeries: !!hist.moistureSeries,
+            hours: hist.moistureSeries ? hist.moistureSeries.length : 0 }
+        : { active: false, irFaktor: 1, ensembleFaktor: 1, moistureSeries: false, hours: 0 },
       terrainWind: tOpt ? {
         active: true, wind: tOpt.wind, moisture: tOpt.moisture, strengthRange: tStr.slice(), prepMs: prep.prepMs,
         hours: terrainHours, thermalHours: (terrainHours || []).filter((x) => x.thermal).length,

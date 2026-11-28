@@ -8,10 +8,10 @@
 <script>
   // Zentrale Version und Dateiliste (Cache-Busting). Alle Pfade RELATIV (läuft auch unter einem Unterpfad,
   // z. B. GitHub Pages /waldbrand-app/). WB_VERSION muss PARAMS.version entsprechen (Test prüft das).
-  window.WB_VERSION = "0.8.0-prototyp";
+  window.WB_VERSION = "0.9.0-prototyp";
   window.WB_ASSET = function (p) { return p + (p.indexOf("?") < 0 ? "?" : "&") + "v=" + encodeURIComponent(window.WB_VERSION); };
-  window.WB_CSS = ["vendor/leaflet/leaflet.css", "css/app.css", "css/search.css", "css/water.css", "css/safearea.css", "css/interaktion.css"];
-  window.WB_JS = ["vendor/leaflet/leaflet.js", "config.js", "js/params.js", "js/interaktion-params.js", "js/grid.js", "js/dem.js", "js/terrain.js", "js/model.js", "js/contour.js", "js/weather.js", "js/osm.js", "js/dispatch.js", "js/suggest.js", "js/protocol.js", "js/search.js", "js/search-ui.js", "js/water-params.js", "js/water.js", "js/water-ui.js", "js/safearea.js", "js/safearea-ui.js", "js/windrose.js", "js/vehicle-drag.js", "js/interaktion-ui.js", "js/app.js"];
+  window.WB_CSS = ["vendor/leaflet/leaflet.css", "css/app.css", "css/search.css", "css/water.css", "css/safearea.css", "css/interaktion.css", "css/fuelhistory.css"];
+  window.WB_JS = ["vendor/leaflet/leaflet.js", "config.js", "js/params.js", "js/fuelhistory-params.js", "js/interaktion-params.js", "js/grid.js", "js/dem.js", "js/terrain.js", "js/model.js", "js/contour.js", "js/weather.js", "js/osm.js", "js/dispatch.js", "js/suggest.js", "js/protocol.js", "js/search.js", "js/search-ui.js", "js/water-params.js", "js/water.js", "js/water-ui.js", "js/safearea.js", "js/safearea-ui.js", "js/windrose.js", "js/vehicle-drag.js", "js/interaktion-ui.js", "js/fuelhistory.js", "js/fuelhistory-ui.js", "js/app.js"];
   for (var i = 0; i < window.WB_CSS.length; i++) document.write('<link rel="stylesheet" href="' + window.WB_ASSET(window.WB_CSS[i]) + '">');
 </script>
 <!--/WB-LOADER-->
@@ -119,6 +119,18 @@
           </details>
           <div class="tablewrap"><table id="wx-table" class="data"></table></div>
           <p class="muted small">Waldbrandgefahrenindex (DWD): nicht angebunden (zu prüfen).</p>
+        </section>
+
+        <!-- Trockenheit / Vorgeschichte des Wetters (0.9.0, js/fuelhistory.js + js/fuelhistory-ui.js).
+             Bewusst KEIN eigener Reiter: ein sechster Reiter bricht auf dem Tablet im Hochformat in die
+             zweite Zeile um. Die Vorgeschichte gehört fachlich zwischen „2 Wetter“ (sie kommt aus
+             derselben Quelle) und „3 Gelände & Brennstoff“ (sie bestimmt die Brennstofffeuchte). -->
+        <section class="card" id="sec-trockenheit">
+          <h2><span class="step">2b</span> Trockenheit / Vorgeschichte des Wetters</h2>
+          <!-- Zusammenfassung (Zeitstempel, Datenalter, Einstufung) wird von js/app.js gefüllt;
+               das Bedienfeld darunter kommt aus js/fuelhistory-ui.js (FuelHistoryUI.create). -->
+          <div id="trockenheit-hinweis" role="status" aria-live="polite"></div>
+          <div id="trockenheit-panel"></div>
         </section>
 
         <section class="card" id="sec-daten">
@@ -268,6 +280,10 @@
         <section class="card" id="sec-suche-quellen">
           <h2>Suche: Quellen und Lizenzen</h2>
           <div id="search-sources"></div>
+        </section>
+        <section class="card" id="sec-trockenheit-quellen">
+          <h2>Trockenheit und Vorgeschichte: Quellenlage und Grenzen</h2>
+          <div id="trockenheit-sources"></div>
         </section>
         <section class="card" id="sec-safearea-quellen">
           <h2>Rückzugsflächen und Fluchtwege: Quellenlage und Grenzen</h2>

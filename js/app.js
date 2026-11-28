@@ -48,6 +48,12 @@
     // Karten-Interaktion (0.8.0): manuelle Windüberschreibung (Pfeil + Zeitplan) und die von Hand
     // gesetzten Fahrzeuge (Controller aus VehicleDrag.attach).
     windOv: Windrose.emptyOverride(), windCtl: null, manual: null,
+    // Trockenheit / Vorgeschichte des Wetters (0.9.0): Auswertung von FuelHistory.load() und die
+    // Einstellungen des Bedieners (Schalter, Vortage 30-60, manuelle Ersatzeingabe).
+    fh: null,
+    fhOpt: Object.assign(
+      { enabled: (window.FUELHISTORY_PARAMS || { enabled: true }).enabled, pastDays: (window.FUELHISTORY_PARAMS && window.FUELHISTORY_PARAMS.abruf ? window.FUELHISTORY_PARAMS.abruf.pastDaysDefault : 60), manual: null },
+      store.get("wb_fh_opt", {})),
   };
 
   // ---------------------------------------------------------------- Texte
@@ -94,12 +100,85 @@
     <li>Die abgebrannte Fläche wird aus der <b>gezeichneten</b> Brandfläche abgeleitet, nicht aus einer Beobachtung; ob sie durchgebrannt und abgekühlt ist, weiß die App nicht.</li>
     <li><b>Ohne OSM-Daten werden keine Flächen erfunden:</b> dann bleibt nur die abgebrannte Fläche, zusammen mit einem Hinweis.</li>
   </ul>`;
+  // Quellenlage des Moduls Trockenheit / Vorgeschichte (0.9.0), Reiter „Grenzen & Quellen“.
+  const TROCKENHEIT_HTML = `
+  <p class="muted small">Modul „Trockenheit / Vorgeschichte des Wetters“ (0.9.0). <b>Keine amtliche
+    Waldbrandgefahrenstufe</b>: der DWD-Waldbrandgefahrenindex (WBI) ist nicht angebunden.</p>
+  <h3>Belegt</h3>
+  <ul>
+    <li><b>FWI-System</b> (FFMC, DMC, DC, ISI, BUI, FWI) nach <b>Van Wagner, C.&nbsp;E. (1987)</b>,
+      <i>Development and structure of the Canadian Forest Fire Weather Index System</i>, Forestry Technical
+      Report 35, Canadian Forestry Service, in der Fassung von <code>cffdrs</code>/<code>xclim</code>.
+      Die Umsetzung ist gegen <code>xclim</code> 1.0.0 geprüft: über 150 synthetische Tage
+      (einschließlich Grenzfällen) beträgt die größte absolute Abweichung FFMC 2,8·10⁻¹⁴, DMC 0, DC 0,
+      ISI 4,0·10⁻¹⁵, BUI 0, FWI 5,7·10⁻¹⁴ – reine Gleitkomma-Rundung
+      (Referenzdatei <code>tests/fixtures/fwi_xclim.json</code>).</li>
+    <li><b>Abweichung zur Originalschrift</b>: Der Faktor der DMC-Trocknungsrate (Gl. 16) ist wie in
+      <code>cffdrs</code> und <code>xclim</code> 1·10⁻⁴ und nicht 1·10⁻⁶.</li>
+    <li><b>Vergangenheit über <code>past_days</code></b> der Open-Meteo-Forecast-API (heruntergeladene
+      Doku: Parameter <code>past_days</code>, Optionsliste bis 92 Tage = „3 months“); Archiv/Reanalyse
+      auf eigenem Host <code>archive-api.open-meteo.com/v1/archive</code>, ERA5 mit <b>5 Tagen
+      Verzögerung</b>. Daten unter <b>CC BY 4.0</b> (Quellen u. a. DWD, ECMWF/Copernicus ERA5).</li>
+    <li><b>Mittagswerte 12 Uhr Lokalzeit</b> und 24-h-Niederschlagssumme der vorangegangenen Stunden
+      sind die Definition des FWI-Eingangs; Niederschlag ist bei Open-Meteo laut Doku die Summe der
+      <i>vorangegangenen</i> Stunde.</li>
+  </ul>
+  <h3>Nicht belegt – ausdrücklich mit Feuerwehr und Forst zu klären</h3>
+  <ul>
+    <li><b>Open-Meteo ist nur für nichtkommerzielle Nutzung frei</b> (< 10.000 Abrufe/Tag, kein
+      API-Schlüssel). Ob der Einsatzbetrieb einer Feuerwehr darunter fällt, ist <b>ungeklärt</b> und vor
+      einer Nutzung im Einsatz zu prüfen (gilt auch für den bestehenden Wetterabruf).</li>
+    <li><b>Der DC-Startwert ist die größte Unsicherheit.</b> Der Drought Code ist ein Summenspeicher und
+      wird nur von Regen über 2,8 mm gesenkt. Gemessen (Test „FWI-Startwerte“): Startwerte 85/6/15 gegen
+      60/60/150 unterscheiden sich nach <b>60 trockenen Tagen</b> noch um <b>ΔDC = 121 Punkte</b>
+      (ΔDMC 8,1; ΔFFMC 0). Die <b>Überwinterung des DC</b> (Van Wagner/Lawson) ist nicht umgesetzt –
+      bei Einsätzen im Frühjahr ist der DC deshalb besonders unsicher.</li>
+    <li><b>Das FWI-System ist für kanadische Nadelwälder (Jack Pine / Lodgepole Pine) kalibriert</b> und
+      <b>nicht für deutsche Mischwälder validiert</b>. Es gibt keinen Abgleich mit dem DWD-WBI; die
+      Ampel ist eine eigene Zusammenfassung des FWI und <b>keine amtliche Gefahrenstufe</b>.</li>
+    <li>Die <b>FWI-Klassengrenzen</b> (5,2 / 11,2 / 21,3 / 38,0 / 50,0) sind so im europäischen
+      Waldbrandinformationssystem EFFIS gebräuchlich; die <b>Primärquelle (JRC/EFFIS) wurde nicht
+      eingesehen</b>. Die Dreistufung der Ampel ist eine eigene Annahme.</li>
+    <li><b>Regenbenetzung der toten Brennstoffklassen</b> (1 h: 6,0 %-Punkte je mm, max. 12 %/h,
+      Sättigung 35 %; 10 h: 2,0/5/30; 100 h: 0,6/2/25) ist eine <b>eigene Annahme ohne Literaturformel</b>.
+      Die exponentielle Annäherung an die Gleichgewichtsfeuchte mit Zeitkonstanten 1/10/100 h ist
+      Standardansatz (Byram 1963, Fosberg 1971, zusammengefasst in Andrews 2018), <b>Primärquellen nicht
+      eingesehen</b>. Die Gleichgewichtsfeuchte nach Simard (1968) ist dieselbe Funktion wie bisher.</li>
+    <li><b>Lebendfeuchte</b> (Monatswerte Kraut/Gehölz, Dürre-Abschlag über den DC) ist eine
+      <b>Annahme ohne Messung</b>; Live Fuel Moisture wird in Deutschland nicht flächig erhoben
+      (mit dem Landesbetrieb Wald und Holz NRW zu klären).</li>
+    <li><b>Kopplung an das Ausbreitungsmodell</b>: Basisfeuchte höchstens ± 6 / 8 / 12 %-Punkte von der
+      bisherigen Herleitung entfernt, Lebendfeuchte ± 60 %-Punkte, Faktor auf die Reaktionsintensität
+      höchstens × 1,20, Ensemble-Spannweite höchstens × 1,6 (× 1,8 ohne Vorgeschichte). Alle Grenzen
+      sind Annahmen und sollen von der Einsatzleitung bestätigt werden.</li>
+    <li>Der <b>Abruf wurde nicht gegen den echten Dienst geprüft</b> (Open-Meteo in der
+      Entwicklungsumgebung gesperrt): URL-Bau, Auswertung, Zwischenspeicher und Fehlerwege sind nur
+      gegen einen Mock getestet.</li>
+  </ul>
+  <h3>Bekannte Grenzen</h3>
+  <ul>
+    <li><b>Punktwetter</b>: alle Werte stammen aus einem Modellgitterpunkt, nicht aus einer Messung am
+      Brandort. Niederschlag ist im Modell besonders unsicher (Gewitterzellen) – gerade „Tage seit dem
+      letzten Regen“ kann daneben liegen. Deshalb gibt es die manuelle Ersatzeingabe (synthetisch,
+      als solche gekennzeichnet).</li>
+    <li><b>Keine flächige Differenzierung</b>: Vorgeschichte und Dürre gelten für das ganze Rechengebiet
+      gleich. Nur die Feuchtekorrektur nach Exposition (Geländewind, 0.4.0) unterscheidet Zellen; sie
+      wirkt <b>nach</b> der Basisfeuchte und wird nicht doppelt gezählt.</li>
+    <li>Kein Bodenwasser-/Verdunstungsmodell, keine Schneedecke, kein Frostboden, keine Feuersaison-Logik
+      (FWI-Werte im Winter sind nicht aussagekräftig), kein 1000-h-Brennstoff, keine Humusschicht als
+      eigene Klasse, keine Beschattung durch den Bestand (Waldinnenklima ist feuchter als die Freifläche).</li>
+    <li>Die <b>1-h-Klasse</b> läuft innerhalb des 6-h-Prognosehorizonts auf die Gleichgewichtsfeuchte der
+      Prognosestunden zu – die Vorgeschichte wirkt dort nur zu Beginn. Der bleibende Effekt kommt aus
+      der 10-h- und 100-h-Klasse, der Lebendfeuchte, dem Dürre-Faktor und der Ensemble-Spannweite.</li>
+    <li><b>Keine Validierung an realen Bränden.</b></li>
+  </ul>`;
   const SOURCES_HTML = `<ul>
     <li><b>Luftbild</b>: Geobasis NRW, WMS <code>wms_nw_dop</code>, Layer <code>nw_dop_rgb</code>; Lizenz laut GetCapabilities: Datenlizenz Deutschland – Zero 2.0 (geprüft 21.11.2026).</li>
     <li><b>Topografie</b>: Geobasis NRW, WMS <code>wms_nw_dtk</code>, Layer <code>nw_dtk_col</code> (geprüft 21.11.2026). Laut GetCapabilities gelten für P10 (Maßstab 1:4.100–11.000), DTK250 und DTK500 die Bedingungen des BKG: © GeoBasis-DE / BKG, dl-de/by-2-0 (Namensnennung). Für DTK25–100/ABK/ALKIS verweist der Dienst auf die Lizenzbedingungen von Geobasis NRW (zu prüfen).</li>
     <li><b>Geländemodell</b>: DGM1 NRW (Rasterweite 1 m) von opengeodata.nrw.de, mit <code>tools/build-dgm.py</code> auf ca. 25 m gemittelt (Datei <code>data/dgm25.bin</code>, offline). Geobasis NRW, dl-de/zero-2-0 (Lizenzangabe aus Katalog-Metadaten und WMS-GetCapabilities; im Download-Verzeichnis keine Lizenzdatei). Schummerung online: WMS <code>wms_nw_dgm-schummerung</code>, Layer <code>nw_dgm-schummerung_pan</code>.</li>
     <li><b>OpenStreetMap</b> (Karte, Brennstoff, Wege, Gewässer, Hydranten): © OpenStreetMap-Mitwirkende, ODbL 1.0. Abruf über Overpass API; im Betrieb eigene Instanz verwenden (zu prüfen).</li>
     <li><b>Wetter</b>: Open-Meteo (Modellwerte, Quelle u. a. DWD ICON), Attribution CC BY 4.0; Nutzungsbedingungen für den Einsatz zu prüfen. DWD Open Data: nicht angebunden.</li>
+    <li><b>Wettervorgeschichte</b> (ab 0.9.0, Reiter „Lage“, Abschnitt 2b): zweiter Open-Meteo-Abruf derselben Forecast-API mit <code>past_days</code> (30–60 Tage, Vorgabe 60; in der Doku bis 92 Tage belegt), Stundenwerte Temperatur, rel. Feuchte, Niederschlag, Wind. Archiv/Reanalyse <code>archive-api.open-meteo.com/v1/archive</code> (ERA5, 5 Tage Verzögerung) nur für längere Zeiträume. Zwischenspeicher 12 h, Warnung ab 48 h. Attribution CC BY 4.0; <b>die freie Nutzung ist nur nichtkommerziell, die Eignung für den Feuerwehreinsatz ist ungeklärt</b>. Fire Weather Index nach Van Wagner (1987), gegen <code>xclim</code> geprüft; <b>keine amtliche Waldbrandgefahrenstufe</b> (DWD-WBI nicht angebunden).</li>
     <li><b>Fahrzeuge/Wachen</b>: Neunkirchen-Seelscheid aus ffnkse.de; übrige Kommunen des Rhein-Sieg-Kreises aus Websuche (Feuerwehr-/Kommunalseiten, bos-fahrzeuge.info, Presse). <b>Ungeprüft, aus Websuche</b> (Originalseiten in der Erstellungsumgebung nicht abrufbar); Quellentyp je Fahrzeug in der Liste; Tankvolumen überwiegend Normwerte (gekennzeichnet). Wachenkoordinaten aus GEOBASIS.NRW-Gebäudereferenzen (dl-de/zero-2-0).</li>
     <li><b>Gemeindeteile</b>: Gemarkungen aus ALKIS (Geobasis NRW, dl-de/zero-2-0). Eine Gemarkung „Neunkirchen“ gibt es nicht; die Zuordnung der Gemarkungen zu den Gemeindeteilen (Seelscheid, Söntgerath → Seelscheid; Wolperath, Eischeid, Herkenrath → Neunkirchen) ist über Gemarkungen hergeleitet und vom Auftraggeber (Feuerwehr Neunkirchen-Seelscheid) am 22.11.2026 bestätigt. Bereitschaftszeiten 25/40 min: Vorgabe Auftraggeber (22.11.2026).</li>
     <li><b>Google Maps</b>: nur Anzeige, wenn ein API-Key in config.js eingetragen ist. Keine Auswertung der Google-Bilder.</li>
@@ -411,6 +490,204 @@
     return { windKmh: "Wind", windDirDeg: "Windrichtung", gustKmh: "Böen", tempC: "Temperatur", rh: "rel. Feuchte", rain24: "Regen 24 h", rain72: "Regen 72 h" }[k] || k;
   }
 
+  // ---------------------------------------------------------------- Trockenheit / Vorgeschichte (0.9.0)
+  // Zweiter Open-Meteo-Abruf mit past_days (30-60 Tage). js/weather.js bleibt unverändert; der
+  // Rechenkern (js/fuelhistory.js) liefert Basisfeuchten je Stunde, FWI-Kennzahlen und begrenzte
+  // Kopplungsfaktoren. Die Feuchtekorrektur nach Exposition (js/terrain.js) wirkt DANACH.
+  const FP = P.trockenheit || window.FUELHISTORY_PARAMS || null;
+  let fhUi = null;
+
+  /** Bisherige Herleitung der Feuchte (Gleichgewichtsfeuchte + Regenzuschlag) als Bezug für die
+   *  Begrenzung der Vorgeschichte (± %-Punkte je Klasse). null = kein Wetter vorhanden. */
+  function legacyMoisture(hour) {
+    const w = hour || firstWeatherHour();
+    if (!w || !Number.isFinite(w.tempC) || !Number.isFinite(w.rh)) return null;
+    const d = FireModel.deadMoisture({ ...w, rain24: w.rain24 || 0, rain72: w.rain72 || 0 }, P.moisture);
+    return { d1: d.d1, d10: d.d10, d100: d.d100, lh: P.moisture.liveHerb, lw: P.moisture.liveWoody };
+  }
+
+  function ensureFuelHistoryUI() {
+    if (fhUi || !FP || !window.FuelHistoryUI) return fhUi;
+    fhUi = FuelHistoryUI.create({
+      panel: $("trockenheit-panel"), FP, options: S.fhOpt,
+      onLoad: (opt) => { setFhOpt(opt); ladeVorgeschichte(true); },
+      // Schalter/Vortage/Ersatzeingabe geändert: neu auswerten, Abruf nur aus dem Zwischenspeicher
+      onChange: (opt) => { setFhOpt(opt); ladeVorgeschichte(false); },
+    });
+    return fhUi;
+  }
+  function setFhOpt(opt) {
+    S.fhOpt = { enabled: !!opt.enabled, pastDays: Number(opt.pastDays) || FP.abruf.pastDaysDefault, manual: opt.manual || null };
+    store.set("wb_fh_opt", S.fhOpt);
+  }
+
+  /** Vorgeschichte laden (force = neuer Abruf, sonst Zwischenspeicher) und auswerten. */
+  async function ladeVorgeschichte(force) {
+    if (!FP || !window.FuelHistory) return null;
+    ensureFuelHistoryUI();
+    const [lat, lon] = wxLocation();
+    if (fhUi) fhUi.setBusy(`Lade Vorgeschichte (${S.fhOpt.pastDays} Tage, Open-Meteo past_days) …`);
+    const ctl = new AbortController();
+    const to = setTimeout(() => ctl.abort(), FP.abruf.timeoutMs);
+    try {
+      S.fh = await FuelHistory.load({
+        lat, lon, FP, store: window.localStorage, force: !!force, signal: ctl.signal,
+        enabled: S.fhOpt.enabled, pastDays: S.fhOpt.pastDays, manual: S.fhOpt.manual,
+        legacy: legacyMoisture(null),
+      });
+    } catch (e) {
+      // Kein erfundener Wert: Zustand ohne Vorgeschichte, Grund wird angezeigt und protokolliert.
+      S.fh = FuelHistory.compute({ hist: null, FP, enabled: S.fhOpt.enabled, pastDays: S.fhOpt.pastDays, legacy: legacyMoisture(null) });
+      S.fh.notes = [`Abruf gescheitert: ${e && e.name === "AbortError" ? "Zeitüberschreitung" : (e && e.message) || e}`];
+    } finally { clearTimeout(to); }
+    if (fhUi) fhUi.setState(S.fh);
+    renderFhHint();
+    protokollTrockenheit();
+    return S.fh;
+  }
+
+  /** Zusammenfassung über dem Bedienfeld: Quelle, Zeitstempel, Datenalter, Einstufung, Vortage. */
+  function renderFhHint() {
+    const box = $("trockenheit-hinweis");
+    if (!box) return;
+    const st = S.fh;
+    if (!FP) { box.innerHTML = msg("warn", "Modul „Trockenheit“ nicht geladen."); return; }
+    if (!st) { box.innerHTML = msg("warn", "Vorgeschichte noch nicht geladen: die Brennstofffeuchte wird wie bisher nur aus dem Einsatztagwetter abgeleitet (Gleichgewichtsfeuchte + Regenzuschlag)."); return; }
+    const ageH = st.fetchedAt ? (Date.now() - st.fetchedAt) / 3600000 : null;
+    const alter = ageH === null ? "–" : `${fmtNum(ageH, 1)} h`;
+    if (!st.enabled) {
+      box.innerHTML = msg("warn", `Schalter „Vorgeschichte einbeziehen“ ist <b>aus</b>: Rechnung wie ohne dieses Modul (Vergleichsrechnung).`);
+      return;
+    }
+    if (!st.active) {
+      box.innerHTML = msg("err", `<b>Keine Wettervorgeschichte</b> (${esc(st.source)}). Es werden <b>keine Ersatzwerte erfunden</b>: die Feuchte bleibt bei der bisherigen Herleitung, das Unsicherheitsband der Feuchte wird auf × ${fmtNum(FP.kopplung.ensemble.fallbackFaktor, 1)} verbreitert. Manuelle Ersatzeingabe unten möglich.`);
+      return;
+    }
+    const f = st.fwi && st.fwi.last ? st.fwi.last : {};
+    const lv = st.level || {};
+    const cls = ageH !== null && ageH > FP.abruf.cacheWarnAgeH ? "err" : ageH !== null && ageH > FP.abruf.cacheMaxAgeH ? "warn" : "ok";
+    const d = st.dead.current;
+    box.innerHTML = msg(cls, `<b class="tag">${esc(lv.ampel === "gruen" ? "grün" : lv.ampel || "?")}</b>`
+      + `Trockenheit <b>${esc(lv.label || "unbekannt")}</b>, FWI ${fmtNum(f.fwi, 1)} (BUI ${fmtNum(f.bui, 0)}, DC ${fmtNum(f.dc, 0)}) · `
+      + `<b>${fmtNum(st.pastDaysGenutzt, 0)} Vortage</b> ausgewertet (${fmtNum(st.hours, 0)} Stundenwerte, ${fmtNum(st.fwiTage, 0)} Mittagswerte) · `
+      + `Quelle ${esc(st.source)}, abgerufen ${st.fetchedAt ? fmtTime(st.fetchedAt) : "–"}, <b>Datenalter ${alter}</b>`
+      + `${ageH !== null && ageH > FP.abruf.cacheWarnAgeH ? ` – <b>veraltet</b> (Grenze ${FP.abruf.cacheWarnAgeH} h), neu laden` : ""} · `
+      + `Basisfeuchte 1 h/10 h/100 h ${fmtNum(d.d1, 1)} / ${fmtNum(d.d10, 1)} / ${fmtNum(d.d100, 1)} %`
+      + `${S.run && (!S.run.trockenheit || S.run.trockenheit.state !== st) ? " · <b>„Prognose berechnen“ wiederholen</b>, damit diese Vorgeschichte in das Ergebnis eingeht." : ""}`);
+  }
+
+  /** Protokolleintrag „trockenheit“: Indexwerte, Vortage, Datenalter, Kopplung, Quellenlage. */
+  function protokollTrockenheit() {
+    const st = S.fh;
+    if (!st) return;
+    const f = st.active && st.fwi && st.fwi.last ? st.fwi.last : null;
+    const cf = st.coupling || {};
+    const r1 = (v, n = 1) => (Number.isFinite(v) ? +v.toFixed(n) : null);
+    Protocol.add("trockenheit", {
+      quelle: st.source, art: st.kind, schalter_ein: !!st.enabled, ausgewertet: !!st.active,
+      vortage_angefragt: st.pastDaysAngefragt,
+      vortage_ausgewertet: st.active ? r1(st.pastDaysGenutzt) : 0,
+      stundenwerte: st.hours || 0, mittagswerte: st.fwiTage || 0,
+      abgerufen: st.fetchedAt ? new Date(st.fetchedAt).toISOString() : null,
+      datenalter_h: st.fetchedAt ? r1((Date.now() - st.fetchedAt) / 3600000) : null,
+      ffmc: f ? r1(f.ffmc) : null, dmc: f ? r1(f.dmc) : null, dc: f ? r1(f.dc) : null,
+      isi: f ? r1(f.isi) : null, bui: f ? r1(f.bui) : null, fwi: f ? r1(f.fwi) : null,
+      ampel: st.level ? st.level.ampel : null, einstufung: st.level ? st.level.label : null,
+      hinweise_ampel: st.level ? st.level.hinweise : [],
+      feuchte_1h_pct: st.active ? r1(st.dead.current.d1) : null,
+      feuchte_10h_pct: st.active ? r1(st.dead.current.d10) : null,
+      feuchte_100h_pct: st.active ? r1(st.dead.current.d100) : null,
+      feuchte_ffmc_schicht_pct: st.active ? r1(st.ffmcFeuchte) : null,
+      lebendfeuchte_kraut_pct: st.active ? r1(st.live.lh, 0) : null,
+      lebendfeuchte_gehoelz_pct: st.active ? r1(st.live.lw, 0) : null,
+      tage_seit_regen: st.active ? { "1mm": st.stats.tageSeitRegen[1], "5mm": st.stats.tageSeitRegen[5] } : null,
+      niederschlag_mm: st.active ? { "7": r1(st.stats.summen[7].mm), "30": r1(st.stats.summen[30].mm), "60": r1(st.stats.summen[60].mm) } : null,
+      laengste_trockenstrecke_tage: st.active ? st.stats.maxTrockenstrecke : null,
+      duerre_anteil: r1(cf.duerreAnteil || 0, 2), faktor_reaktionsintensitaet: r1(cf.irFaktor || 1, 3),
+      faktor_ensemble_feuchte: r1(cf.ensembleFaktor || 1, 2), vergilbt_anteil: r1(cf.curingAnteil || 0, 2),
+      begrenzt: cf.begrenzt || [],
+      fwi_startwerte: st.active && st.fwi ? st.fwi.start : null,
+      parameterversion: FP ? FP.version : null, app_version: P.version,
+      warnungen: st.warnings || [], hinweise: st.notes || [],
+      quellenlage: "Brennstofffeuchte: Gleichgewichtsfeuchte nach Simard (1968) + exponentielle Annäherung (Zeitkonstanten 1/10/100 h); Regenbenetzung EIGENE ANNAHME. FWI-System nach Van Wagner (1987), gegen xclim geprüft. Klassengrenzen wie bei EFFIS gebräuchlich (Primärquelle nicht eingesehen). KEINE amtliche Waldbrandgefahrenstufe (DWD-WBI nicht angebunden).",
+    });
+    refreshProtocol();
+  }
+
+  /** Basisfeuchte je Prognosestunde und Dürre-Faktoren für FireModel.runEnsemble. */
+  function droughtForHours(hours, warnings) {
+    const out = { aktiv: false, grund: "", moistureSeries: null, drought: null, legacy: null, state: S.fh || null };
+    if (!FP || !window.FuelHistory) { out.grund = "Modul nicht geladen"; return out; }
+    const st = S.fh;
+    if (!st) {
+      out.grund = "Vorgeschichte nicht geladen";
+      if (warnings) warnings.push("Vorgeschichte/Trockenheit nicht geladen: Brennstofffeuchte wie bisher aus dem Einsatztagwetter (Gleichgewichtsfeuchte + Regenzuschlag).");
+      return out;
+    }
+    if (!st.enabled) { out.grund = "Schalter „Vorgeschichte einbeziehen“ aus"; return out; }
+    const legacy = legacyMoisture(hours[0]);
+    out.legacy = legacy;
+    if (!st.active) {
+      out.grund = `keine Vorgeschichte (${st.source})`;
+      // Keine erfundenen Werte: Feuchte bleibt bei der bisherigen Herleitung, nur das
+      // Unsicherheitsband wird breiter (ANNAHME, docs/assumptions.md).
+      out.drought = { irFaktor: 1, ensembleFaktor: FP.kopplung.ensemble.fallbackFaktor };
+      if (warnings) warnings.push(`Keine Wettervorgeschichte (${st.source}): Feuchte wie bisher gerechnet, Unsicherheitsband der Feuchte × ${fmtNum(FP.kopplung.ensemble.fallbackFaktor, 1)}.`);
+      return out;
+    }
+    out.moistureSeries = FuelHistory.baseMoistureForHours(st, hours, FP, legacy);
+    out.drought = st.coupling && st.coupling.active ? st.coupling : null;
+    out.aktiv = !!(out.moistureSeries && out.drought);
+    out.grund = out.aktiv ? "" : "Kopplung nicht aktiv";
+    if (warnings) {
+      const ageH = st.fetchedAt ? (Date.now() - st.fetchedAt) / 3600000 : null;
+      if (ageH !== null && ageH > FP.abruf.cacheWarnAgeH) warnings.push(`Vorgeschichte ist ${fmtNum(ageH, 1)} h alt (Grenze ${FP.abruf.cacheWarnAgeH} h) – neu laden.`);
+      if (st.kind === "manuell") warnings.push("Vorgeschichte aus MANUELLER ERSATZEINGABE (synthetische Reihe, kein echtes Wetter).");
+      if (st.kind === "demo") warnings.push("Vorgeschichte aus einem SYNTHETISCHEN Szenario (kein echtes Wetter).");
+      for (const b of (st.coupling && st.coupling.begrenzt) || []) warnings.push(`Vorgeschichte begrenzt – ${b}`);
+    }
+    return out;
+  }
+
+  /** Ein Satz für Ergebnisblock und Export: womit gerechnet wurde. */
+  function droughtText(t) {
+    if (!t || !t.state) return "<b>nicht geladen</b> – Feuchte wie bisher (Gleichgewichtsfeuchte + Regenzuschlag)";
+    const st = t.state;
+    if (!t.aktiv) return `<b>aus</b> (${esc(t.grund)})${t.drought ? `, Unsicherheitsband der Feuchte × ${fmtNum(t.drought.ensembleFaktor, 1)}` : ""} – Feuchte wie bisher`;
+    const f = st.fwi.last || {};
+    const m = t.moistureSeries[0] || {};
+    return `<b>aktiv</b> – ${fmtNum(st.pastDaysGenutzt, 0)} Vortage (${esc(st.source)}, Datenalter ${st.fetchedAt ? fmtNum((Date.now() - st.fetchedAt) / 3600000, 1) : "–"} h), `
+      + `FWI ${fmtNum(f.fwi, 1)} (${esc(st.level.label)}, Ampel ${esc(st.level.ampel === "gruen" ? "grün" : st.level.ampel)}), FFMC ${fmtNum(f.ffmc, 1)} / DMC ${fmtNum(f.dmc, 0)} / DC ${fmtNum(f.dc, 0)} / BUI ${fmtNum(f.bui, 0)}; `
+      + `Basisfeuchte 1 h/10 h/100 h ${fmtNum(m.d1, 1)} / ${fmtNum(m.d10, 1)} / ${fmtNum(m.d100, 1)} %, Lebendfeuchte Kraut ${fmtNum(st.live.lh, 0)} % (Annahme); `
+      + `Faktor Reaktionsintensität ×${fmtNum(t.drought.irFaktor, 2)}, Spannweite Feuchte ×${fmtNum(t.drought.ensembleFaktor, 2)}. `
+      + `Keine amtliche Waldbrandgefahrenstufe; FWI für kanadische Nadelwälder kalibriert (siehe „Grenzen &amp; Quellen“).`;
+  }
+
+  /** Kennzahlen der Trockenheit für Protokoll und GeoJSON-Export (flach, ohne Reihen). */
+  function droughtExportProps() {
+    const st = S.fh;
+    if (!FP || !st) return { trockenheit: "nicht geladen (Feuchte wie bisher)" };
+    if (!st.enabled) return { trockenheit: "Schalter aus (Feuchte wie bisher)" };
+    if (!st.active) return { trockenheit: `keine Vorgeschichte: ${st.source}`, trockenheit_vortage: 0 };
+    const f = st.fwi.last || {};
+    const r1 = (v, n = 1) => (Number.isFinite(v) ? +v.toFixed(n) : null);
+    return {
+      trockenheit: `${st.level.label} (Ampel ${st.level.ampel === "gruen" ? "grün" : st.level.ampel})`,
+      trockenheit_quelle: st.source, trockenheit_art: st.kind,
+      trockenheit_vortage: r1(st.pastDaysGenutzt),
+      trockenheit_abgerufen: st.fetchedAt ? new Date(st.fetchedAt).toISOString() : null,
+      trockenheit_datenalter_h: st.fetchedAt ? r1((Date.now() - st.fetchedAt) / 3600000) : null,
+      fwi: r1(f.fwi), ffmc: r1(f.ffmc), dmc: r1(f.dmc), dc: r1(f.dc), isi: r1(f.isi), bui: r1(f.bui),
+      feuchte_1h_pct: r1(st.dead.current.d1), feuchte_10h_pct: r1(st.dead.current.d10), feuchte_100h_pct: r1(st.dead.current.d100),
+      lebendfeuchte_kraut_pct: r1(st.live.lh, 0), lebendfeuchte_gehoelz_pct: r1(st.live.lw, 0),
+      tage_seit_regen_1mm: st.stats.tageSeitRegen[1] ? st.stats.tageSeitRegen[1].tage : null,
+      niederschlag_30d_mm: r1(st.stats.summen[30].mm),
+      faktor_reaktionsintensitaet: r1(st.coupling.irFaktor, 3),
+      faktor_ensemble_feuchte: r1(st.coupling.ensembleFaktor, 2),
+      trockenheit_hinweis: "FWI nach Van Wagner (1987), Klassengrenzen wie EFFIS (zu prüfen), Feuchtemodell und Kopplung sind Annahmen. KEINE amtliche Waldbrandgefahrenstufe.",
+    };
+  }
+
   // ---------------------------------------------------------------- OSM
   const selFuel = $("sel-fuel");
   for (const k of CLASS_LIST) {
@@ -558,8 +835,10 @@
     if (!grid.elev) terrainWind = { aktiv: false, grund: "kein Geländemodell", option: false };
     else if (!tw.wind && !tw.moisture) terrainWind = { aktiv: false, grund: "ausgeschaltet", option: false };
     else terrainWind = { aktiv: true, wind: tw.wind, feuchte: tw.moisture, option: tw };
+    // Trockenheit / Vorgeschichte (0.9.0): Basisfeuchte je Stunde (ohne Exposition!) und Dürre-Faktoren.
+    const trockenheit = droughtForHours(hours, warnings);
     const h0 = hours[0] || {};
-    return { grid, ignition, hours, warnings, osmApplied, startTime: now, prep, terrain, terrainWind,
+    return { grid, ignition, hours, warnings, osmApplied, startTime: now, prep, terrain, terrainWind, trockenheit,
       wind: wind.info, windOv: { ...S.windOv },
       windSetting: { dirDeg: h0.windDirDeg, kmh: h0.windKmh, gustKmh: h0.gustKmh ?? null } };
   }
@@ -580,6 +859,8 @@
     try {
       result = await FireModel.runEnsemble({
         grid: inp.grid, classList: CLASS_LIST, ignition: inp.ignition, weatherHours: inp.hours, P, terrain: inp.terrainWind.option,
+        // null = Feuchte wie bisher (bitgenau wie ohne dieses Modul)
+        moistureSeries: inp.trockenheit.moistureSeries, drought: inp.trockenheit.drought,
       }, async (d, t) => {
         setP(d, t);
         // onProgress (entprellte Neuberechnung) wirft Windrose.abortError(), sobald eine neuere
@@ -606,6 +887,7 @@
       brennstoff: S.osm ? `OSM (${S.osm.timestamp || "Stand unbekannt"})` : `einheitlich ${selFuel.value}`,
       gelaende: inp.terrain,
       gelaendewind: twProto(result.terrainWind),
+      trockenheit: fhProto(inp, result),
       parameter: { grid: P.grid, ensemble: P.ensemble, waf: P.waf, moisture: P.moisture, dem: { maxTanSlope: P.dem.maxTanSlope }, terrain: result.terrainWind?.active ? P.terrain : null },
       polygon: S.poly, warnungen: inp.warnings,
       ergebnis: { flaechen: metrics.perH, hauptrichtung: metrics.mainDirDeg, spitzenrate_m_min: metrics.peakRosMMin, erreichbarkeit: reach },
@@ -619,6 +901,33 @@
     if (!t || !t.active) return { aktiv: false, grund: t ? t.reason : "unbekannt" };
     return { aktiv: true, wind: t.wind, feuchte_exposition: t.moisture, staerke_ensemble: t.strengthRange, stunden_mit_hangwind: t.thermalHours, tageszeit_bekannt: t.timeKnown, stunden: t.hours };
   }
+  /** Was von der Vorgeschichte tatsächlich in die Rechnung eingegangen ist (Protokoll). */
+  function fhProto(inp, result) {
+    const t = inp.trockenheit || {};
+    const st = t.state;
+    const d = result && result.drought ? result.drought : null;
+    const r1 = (v, n = 1) => (Number.isFinite(v) ? +v.toFixed(n) : null);
+    if (!st) return { aktiv: false, grund: t.grund || "Modul nicht geladen" };
+    const f = st.active && st.fwi && st.fwi.last ? st.fwi.last : null;
+    return {
+      aktiv: !!t.aktiv, grund: t.grund || null, schalter_ein: !!st.enabled,
+      quelle: st.source, art: st.kind,
+      vortage_ausgewertet: st.active ? r1(st.pastDaysGenutzt) : 0,
+      datenalter_h: st.fetchedAt ? r1((Date.now() - st.fetchedAt) / 3600000) : null,
+      fwi: f ? r1(f.fwi) : null, bui: f ? r1(f.bui) : null, dc: f ? r1(f.dc) : null, ffmc: f ? r1(f.ffmc) : null,
+      ampel: st.level ? st.level.ampel : null, einstufung: st.level ? st.level.label : null,
+      basisfeuchte_erste_stunde_pct: t.moistureSeries && t.moistureSeries[0]
+        ? { d1: r1(t.moistureSeries[0].d1), d10: r1(t.moistureSeries[0].d10), d100: r1(t.moistureSeries[0].d100), lh: r1(t.moistureSeries[0].lh, 0), lw: r1(t.moistureSeries[0].lw, 0) } : null,
+      bisherige_herleitung_pct: t.legacy ? { d1: r1(t.legacy.d1), d10: r1(t.legacy.d10), d100: r1(t.legacy.d100) } : null,
+      faktor_reaktionsintensitaet: d ? r1(d.irFaktor, 3) : 1,
+      faktor_ensemble_feuchte: d ? r1(d.ensembleFaktor, 2) : 1,
+      stunden_mit_basisfeuchte: d ? d.hours : 0,
+      begrenzt: st.coupling ? st.coupling.begrenzt : [],
+      parameterversion: FP ? FP.version : null,
+      hinweis: "Basisfeuchte flächig gleich; die Feuchtekorrektur nach Exposition (Geländewind) wirkt zusätzlich und danach. Keine amtliche Waldbrandgefahrenstufe.",
+    };
+  }
+
   function twText(run) {
     const t = run.result.terrainWind;
     if (!t || !t.active) return `<b>aus</b>${t && t.reason ? ` (${esc(t.reason)})` : ""} – einheitlicher Wind wie Version 0.3.0`;
@@ -641,6 +950,7 @@
       renderFuel();
       renderTwind();
       renderVehicles();
+      renderFhHint();
     } catch (e) {
       $("run-errors").innerHTML = msg("err", `Fehler bei der Berechnung: ${esc(e.message)}`);
       console.error(e);
@@ -877,6 +1187,7 @@
       <div>Wetter: <b>${esc(wx ? wx.source : "nur manuelle Eingabe")}</b>${wx ? `, abgerufen ${fmtTime(wx.fetchedAt)}, Alter bei Rechnung ${fmtNum(Weather.ageHours(wx, run.startTime) * 60, 0)} min` : ""}${ov.length ? `; manuell überschrieben: ${ov.map(labelOf).join(", ")}` : ""}</div>
       <div>Brennstoff: <b>${S.osm ? `OSM, Datenstand ${esc(S.osm.timestamp || "unbekannt")}` : `einheitlich ${esc(P.fuelClasses[selFuel.value].label)}`}</b> (Zuordnung: Annahme)</div>
       <div>Geländewind: ${twText(run)}</div>
+      <div>Trockenheit / Vorgeschichte: ${droughtText(run.trockenheit)}</div>
       <div>Gelände: ${run.terrain && run.terrain.hang ? `<b>DGM1 NRW</b> (${esc(run.terrain.attribution)}), Stand ${esc(run.terrain.stand)}, auf ca. 25 m gemittelt; Hangzuschlag bergauf nach Rothermel, vereinfacht (max. Neigung ${fmtNum(P.dem.maxTanSlope * 100, 0)} %)` : `<b>kein Geländemodell</b> – Hangneigung nicht berücksichtigt`}</div>
       ${run.scenario ? `<div>Szenario B: ${esc(scenarioText(run.scenario))}</div>` : ""}
       ${run.display ? `<div>Kartendarstellung: <b>${run.display.mode === "raster" ? "Raster 25 m (ungeglättet)" : "Konturen"}</b>${run.display.mode === "raster" ? "" : ` – Glättung des 25-m-Rasters (Marching Squares + Chaikin), Flächenabweichung zur Rasterfläche max. ${fmtNum(run.display.maxAreaDevPct, 1)} %; Kennzahlen unten beruhen immer auf dem Raster`}. Umschalten in der Legende.</div>` : ""}
@@ -1976,7 +2287,7 @@
   $("btn-geojson").onclick = () => {
     const feats = [];
     const meta = { modell: P.modelName, version: P.version, hinweis: "TESTVERSION – nicht für den Einsatz. Modellprognose, unvalidiert. Keine Handlungsanweisung." };
-    if (S.poly) feats.push({ type: "Feature", properties: { typ: "brandflaeche", ...meta, ...Windrose.exportProps(S.windOv) }, geometry: { type: "Polygon", coordinates: [[...S.poly, S.poly[0]].map(([a, b]) => [b, a])] } });
+    if (S.poly) feats.push({ type: "Feature", properties: { typ: "brandflaeche", ...meta, ...Windrose.exportProps(S.windOv), ...droughtExportProps() }, geometry: { type: "Polygon", coordinates: [[...S.poly, S.poly[0]].map(([a, b]) => [b, a])] } });
     if (S.manual) {
       for (const rec of S.manual.store.all) {
         feats.push({ type: "Feature", properties: { ...VehicleDrag.exportProps(rec, null), pruefung_text: rec.checkShort || null }, geometry: { type: "Point", coordinates: [rec.lon, rec.lat] } });
@@ -1987,7 +2298,7 @@
       const g = run.grid, r = run.result;
       r.horizons.forEach((H, h) => {
         for (const [name, thr] of [["wahrscheinlich", P.ensemble.likely], ["moeglich", P.ensemble.possible]]) {
-          feats.push({ type: "Feature", properties: { typ: "prognose", horizont_h: H, klasse: name, schwelle: thr, berechnet: new Date(run.finishedAt).toISOString(), wetter: S.wx?.source || "manuell", gelaende: run.terrain?.hang ? `DGM1 NRW (${run.terrain.attribution}), Stand ${run.terrain.stand}` : "ohne Hangneigung", gelaendewind: run.result.terrainWind?.active ? "aktiv (vereinfacht)" : "aus", ...meta }, geometry: cellsToMultiPolygon(g, (k) => r.counts[h][k] / r.runs >= thr) });
+          feats.push({ type: "Feature", properties: { typ: "prognose", horizont_h: H, klasse: name, schwelle: thr, berechnet: new Date(run.finishedAt).toISOString(), wetter: S.wx?.source || "manuell", gelaende: run.terrain?.hang ? `DGM1 NRW (${run.terrain.attribution}), Stand ${run.terrain.stand}` : "ohne Hangneigung", gelaendewind: run.result.terrainWind?.active ? "aktiv (vereinfacht)" : "aus", ...droughtExportProps(), ...meta }, geometry: cellsToMultiPolygon(g, (k) => r.counts[h][k] / r.runs >= thr) });
         }
       });
     }
@@ -2271,14 +2582,23 @@
     document.documentElement.setAttribute("data-theme", nxt); store.set("wb_theme", nxt);
     if (waterUI) waterUI.redraw();
     if (saUi) saUi.redraw();
+    if (fhUi) fhUi.redraw();
   };
 
   // ---------------------------------------------------------------- Start
-  $("limits-text").innerHTML = LIMITS_HTML;
+  ensureFuelHistoryUI();
+  renderFhHint();
+  /** Modellgrenzen inkl. des Bausteins aus dem Trockenheitsmodul (Zahlen aus einer Quelle). */
+  function limitsHtml() {
+    const extra = fhUi ? fhUi.limitsHtml() : "";
+    return extra ? LIMITS_HTML.replace(/<\/ul>\s*$/, `${extra}</ul>`) : LIMITS_HTML;
+  }
+  $("limits-text").innerHTML = limitsHtml();
+  $("trockenheit-sources").innerHTML = TROCKENHEIT_HTML;
   $("hdr-version").textContent = `Version ${P.version}`;
   if (window.WB_VERSION && window.WB_VERSION !== P.version) $("hdr-status").textContent = `Versionskonflikt: Seite ${window.WB_VERSION}, Parameter ${P.version} – Seite neu laden.`;
   syncTwControls();
-  $("ack-text").innerHTML = `<p><b>TESTVERSION – nicht für den Einsatz</b> (Version ${esc(P.version)}).</p><p>Diese App ist ein <b>unvalidierter Prototyp</b>. Sie zeigt eine Modellprognose mit Unsicherheitsband und einfache Vorschläge. Sie ersetzt weder Einsatzleitung noch Lageerkundung vor Ort.</p>${LIMITS_HTML}`;
+  $("ack-text").innerHTML = `<p><b>TESTVERSION – nicht für den Einsatz</b> (Version ${esc(P.version)}).</p><p>Diese App ist ein <b>unvalidierter Prototyp</b>. Sie zeigt eine Modellprognose mit Unsicherheitsband und einfache Vorschläge. Sie ersetzt weder Einsatzleitung noch Lageerkundung vor Ort.</p>${limitsHtml()}`;
   $("sources-text").innerHTML = SOURCES_HTML;
   $("safearea-sources").innerHTML = SAFEAREA_HTML;
   renderSearchSources();
@@ -2348,6 +2668,23 @@
     scheduleDialog(ov, apply) { windScheduleDialog(ov || S.windOv, apply || ((e) => { S.windOv = Windrose.setSchedule(S.windOv, e); renderWx(); })); },
     showScenario,
     safeareaUi: saUi,
+    fuelhistory() { return S.fh; },
+    fuelhistoryUi() { return fhUi; },
+    fhOptions(o) { if (o) { setFhOpt({ ...S.fhOpt, ...o }); if (fhUi) { fhUi.setState(S.fh); } } return S.fhOpt; },
+    loadFuelHistory(force) { return ladeVorgeschichte(!!force); },
+    /** Synthetische Vorgeschichte einspielen (nur Test; Open-Meteo ist im Test gesperrt). */
+    injectFuelHistory(hist, label) {
+      if (!FP) return null;
+      S.fh = FuelHistory.compute({
+        hist: { ...hist, source: label || "Testdaten (synthetisch, kein echtes Wetter)", fetchedAt: hist.fetchedAt || Date.now() },
+        FP, enabled: S.fhOpt.enabled, pastDays: S.fhOpt.pastDays, legacy: legacyMoisture(null),
+      });
+      if (fhUi) fhUi.setState(S.fh);
+      renderFhHint(); protokollTrockenheit();
+      return S.fh;
+    },
+    clearFuelHistory() { S.fh = null; if (fhUi) fhUi.setState(null); renderFhHint(); },
+    droughtInput(hours) { return droughtForHours(hours || (S.run ? S.run.hours : []), []); },
     rpLayer,
     setRpLayer(on) { if (on) map.addLayer(rpLayer); else map.removeLayer(rpLayer); },
     map,

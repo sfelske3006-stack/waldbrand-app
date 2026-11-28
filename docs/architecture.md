@@ -17,14 +17,16 @@
 
 | Geländewind (0.4.0) | diagnostische Korrektur je Zelle (Sx, TPI, Luvhang, Talachse, Hangwind) auf geglätteten Feldern, lazy je Stunde in `travelTimeTerrain` | WindNinja (massenkonsistent), CFD | offline im Browser, Sekunden statt Minuten; aus = alter Pfad unverändert (bitgenau). Strömungsmodell als Phase-3-Option. |
 | Anfahrt (0.4.0) | Luftlinie × Umwegfaktor ÷ Geschwindigkeit + Ausrückzeit; eigene Wehr nach Vorgabe 25/40 min | Routing (OSRM/Valhalla) | keine Server-/Netzabhängigkeit; Routing für Phase 2. |
+| Vorgeschichte/Trockenheit (0.9.0) | eigener zweiter Open-Meteo-Abruf mit `past_days` (30–60 Tage), eigener Rechenkern `js/fuelhistory.js`; Kopplung über zwei optionale Felder von `runEnsemble` (`moistureSeries` je Stunde, `drought`) | `js/weather.js` um `past_days` erweitern (ein Abruf für beides); Dürre nur über die Beladungen `w[]`; Kopplung über `adaptParams()` (Parameterkopie) | Zweiter Abruf lässt `js/weather.js` und die bestehende Wetterschnittstelle unverändert (ein Abruf für beides ist als Aufräumschritt vorgemerkt). Die Kopplung über zwei optionale Felder hält die Rechnung ohne Vorgeschichte **bitgenau** wie bisher (Test) und erlaubt eine Feuchte **je Prognosestunde**; `adaptParams()` wäre nur für gleichbleibende Stunden exakt. Dürre wirkt auf die Reaktionsintensität statt auf `w[]`, weil mehr Beladung bei gleicher Brennstofftiefe die Packungsdichte erhöht und die Rate dadurch sinken kann (gemessen FM8: nur × 1,05). |
 | Auslieferung (0.4.0) | kleiner Loader in `index.html` (`WB_VERSION`, `WB_JS`, `WB_CSS`) mit `?v=<Version>`, nur relative Pfade | Build-Schritt mit Hash-Dateinamen | kein Build nötig; läuft unter GitHub-Pages-Unterpfad. |
 
 ## Schnittstellen (austauschbar)
 
-- **Modell**: `FireModel.runEnsemble({grid, classList, ignition, weatherHours, horizonsH, P, runs, seed}, onProgress)` → `{counts[h], earliest, reference, refInfo, perturbations, tPossible, tLikely, quantileRuns}`. `tPossible[k]`/`tLikely[k]` = Zeit (min), ab der ≥ 10 % bzw. ≥ 50 % der Läufe die Zelle erreicht haben (m-te kleinste Ankunftszeit); exakt konsistent mit `counts`. Ein anderes Modell muss mindestens `counts`, `earliest`, `reference` liefern; ohne `tPossible`/`tLikely` werden grobe Zeitfelder aus den Horizont-Zählern abgeleitet.
+- **Modell**: `FireModel.runEnsemble({grid, classList, ignition, weatherHours, horizonsH, P, runs, seed, moistureSeries?, drought?}, onProgress)` → `{counts[h], earliest, reference, refInfo, perturbations, tPossible, tLikely, quantileRuns}`. `tPossible[k]`/`tLikely[k]` = Zeit (min), ab der ≥ 10 % bzw. ≥ 50 % der Läufe die Zelle erreicht haben (m-te kleinste Ankunftszeit); exakt konsistent mit `counts`. Ein anderes Modell muss mindestens `counts`, `earliest`, `reference` liefern; ohne `tPossible`/`tLikely` werden grobe Zeitfelder aus den Horizont-Zählern abgeleitet.
 - **Anzeige**: `Contour.displayLayers(nx, ny, result, P, {mode: "kontur"|"raster", ignition})` → je Horizont Ringe (Zelleinheiten) für „wahrscheinlich“, „möglich“, Referenz und Flächenstatistik.
 - **Vorschläge**: `Suggest.compute(g, result, osm, ignition, vehicles, P, mainDir, state, {stations, maxAnfahrtMin, grundschutzOverride, grenzen, teilMode | teil})` → `{lines, vehicles (mit anfahrt, readyMin, lateFor, pflicht), notes, alerts, stageInfo, lineInfo {readyMin, readyText, checkMin, second, teil, found, rejected, reason}, objects, demand, ctx, grundschutz, dispatch}`. `Suggest.grundschutz(vehicles, stations, P, plannedIds, override)` separat nutzbar.
 - **Geländewind**: `TerrainWind.prepare(grid, P)` (statische Felder, gecacht), `makeRunField(prep, weatherHours, P, {strength, dDir, windFactor, wind, moisture, lat, lon})` → `setHour(h)`, `cell(i)` → `{spd, ux, uy, dM, fac, thermal}`; `sampleField(...)` für die Anzeige; `solar()`, `sunTimes()`. Im Modell: `runEnsemble({..., terrain: false | {wind, moisture}})`, Ergebnis `terrainWind`.
+- **Trockenheit/Vorgeschichte** (0.9.0): `FuelHistory.load({lat, lon, FP, store, force, enabled, pastDays, manual, legacy, signal})` → Zustand mit `{active, kind, source, fetchedAt, pastDaysGenutzt, hours, dead{series,current}, fwi{days,last,start}, live, stats, level, coupling, warnings, notes}`; `FuelHistory.compute({hist, now, FP, enabled, pastDays, start, legacy})` rechnet ohne Abruf (Tests, Testhook); `FuelHistory.baseMoistureForHours(state, forecastHours, FP, legacy)` → Basisfeuchte **je Prognosestunde** in Prozent `[{d1,d10,d100,lh,lw}]`; `FuelHistory.couplingFactors(state, FP, legacy)` → `{irFaktor, ensembleFaktor, curingAnteil, duerreAnteil, moisture, begrenzt[]}`. Im Modell: `runEnsemble({..., moistureSeries, drought})`, Ergebnis `drought` (was tatsächlich gewirkt hat). Ein anderer Trockenheitsindex muss nur diese beiden Felder liefern.
 - **Anfahrt/Daten**: `Dispatch.estimate(v, stationMap, lat, lon, P)`, `Dispatch.readiness(v, stationMap, lat, lon, setupMin, P, teil)`, `Dispatch.gemeindeteil(lat, lon, grenzen, mode)`, `Dispatch.normalize(json)` (schema 1/2, Synonyme), `filterSort`, `groupByScreen`.
 - **Fahrzeugdaten** (`data/fahrzeuge.json`, schema 2): Kopf `stand, gebiet, hinweis, quellen, kommunen[], kreisweit[]`; `wachen[] {id, name, kommune, einheit?, adresse, lat, lon, koordinate_status, koordinate_genau, typ (FF/BF), ausrueckzeit_min?}`; `fahrzeuge[] {id, typ, bezeichnung, kommune, einheit, wache, lat?/lon?, tank_l, tank_quelle, pumpe_lpm, loeschfahrzeug, verfuegbar, pflicht?, quelle, quelle_typ, zugriff, annahmen[], gelaendegaengig}`. Import akzeptiert zusätzlich `vehicles/stations`, `fahrzeugtyp`, `gemeinde`, `latitude/longitude` u. a.
 - **Wetter**: Objekt `{source, kind, fetchedAt, rows[{t, tempC, rh, precipMm, windKmh, windDirDeg, gustKmh}]}`. Weitere Quellen (DWD) liefern dieselbe Struktur.
@@ -35,7 +37,7 @@
 
 ## Datenfluss
 
-Polygon → Rechenraster (10 × 10 km, 25 m) → Höhe je Zelle aus DGM (falls geladen) → Brennstoff (OSM oder Ersatz) → Wetter je Stunde (+ Überschreibungen, Szenario) → Raten je Stunde/Klasse/Richtung (+ R0 und Hangkoeffizient je Klasse) → Hangzuschlag je Kante in der Minimum-Travel-Time → Referenzlauf + Ensemble (Zähler je Horizont, Zeitfelder „möglich“/„wahrscheinlich“) → Kennzahlen, Erreichzeiten → Vorschläge (Prüfzeitpunkt Bereitschaft + Wirkzeit) → Anzeige (Konturen oder Rasterumrisse) → Karte, Protokoll, Export.
+Polygon → Rechenraster (10 × 10 km, 25 m) → Höhe je Zelle aus DGM (falls geladen) → Brennstoff (OSM oder Ersatz) → Wetter je Stunde (+ Überschreibungen, Szenario) → **Basisfeuchte je Stunde aus der Wettervorgeschichte** (falls geladen und eingeschaltet, sonst wie bisher) → Raten je Stunde/Klasse/Richtung (+ R0 und Hangkoeffizient je Klasse) → Hangzuschlag je Kante in der Minimum-Travel-Time → Referenzlauf + Ensemble (Zähler je Horizont, Zeitfelder „möglich“/„wahrscheinlich“) → Kennzahlen, Erreichzeiten → Vorschläge (Prüfzeitpunkt Bereitschaft + Wirkzeit) → Anzeige (Konturen oder Rasterumrisse) → Karte, Protokoll, Export.
 
 ## Suche (0.5.0)
 
@@ -199,6 +201,54 @@ Loader-Eintrag verlangt).
 **Laufzeit** (gemessen im Browser-Test, Chromium in der Sandbox): `SafeArea.plan()` für 6 Flächen und 19
 Fahrzeugstandorte auf 400 × 400 Zellen ca. **400 ms** (Unit-Test auf demselben Raster ca. 250 ms). Das ist klein
 gegenüber der Ensemble-Rechnung (0,5–1,1 s). Auf dem Tablet ist mit dem Zwei- bis Vierfachen zu rechnen – **zu messen**.
+
+## Trockenheit / Vorgeschichte des Wetters (0.9.0)
+
+**Aufbau**: `js/fuelhistory-params.js` (`PARAMS.trockenheit`, eigene Datei wie `water-params.js`) →
+`js/fuelhistory.js` (Rechenkern, DOM-frei) → `js/fuelhistory-ui.js` (Bedienfeld, Ampel, Canvas-Diagramm) →
+`js/app.js` (Abruf, Anzeige, Protokoll, Export). Loaderreihenfolge: Parameter direkt nach `js/params.js`,
+Kern und Oberfläche vor `js/app.js`.
+
+**Rechenweg** (deterministisch, reine Funktionen):
+
+1. Stundenreihe der letzten 30–60 Tage (Open-Meteo `past_days`, Zwischenspeicher 12 h) oder synthetische Reihe aus
+   der manuellen Ersatzeingabe.
+2. `deadMoistureSeries()`: je Stunde Gleichgewichtsfeuchte (Simard 1968) → exponentielle Annäherung mit τ = 1/10/100 h
+   → Regenbenetzung (Annahme) → Schranken.
+3. `dailyNoon()`: Mittagswerte 12 Uhr **Lokalzeit** (`Intl`, Sommerzeit berücksichtigt) mit der
+   Niederschlagssumme der vorangegangenen 24 h.
+4. `fwiSeries()`: FFMC → DMC → DC → ISI → BUI → FWI → DSR (Van Wagner 1987 in der Fassung `cffdrs`/`xclim`).
+   Unvollständige Tage werden fortgeschrieben und gezählt.
+5. `rainStats()`, `liveMoisture()`, `droughtLevel()`: Kennzahlen, jahreszeitliche Lebendfeuchte mit DC-Abschlag,
+   Trockenheitsampel.
+6. `couplingFactors()` / `baseMoistureForHours()`: begrenzte Kopplung an das Ausbreitungsmodell.
+
+**Reihenfolge der Feuchte (wichtig, keine doppelte Austrocknung)**:
+
+```
+Feuchte(Zelle, Stunde) = Basisfeuchte aus der Vorgeschichte   (flächig gleich, 1 h/10 h/100 h)
+                       + Ensemble-Streuung × ensembleFaktor   (Dürre/kein Datenstand = breiter)
+                       + Expositionskorrektur aus js/terrain.js (unverändert aus 0.4.0, ± 3 %-Punkte)
+```
+
+`FuelHistory` kennt **nur Punktwetter**: keine Exposition, keine Hangneigung, keine Abschattung. Die
+Expositionskorrektur bleibt vollständig in `js/terrain.js`/`travelTimeTerrain()`. Der Dürre-Faktor `irFaktor` ist
+**kein** Feuchteeffekt und wirkt multiplikativ auf die Rate (`precomputeRates` und `travelTimeTerrain`), nicht noch
+einmal über die Feuchte. Zusammen können Basis (± 6/8/12 %-Punkte) und Exposition (± 3 %-Punkte) die Feuchte um
+höchstens 9 %-Punkte gegenüber der bisherigen Rechnung verschieben; `js/model.js` hält zusätzlich `max(1, …)` ein.
+
+**Schalter**: „Geländewind / Feuchte nach Exposition“ (0.4.0) und „Vorgeschichte einbeziehen“ (0.9.0) wirken
+unabhängig; alle vier Kombinationen sind gültig und im Modellgrenzen-Dialog getrennt benannt.
+
+**Testdaten**: `tests/fixtures/fwi_xclim.json` (150 Tage Referenz aus `xclim` 1.0.0) und
+`tests/fuelhistory-scenarios.cjs` (synthetische Szenarien „trocken“/„nass“, fester Seed) liegen bewusst **nicht**
+unter `js/`, weil `tests/model.test.mjs` für jede Datei in `js/` einen Loader-Eintrag verlangt.
+
+**Laufzeit** (gemessen, Node 22 in der Sandbox, Mittel aus 20 Läufen): vollständige Auswertung von 60 Tagen
+Stundenwerten (1.441 Stunden, 60 Mittagswerte) **72 ms** (Feuchtereihe, FWI-Reihe, Kennzahlen, Kopplung);
+`baseMoistureForHours()` für 8 Prognosestunden **0,02 ms**, also ohne Einfluss auf die Ensemble-Rechnung
+(0,5–1,1 s). Der Abruf selbst ist der Engpass (60 Tage ≈ 300–500 kB). Das Canvas-Diagramm wird bei
+Größenänderung und beim Umschalten von Tag/Nacht neu gezeichnet.
 
 ## Laufzeit (gemessen im Test, Chromium in der Sandbox)
 

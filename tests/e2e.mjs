@@ -779,6 +779,14 @@ try {
     await pg.evaluate(() => ["Windrose", "VehicleDrag", "InteraktionUI"].every((k) => typeof window[k] === "object") && !!(window.PARAMS.interaktion && window.PARAMS.interaktion.wind)) &&
     await pg.evaluate(() => !!document.querySelector(".wb-wind")),
     `${subIa.length} Dateien: ${subIa.join(", ")}`);
+  // Trockenheitsmodul unter dem Unterpfad: js/fuelhistory*.js und css/fuelhistory.css relativ geladen
+  const subFh = served2.filter((u) => /fuelhistory/.test(u));
+  check("Unterpfad: Modul Trockenheit (js/fuelhistory-params.js, js/fuelhistory.js, js/fuelhistory-ui.js, css/fuelhistory.css) relativ geladen",
+    subFh.length === 4 && subFh.every((u) => u.startsWith(PREFIX)) &&
+    await pg.evaluate(() => ["FuelHistory", "FuelHistoryUI", "FUELHISTORY_PARAMS"].every((k) => typeof window[k] === "object")
+      && !!(window.PARAMS.trockenheit && window.PARAMS.trockenheit.abruf)
+      && document.getElementById("trockenheit-panel").innerText.length > 100),
+    `${subFh.length} Dateien: ${subFh.join(", ")}`);
   // Rückzugsflächen-Modul unter dem Unterpfad: js/safearea*.js und css/safearea.css relativ geladen
   const subSa = served2.filter((u) => /safearea/.test(u));
   check("Unterpfad: Modul Rückzugsflächen (js/safearea.js, js/safearea-ui.js, css/safearea.css) relativ geladen",
@@ -1694,6 +1702,195 @@ try {
   await c2.close();
 } catch (e) {
   check("Testablauf Karten-Interaktion", false, e.message);
+}
+
+// ------------------------------------------------------------------ Trockenheit / Vorgeschichte (0.9.0)
+// Open-Meteo ist im Test gesperrt: zuerst das Verhalten OHNE Vorgeschichte (klarer Hinweis, keine
+// erfundenen Werte, Prognose läuft weiter), danach mit einer SYNTHETISCHEN Vorgeschichte über den
+// Testhook (tests/fuelhistory-scenarios.cjs, kein echtes Wetter).
+try {
+  const SZ = require("./fuelhistory-scenarios.cjs");
+  const c2 = await browser.newContext({ viewport: { width: 1400, height: 950 }, deviceScaleFactor: 2 });
+  const pg = await c2.newPage();
+  pg.on("console", (m) => { if (m.type() === "error") consoleErrors.push(m.text()); });
+  pg.on("pageerror", (e) => consoleErrors.push("PAGEERROR " + e.message));
+  await pg.route("**/*", (route) => { const u = new URL(route.request().url()); if (u.hostname === "localhost") return route.continue(); blocked.add(u.hostname); return route.abort("blockedbyclient"); });
+  await ack(pg);
+  await pg.evaluate(() => window.__wb.demReady());
+
+  // 1) Bedienfeld vorhanden, Vortage 30-60 einstellbar, Vorgabe 60
+  const panel0 = await pg.evaluate(() => {
+    const sel = document.getElementById("fh-days");
+    return {
+      optionen: [...sel.options].map((o) => Number(o.value)),
+      vorgabe: Number(sel.value), schalter: document.getElementById("fh-on").checked,
+      tab: document.querySelectorAll(".tabs .tab").length,
+      sichtbar: !document.getElementById("panel-lage").hidden && !!document.getElementById("sec-trockenheit"),
+      param: window.PARAMS.trockenheit.abruf.pastDaysDefault,
+    };
+  });
+  check("Trockenheit: Bedienfeld im Reiter „Lage“ (kein sechster Reiter), Vortage 30–60 einstellbar, Vorgabe aus den Moduldefaults",
+    panel0.tab === 5 && panel0.sichtbar && panel0.vorgabe === panel0.param && panel0.vorgabe === 60
+    && Math.min(...panel0.optionen) === 30 && Math.max(...panel0.optionen) === 60 && panel0.optionen.length >= 3,
+    JSON.stringify(panel0));
+
+  // 2) Ohne Netz: Abruf scheitert sichtbar, keine erfundenen Zahlen
+  await pg.click("#fh-load");
+  await pg.waitForFunction(() => !!window.__wb.fuelhistory(), null, { timeout: 40000 });
+  const fb = await pg.evaluate(() => {
+    const st = window.__wb.fuelhistory();
+    const txt = (id) => document.getElementById(id).innerText.replace(/\s+/g, " ");
+    return { active: st.active, kind: st.kind, hinweis: txt("trockenheit-hinweis"), msgs: txt("fh-msgs"),
+      kpi: document.querySelector("#fh-kpi tbody").textContent.replace(/\s+/g, " "),
+      ampel: txt("fh-ampel-txt"),
+      proto: Protocol.all().filter((e) => e.typ === "trockenheit").pop() };
+  });
+  check("Trockenheit ohne Netz: klarer Hinweis, keine erfundenen Werte, Protokolleintrag",
+    fb.active === false && fb.kind === "fallback" && /Keine Wettervorgeschichte/.test(fb.hinweis)
+    && /unbekannt/.test(fb.ampel) && !/FWI/.test(fb.kpi) && /Keine Vorgeschichte|ausgeschaltet/.test(fb.kpi)
+    && fb.proto && fb.proto.daten.ausgewertet === false && fb.proto.daten.fwi === null && fb.proto.daten.vortage_ausgewertet === 0,
+    `${fb.hinweis.slice(0, 110)} | Protokoll: ${fb.proto ? JSON.stringify({ a: fb.proto.daten.ausgewertet, f: fb.proto.daten.fwi }) : "fehlt"}`);
+
+  // 3) Prognose läuft ohne Vorgeschichte weiter, der Rückfall ist gekennzeichnet
+  const pts = [[50.858, 7.334], [50.8585, 7.3355], [50.8575, 7.336]];
+  await pg.evaluate((p) => window.__wb.setPolygon(p), pts);
+  await pg.click("#btn-wx-sample");
+  await pg.click("#wx-override summary");
+  for (const [k, v] of [["windKmh", "16"], ["windDirDeg", "225"], ["tempC", "29"], ["rh", "30"]]) { await pg.fill(`#ov-${k}`, v); await pg.locator(`#ov-${k}`).dispatchEvent("change"); }
+  await pg.click("#btn-run");
+  await pg.waitForSelector("#results table", { timeout: 90000 });
+  await pg.waitForFunction(() => !!(window.__wb.state.run && window.__wb.state.run.finishedAt), null, { timeout: 90000 });
+  const ohne = await pg.evaluate(() => {
+    const run = window.__wb.state.run;
+    return { meta: [...document.querySelectorAll("#results .meta div")].map((d) => d.innerText).find((t) => /Trockenheit/.test(t)) || "",
+      warn: [...document.querySelectorAll("#results .msg")].map((d) => d.innerText).join(" ").replace(/\s+/g, " "),
+      drought: run.result.drought, refHa: run.metrics.perH[3].refHa, moegl: run.metrics.perH[3].possibleHa };
+  });
+  check("Trockenheit ohne Vorgeschichte: Prognose läuft weiter, Rückfall gekennzeichnet, Unsicherheitsband breiter",
+    /aus \(keine Vorgeschichte/.test(ohne.meta) && /Feuchte wie bisher/.test(ohne.meta)
+    && /Keine Wettervorgeschichte/.test(ohne.warn) && ohne.drought.moistureSeries === false
+    && Math.abs(ohne.drought.ensembleFaktor - 1.8) < 1e-9 && ohne.drought.irFaktor === 1,
+    `${ohne.meta.slice(0, 120)} | Band ×${ohne.drought.ensembleFaktor}`);
+
+  // 4) Synthetische Vorgeschichte (60 trockene Tage) einspielen: Ampel, FWI, Vortage, Datenalter
+  const now = Date.now();
+  const histT = SZ.make("trocken", { days: 60, now });
+  await pg.evaluate(([h, n]) => window.__wb.injectFuelHistory({ rows: h.rows, kind: "demo", fetchedAt: n }, "SYNTHETISCHES SZENARIO „trocken“ (Test, kein echtes Wetter)"), [histT, now]);
+  const mit = await pg.evaluate(() => {
+    document.getElementById("fh-kpi-box").open = true; // Kennzahlen/Rechenweg sind zugeklappt
+    const st = window.__wb.fuelhistory();
+    return { ampel: st.level.ampel, label: st.level.label, fwi: st.fwi.last.fwi, dc: st.fwi.last.dc, bui: st.fwi.last.bui,
+      tage: st.pastDaysGenutzt, stunden: st.hours, mittag: st.fwiTage,
+      hinweis: document.getElementById("trockenheit-hinweis").innerText.replace(/\s+/g, " "),
+      kpiZeilen: document.querySelectorAll("#fh-kpi tbody tr").length,
+      rechenweg: document.getElementById("fh-kpi-note").innerText.replace(/\s+/g, " "),
+      feuchte: st.dead.current };
+  });
+  check("Trockenheit mit Vorgeschichte: Ampel, FWI-Einstufung, Vortage, Datenalter und Rechenweg sichtbar",
+    mit.ampel === "rot" && mit.fwi > 21 && Math.round(mit.tage) === 60 && mit.stunden > 1400 && mit.mittag >= 59
+    && /60 Vortage ausgewertet/.test(mit.hinweis) && /Datenalter/.test(mit.hinweis) && mit.kpiZeilen >= 15
+    && /Van Wagner \(1987\)/.test(mit.rechenweg) && /Startwerte FFMC 85/.test(mit.rechenweg),
+    `Ampel ${mit.ampel}, FWI ${mit.fwi.toFixed(1)}, DC ${mit.dc.toFixed(0)}, ${Math.round(mit.tage)} Tage, ${mit.kpiZeilen} Kennzahlen`);
+
+  // 5) Zweite Prognose mit Vorgeschichte: gleiches Einsatztagwetter, größere Fläche
+  const t1 = await pg.evaluate(() => window.__wb.state.run.finishedAt);
+  await pg.click("#btn-run");
+  await pg.waitForFunction((t) => window.__wb.state.run && window.__wb.state.run.finishedAt !== t, t1, { timeout: 90000 });
+  const run2 = await pg.evaluate(() => {
+    const run = window.__wb.state.run;
+    return { meta: [...document.querySelectorAll("#results .meta div")].map((d) => d.innerText).find((t) => /Trockenheit/.test(t)) || "",
+      drought: run.result.drought, refHa: run.metrics.perH[3].refHa,
+      proto: Protocol.all().filter((e) => e.typ === "prognose").pop().daten.trockenheit };
+  });
+  check("Trockenheit: Vorgeschichte geht in die Prognose ein (Basisfeuchte je Stunde + Dürre-Faktor) und steht im Protokoll",
+    run2.drought.active === true && run2.drought.moistureSeries === true && run2.drought.hours === 7
+    && run2.drought.irFaktor > 1 && run2.drought.irFaktor <= 1.2 + 1e-9
+    && run2.refHa > ohne.refHa && /aktiv/.test(run2.meta) && /FWI/.test(run2.meta)
+    && run2.proto && run2.proto.aktiv === true && run2.proto.vortage_ausgewertet === 60 && run2.proto.fwi > 21,
+    `Fläche 6 h ${run2.refHa.toFixed(2)} ha gegen ${ohne.refHa.toFixed(2)} ha ohne Vorgeschichte, I_R ×${run2.drought.irFaktor.toFixed(2)}`);
+
+  // 6) Vortage umstellen (30) und erneut einspielen: nur noch 30 Tage werden ausgewertet
+  await pg.selectOption("#fh-days", "30");
+  await pg.waitForTimeout(300);
+  await pg.evaluate(([h, n]) => window.__wb.injectFuelHistory({ rows: h.rows, kind: "demo", fetchedAt: n }, "SYNTHETISCHES SZENARIO „trocken“ (Test, kein echtes Wetter)"), [histT, now]);
+  const tage30 = await pg.evaluate(() => {
+    const st = window.__wb.fuelhistory();
+    return { angefragt: st.pastDaysAngefragt, genutzt: st.pastDaysGenutzt, opt: window.__wb.fhOptions().pastDays, gespeichert: JSON.parse(localStorage.getItem("wb_fh_opt") || "{}").pastDays };
+  });
+  check("Trockenheit: Zahl der Vortage ist einstellbar (30–60) und wird gespeichert",
+    tage30.angefragt === 30 && Math.round(tage30.genutzt) === 30 && tage30.opt === 30 && tage30.gespeichert === 30,
+    JSON.stringify(tage30));
+
+  // 7) GeoJSON-Export trägt die Trockenheitskennzahlen (Knopf liegt im Reiter „Protokoll“)
+  await pg.evaluate(([h, n]) => window.__wb.injectFuelHistory({ rows: h.rows, kind: "demo", fetchedAt: n }, "SYNTHETISCHES SZENARIO „trocken“ (Test, kein echtes Wetter)"), [histT, now]);
+  await pg.click("#tab-protokoll");
+  await pg.click("#btn-geojson");
+  const geo = await pg.evaluate(() => {
+    const fc = JSON.parse(document.getElementById("exp-text").value);
+    const bf = fc.features.find((f) => f.properties.typ === "brandflaeche");
+    const pr = fc.features.find((f) => f.properties.typ === "prognose");
+    return { bf: bf ? bf.properties : null, prog: pr ? pr.properties : null };
+  });
+  await pg.click("#btn-exp-close");
+  await pg.click("#tab-lage");
+  check("Trockenheit: GeoJSON-Export enthält FWI, Einstufung, Vortage, Datenalter und Kopplungsfaktoren",
+    geo.bf && typeof geo.bf.fwi === "number" && typeof geo.bf.dc === "number" && geo.bf.trockenheit_vortage === 30
+    && typeof geo.bf.trockenheit_datenalter_h === "number" && /amtliche/.test(geo.bf.trockenheit_hinweis)
+    && geo.prog && typeof geo.prog.fwi === "number" && typeof geo.prog.faktor_reaktionsintensitaet === "number",
+    `Brandfläche: ${geo.bf ? `${geo.bf.trockenheit}, FWI ${geo.bf.fwi}, ${geo.bf.trockenheit_vortage} Vortage` : "fehlt"}`);
+
+  // 8) Tag-/Nachtmodus: Diagramm wird neu gezeichnet, keine Fehler
+  const theme = await pg.evaluate(async () => {
+    const cv = document.getElementById("fh-chart");
+    const vor = document.documentElement.getAttribute("data-theme");
+    document.getElementById("btn-theme").click();
+    await new Promise((r) => setTimeout(r, 300));
+    const nach = document.documentElement.getAttribute("data-theme");
+    const g = cv.getContext("2d").getImageData(0, 0, cv.width, cv.height).data;
+    let gesetzt = 0;
+    for (let i = 3; i < g.length; i += 4000) if (g[i] > 0) gesetzt++;
+    document.getElementById("btn-theme").click();
+    await new Promise((r) => setTimeout(r, 300));
+    return { vor, nach, zurueck: document.documentElement.getAttribute("data-theme"), breite: cv.width, gesetzt };
+  });
+  check("Trockenheit: Tag-/Nachtmodus zeichnet das Diagramm neu (Canvas gefüllt)",
+    theme.nach !== theme.vor && theme.breite > 0 && theme.gesetzt > 0, JSON.stringify(theme));
+
+  // 9) Screenshot des Abschnitts (deviceScaleFactor 2): wieder 60 Vortage, Ampel + Diagramm + Kennzahlen
+  await pg.selectOption("#fh-days", "60");
+  await pg.waitForTimeout(300);
+  await pg.evaluate(([h, n]) => window.__wb.injectFuelHistory({ rows: h.rows, kind: "demo", fetchedAt: n }, "SYNTHETISCHES SZENARIO „trocken“ (Test, kein echtes Wetter)"), [histT, now]);
+  await pg.evaluate(() => {
+    document.getElementById("fh-kpi-box").open = true;
+    document.getElementById("tab-lage").click();
+    document.getElementById("fh-ampel").scrollIntoView({ block: "start" });
+    document.querySelector(".panel").scrollBy(0, -90);
+  });
+  await pg.waitForTimeout(700);
+  await pg.screenshot({ path: path.join(OUT, "screenshot-trockenheit.png") });
+  check("Trockenheit: Screenshot docs/screenshot-trockenheit.png (deviceScaleFactor 2) erstellt", fs.existsSync(path.join(OUT, "screenshot-trockenheit.png")));
+
+  // 10) Nichts läuft aus dem Bedienfeld heraus (Lehre aus 0.7.0/0.8.0: zu breite Modul-UIs)
+  const geo2 = await pg.evaluate(() => {
+    const sec = document.getElementById("sec-trockenheit"), panel = document.querySelector(".panel");
+    const pr = panel.getBoundingClientRect();
+    const raus = [];
+    for (const el of sec.querySelectorAll("button, select, input, table, canvas, summary, p, li")) {
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 && r.height === 0) continue;
+      if (r.right > pr.right + 1 || r.left < pr.left - 1) raus.push(el.id || el.className || el.tagName);
+    }
+    const btn = document.getElementById("fh-load").getBoundingClientRect();
+    return { panelBreite: Math.round(pr.width), abschnittBreite: Math.round(sec.getBoundingClientRect().width),
+      scrollBreite: sec.scrollWidth, hoehe: Math.round(sec.getBoundingClientRect().height),
+      knopfHoehe: Math.round(btn.height), raus };
+  });
+  check("Trockenheit: Bedienfeld passt in die Seitenleiste (nichts ragt heraus, Knöpfe ≥ 44 px hoch)",
+    geo2.raus.length === 0 && geo2.scrollBreite <= geo2.abschnittBreite + 2 && geo2.knopfHoehe >= 44,
+    `Seitenleiste ${geo2.panelBreite} px, Abschnitt ${geo2.abschnittBreite} px (Inhalt ${geo2.scrollBreite} px, Höhe ${geo2.hoehe} px), Knopf ${geo2.knopfHoehe} px`);
+  await c2.close();
+} catch (e) {
+  check("Testablauf Trockenheit", false, e.message);
 }
 
 const explainable = consoleErrors.filter((t) => /ERR_BLOCKED_BY_CLIENT|Failed to load resource|net::ERR/.test(t));

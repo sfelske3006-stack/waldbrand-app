@@ -1,10 +1,10 @@
-# Waldbrand-Lagebild Neunkirchen-Seelscheid (Prototyp, Version 0.8.0-prototyp)
+# Waldbrand-Lagebild Neunkirchen-Seelscheid (Prototyp, Version 0.9.0-prototyp)
 
 > **TESTVERSION – nicht für den Einsatz.** **Modellprognose, unvalidiert. Keine Handlungsanweisung. Entscheidung und Verantwortung liegen bei der Einsatzleitung.**
 
 Veröffentlicht (Test) unter <https://sfelske3006-stack.github.io/waldbrand-app/> (GitHub Pages, Unterpfad `/waldbrand-app/`; alle Pfade relativ).
 
-Browser-App für Einsatzleiter bei Vegetations- und Waldbränden: Brandfläche einzeichnen, Wetter laden oder vor Ort eingeben, Ausbreitung für 1/2/4/6 h mit Unsicherheitsband berechnen, einfache Vorschläge für Riegelstellungen und Fahrzeugstandorte, dazu eine Simulation der Löschwasserversorgung (Pufferbecken, Förderstrecke, Pendelverkehr) und Vorschläge für Rückzugsflächen mit Fluchtwegen je Fahrzeug. Wind und Fahrzeugstandorte lassen sich direkt auf der Karte ändern (drehbarer Windpfeil, Fahrzeuge per Drag & Drop). Die gesamte Rechnung läuft im Browser, ein Server ist nicht nötig.
+Browser-App für Einsatzleiter bei Vegetations- und Waldbränden: Brandfläche einzeichnen, Wetter laden oder vor Ort eingeben, Ausbreitung für 1/2/4/6 h mit Unsicherheitsband berechnen, einfache Vorschläge für Riegelstellungen und Fahrzeugstandorte, dazu eine Simulation der Löschwasserversorgung (Pufferbecken, Förderstrecke, Pendelverkehr) und Vorschläge für Rückzugsflächen mit Fluchtwegen je Fahrzeug. Wind und Fahrzeugstandorte lassen sich direkt auf der Karte ändern (drehbarer Windpfeil, Fahrzeuge per Drag & Drop). Seit 0.9.0 wird zusätzlich die **Vorgeschichte des Wetters** (30–60 Tage) ausgewertet: Brennstofffeuchte je Stunde, Fire Weather Index (FFMC/DMC/DC/ISI/BUI/FWI) und eine Trockenheitsampel, die in die Prognose eingeht. Die gesamte Rechnung läuft im Browser, ein Server ist nicht nötig.
 
 ## Start
 
@@ -19,7 +19,7 @@ Tests:
 
 ```bash
 npm test          # Unit- und Szenariotests: Berechnungskern (model.test.mjs), Ortssuche (search.test.mjs), Wasserversorgung (water.test.mjs), node --test
-npm run e2e       # Browser-Test mit Playwright/Chromium, Screenshots nach docs/ (u. a. screenshot-konturen.png, screenshot-raster.png, screenshot-fahrzeuge.png, screenshot-suche.png, screenshot-wasser.png)
+npm run e2e       # Browser-Test mit Playwright/Chromium, Screenshots nach docs/ (u. a. screenshot-konturen.png, screenshot-raster.png, screenshot-fahrzeuge.png, screenshot-suche.png, screenshot-wasser.png, screenshot-trockenheit.png)
 npm run build:vorschau   # Einzeldatei-Vorschau dist/vorschau.html (für die Artifact-Seite)
 ```
 
@@ -51,6 +51,7 @@ Google Maps (optional): In `config.js` `googleMapsApiKey` eintragen. Erst dann e
    **Suchfeld oben links** in der Werkzeugleiste: Ortsteil, Straße, Adresse mit Hausnummer, Rettungspunkt-Nummer oder Koordinate eingeben (siehe Abschnitt „Suche“).
 2. **Brandfläche zeichnen**: Eckpunkte antippen, „Fläche fertig“. Punkte bleiben verschiebbar. Alternativ **Zündpunkt + Radius**. „Mein Standort“ zentriert per GPS (nur nach Einwilligung, nur lokal).
 3. **Wetter laden** (Open-Meteo) oder **Beispieldaten** (deutlich als fiktiv markiert). Unter „Werte vor Ort überschreiben“ alle Werte manuell setzen; überschriebene Werte sind mit * markiert.
+   **Trockenheit / Vorgeschichte des Wetters (Abschnitt 2b, neu in 0.9.0)**: „Vorgeschichte laden“ holt 30–60 Tage Stundenwerte (Vorgabe 60, einstellbar) über einen zweiten Open-Meteo-Abruf und zeigt Trockenheitsampel, FWI-Einstufung, Zahl der ausgewerteten Vortage, Zeitstempel und Datenalter, ein Diagramm (Niederschlag je Tag, Brennstofffeuchte 1 h/10 h/100 h, letzte 7 Tage hervorgehoben) sowie unter „Kennzahlen und Rechenweg“ alle Zwischengrößen. Ohne Netz oder ohne Vorgeschichte wird **nichts erfunden**: die Feuchte bleibt bei der bisherigen Herleitung, das Unsicherheitsband wird verbreitert und der Rückfall steht im Ergebnis, im Protokoll und im Export. Siehe Abschnitt „Trockenheit und Vorgeschichte des Wetters“.
 4. Optional **OSM-Daten laden** (Brennstoff, Wege, Gewässer, Gebäude, Hydranten). Ohne OSM wird mit einem wählbaren Ersatz-Brennstoff ohne Barrieren gerechnet; das wird im Ergebnis angezeigt. Das **Geländemodell** (DGM, offline) wird beim Start automatisch geladen; Status im Abschnitt „Gelände & Brennstoff“. „Geländeschummerung anzeigen“ blendet eine offline berechnete Schummerung ein; im Ebenen-Menü gibt es zusätzlich die amtliche WMS-Schummerung (online).
 5. **Prognose berechnen**: je Horizont „wahrscheinlich“ (halbtransparente Fläche, durchgezogener Rand) und „möglich“ (Schraffur, gestrichelter Rand), dünne schwarze Linie = Referenzlauf, Beschriftung „1 h … 6 h“. **Darstellung umschaltbar in der Legende**: „Konturen“ (Standard; Isochronen aus dem 25-m-Raster per Marching Squares, Chaikin-Glättung, Hinweis zur Flächenabweichung) oder „Raster 25 m“ (ungeglättete Zellen, Umrisse entlang der Zellränder, für Fachleute). Die Wahl wird auf dem Gerät gespeichert. Kennzahlen beruhen immer auf dem Raster.
 6. **Einsatzvorschläge**: Riegellinien (R1…R3) nur, wenn sie zum Zeitpunkt der frühesten Einsatzbereitschaft eines Löschfahrzeugs (siehe „Bereitschaft“ unten) zuzüglich 30 min Mindest-Wirkzeit (Annahme) vollständig außerhalb der „möglich“-Zone liegen, quer zur Hauptausbreitungsrichtung und vor der Front; diese Grenze ist als lila gepunktete Linie eingezeichnet. Sonst Meldung „Keine geeignete Riegelstellung gefunden“ mit Grund. Löschfahrzeuge mit Wasser werden nach Linienlänge (300 m je Fahrzeug, Annahme), Objektschutz an bedrohter Bebauung und Wasserversorgung/Pendelverkehr verteilt. **Ab 0.4.2** werden übrige wasserführende Fahrzeuge nicht mehr pauschal geparkt: Sind Fahrzeuge für die vorderste Linie zu spät einsatzbereit, wird für die zweite Bereitschaftsstufe (z. B. 40 statt 25 min) eine **Auffanglinie** gesucht; danach **verstärken** rechtzeitig bereite Fahrzeuge eine Linie bis max. 4 Fahrzeuge und bis zu zwei Fahrzeuge übernehmen die **Flankensicherung** (Annahme, siehe docs/assumptions.md). Erst dann stehen Fahrzeuge im **Bereitstellungsraum** (ein Marker mit Liste) – jedes mit konkreter Begründung, warum es dort steht. Fahrzeuge ohne Löschwasser (ELW, MTF, DLK, GW-G) nie im Löscheinsatz. Fahrzeuge auf der Karte verschieben (wird geprüft und markiert), Vorschläge sperren oder verwerfen, „Vorschläge neu berechnen“ zeigt den Unterschied.
@@ -64,6 +65,36 @@ Google Maps (optional): In `config.js` `googleMapsApiKey` eintragen. Erst dann e
 10. **Fahrzeuge per Drag & Drop (neu in 0.8.0)**: Im Reiter „Fahrzeuge“ am Griff `⠿` ein Fahrzeug auf die Karte ziehen. Während des Ziehens zeigen Hilfslinien Abstand zur Front, nächste Riegelstellung und nächste Entnahmestelle mit Zahlen. Beim Ablegen wird der Standort mit derselben Prüfung wie die Vorschläge geprüft (`Suggest.checkPosition`), das Fahrzeug einer Riegellinie zugeordnet und die Linie **nur dann** verlängert oder verschoben, wenn sie dabei sicher bleibt – sonst bleibt sie unverändert, mit Begründung. Von Hand gesetzte Fahrzeuge sind gesperrt und werden von „Vorschläge neu berechnen“ nicht umgesetzt; Entfernen und Rückgängig stehen unter den Einsatzvorschlägen.
 11. **Szenario B** (z. B. „Wind aus 270°“) neben A vergleichen; der Vergleich zeigt zusätzlich eine Kennzahlentabelle mit Differenzen und kann **A und B gleichzeitig** zeichnen (durchgezogen/gestrichelt, ohne Farbe unterscheidbar).
 12. **Protokoll**: lokale Hash-Kette (SHA-256), Export als JSON und GeoJSON, Drucken/PDF über den Browser.
+
+## Änderungen in Version 0.9.0
+
+**Trockenheit / Vorgeschichte des Wetters** (neu, Abschnitt 2b im Reiter „Lage“, siehe Abschnitt
+„Trockenheit und Vorgeschichte des Wetters“): zweiter Open-Meteo-Abruf mit `past_days` (30–60 Tage, Vorgabe 60),
+stündliche Fortschreibung der toten Brennstofffeuchte (1 h / 10 h / 100 h) mit Gleichgewichtsfeuchte nach
+Simard (1968) und Regenbenetzung (Annahme), jahreszeitliche Lebendfeuchte mit Dürre-Abschlag (Annahme),
+**Fire Weather Index nach Van Wagner (1987)** (FFMC, DMC, DC, ISI, BUI, FWI, DSR) mit Mittagswerten 12 Uhr
+Lokalzeit – **gegen `xclim` 1.0.0 verifiziert** (größte Abweichung über 150 Tage: FWI 5,7·10⁻¹⁴) –,
+Trockenheitsampel nach den bei EFFIS gebräuchlichen FWI-Klassengrenzen, Kennzahlen (Tage seit Regen ≥ 1/5 mm,
+Niederschlagssummen 7/30/60 Tage, längste Trockenstrecke), Canvas-Diagramm, manuelle Ersatzeingabe und
+Zwischenspeicher (12 h, Warnung ab 48 h).
+Die Vorgeschichte geht **begrenzt** in die Prognose ein: `js/model.js` nimmt jetzt die Basisfeuchte **je
+Prognosestunde** (`input.moistureSeries`) und die Dürre-Faktoren (`input.drought`) entgegen; der Dürre-Faktor wirkt
+auf die Reaktionsintensität (höchstens × 1,20), die Ensemble-Spannweite der Feuchte wird bei Dürre breiter
+(höchstens × 1,6; × 1,8 ohne Vorgeschichte). Ohne diese Felder ist das Ergebnis **bitgenau wie bisher** (Test).
+Die Feuchtekorrektur nach Exposition aus 0.4.0 wirkt unverändert **danach** – keine doppelte Austrocknung.
+Neuer Protokolltyp `trockenheit` (Indexwerte, Vortage, Datenalter, Kopplungsfaktoren, Begrenzungen); GeoJSON um
+`fwi`, `dc`, `bui`, `trockenheit_*` an Brandfläche und Prognoseflächen erweitert; neue Karte „Trockenheit und
+Vorgeschichte: Quellenlage und Grenzen“ im Reiter „Grenzen & Quellen“.
+Neu: `js/fuelhistory.js`, `js/fuelhistory-ui.js`, `js/fuelhistory-params.js`, `css/fuelhistory.css`,
+`tests/fuelhistory.test.mjs`, `tests/fuelhistory-scenarios.cjs`, `tests/fixtures/fwi_xclim.json`.
+**Gemessene Wirkung** (synthetische Szenarien, gleiches Einsatztagwetter): 60 trockene gegen 60 nasse Vortage
+verdoppeln die Ausbreitung – Kopffeuerrate Mischwald 0,30 gegen 0,19 m/min, Grasland 29,2 gegen 8,8 m/min,
+Referenzfläche nach 6 h 0,69 gegen 0,31 ha.
+**Größte Unsicherheit: der DC-Startwert** – nach 60 trockenen Tagen unterscheiden sich die Startwerte 85/6/15 und
+60/60/150 noch um **121 DC-Punkte**. Das FWI-System ist für **kanadische Nadelwälder kalibriert und nicht für
+deutsche Mischwälder validiert**; die Ampel ist **keine amtliche Waldbrandgefahrenstufe** (DWD-WBI nicht
+angebunden). Open-Meteo ist nur für **nichtkommerzielle** Nutzung frei – die Eignung für den Feuerwehreinsatz ist
+ungeklärt. **Alle Zahlen des Moduls sind Annahmen** (`PARAMS.trockenheit`, [docs/assumptions.md](docs/assumptions.md)).
 
 ## Änderungen in Version 0.8.0
 
@@ -300,6 +331,118 @@ jede Zahl steht in `js/water-params.js` (`PARAMS.wasser`).
   Becken, Wasserbedarf und Einsatzanteil je Riegelfahrzeug, Zahl verfügbarer Faltbehälter, Standortkriterien,
   Grenze Schlauch/Pendelverkehr, Pendelgeschwindigkeiten, Darstellung nach taktischen Zeichen, Ablösung nach 6 h.
 
+## Trockenheit und Vorgeschichte des Wetters
+
+Neu in 0.9.0. Abschnitt 2b im Reiter „Lage“ (bewusst **kein sechster Reiter**: ein weiterer Reiter bricht auf dem
+Tablet im Hochformat um). Rechenkern `js/fuelhistory.js` (DOM-frei, deterministisch), Oberfläche
+`js/fuelhistory-ui.js`, Parameter `js/fuelhistory-params.js` (`PARAMS.trockenheit`).
+
+![Abschnitt „Trockenheit / Vorgeschichte des Wetters“ mit Ampel, Diagramm und Kennzahlen](docs/screenshot-trockenheit.png)
+
+### Bedienung
+
+- **„Vorgeschichte laden“** holt die Vergangenheit über einen **zweiten** Open-Meteo-Abruf (`past_days`), unabhängig
+  vom Wetterabruf in Abschnitt 2. Die Zahl der **Vortage ist einstellbar (30 – 60, Vorgabe 60)**.
+- **Schalter „Vorgeschichte einbeziehen“**: aus = Rechnung wie ohne dieses Modul (Vergleichsrechnung, bitgenau).
+- **Trockenheitsampel** (grün/gelb/rot, zusätzlich mit Muster, nicht nur Farbe) mit FWI-Zahl und Klassenbezeichnung.
+- **Diagramm**: Niederschlag je Tag (Balken) und tote Brennstofffeuchte 1 h / 10 h / 100 h (Linien) über den
+  gewählten Zeitraum, die **letzten 7 Tage hervorgehoben**.
+- **„Kennzahlen und Rechenweg“** (aufklappbar): Tage seit Regen ≥ 1 mm und ≥ 5 mm, Niederschlagssummen 7/30/60 Tage,
+  längste Trockenstrecke, Feuchten 1 h/10 h/100 h, Feuchte der FFMC-Schicht als unabhängige Gegenprobe,
+  Lebendfeuchte, FFMC, DMC, DC, ISI, BUI, FWI, Dürre-Anteil, die wirksamen Kopplungsfaktoren und die Startwerte.
+- **Zeile über dem Bedienfeld**: Quelle, Zeitstempel, **Datenalter**, Zahl der ausgewerteten Vortage, Stunden- und
+  Mittagswerte, Basisfeuchten. Älter als 12 h = Hinweis, älter als 48 h = Warnung „veraltet“.
+- **Manuelle Ersatzeingabe** (aufklappbar): Tage seit Regen ≥ 1/5 mm, Regen 7/30 Tage, Temperatur und rF mittags.
+  Daraus wird eine **synthetische** Reihe erzeugt, die überall als solche gekennzeichnet ist.
+- Jede Auswertung schreibt einen Protokolleintrag `trockenheit`; die Kennzahlen stehen auch im GeoJSON-Export
+  (an der Brandfläche und an den Prognoseflächen) und im Ergebnisblock der Prognose.
+
+### Modellansatz
+
+1. **Tote Brennstofffeuchte** je Stunde: Gleichgewichtsfeuchte nach **Simard (1968)** (dieselbe Funktion wie bisher
+   in `js/model.js`), exponentielle Annäherung mit den Zeitkonstanten 1 h / 10 h / 100 h, danach Regenbenetzung
+   (eigene Annahme, je Klasse begrenzt auf eine Sättigung).
+2. **Lebende Brennstofffeuchte**: Monatswerte für Kraut und Gehölz (Annahme), Dürre-Abschlag über den Drought Code.
+3. **FWI-System nach Van Wagner (1987)** aus den Mittagswerten (12 Uhr Lokalzeit, Niederschlagssumme der
+   vorangegangenen 24 h): FFMC, DMC, DC, ISI, BUI, FWI, DSR – in der Fassung von `cffdrs`/`xclim`.
+   **Verifiziert gegen `xclim` 1.0.0** über 150 synthetische Tage: größte absolute Abweichung FFMC 2,8·10⁻¹⁴,
+   DMC 0, DC 0, ISI 4,0·10⁻¹⁵, BUI 0, FWI 5,7·10⁻¹⁴ (Referenz `tests/fixtures/fwi_xclim.json`).
+4. **Kopplung an die Prognose** (alles begrenzt, alle Grenzen Annahmen):
+   - Die Basisfeuchte je Prognosestunde ersetzt die bisherige Herleitung, höchstens ± 6 / 8 / 12 %-Punkte
+     (1 h / 10 h / 100 h) davon entfernt; jede Begrenzung wird gemeldet. Lebendfeuchte ± 60 %-Punkte.
+   - Der Dürre-Anteil (aus dem BUI, 40 → 120) skaliert die **Reaktionsintensität** und damit die Ausbreitungsrate
+     um höchstens **× 1,20**. Begründung: Bei Dürre trocknen tiefere Streu- und Totholzschichten mit und werden in
+     der Flammenfront umgesetzt. (Der Alternativmodus „Brennstoffmenge“ ist vorhanden, aber nicht voreingestellt:
+     mehr Grobbrennstoff bei gleicher Brennstofftiefe erhöht die Packungsdichte, die Rate kann dadurch *sinken*.)
+   - Ein Teil der Krautbeladung wird bei hohem BUI als **toter** Feinbrennstoff gerechnet („Vergilben“, bis 50 %).
+   - Die **Ensemble-Spannweite** der toten Feuchte wird bei Dürre breiter (bis × 1,6), bei manueller Ersatzeingabe
+     mindestens × 1,4 und **ohne Vorgeschichte × 1,8**. Die Zufallsfolge bleibt dabei unverändert.
+5. **Reihenfolge, keine doppelte Austrocknung**: Feuchte(Zelle, Stunde) = Basisfeuchte aus der Vorgeschichte
+   (flächig gleich) + Ensemble-Streuung + Expositionskorrektur aus `js/terrain.js` (unverändert aus 0.4.0,
+   ± 3 %-Punkte). Die Vorgeschichte liefert **nur** die Basis; der Dürre-Faktor wirkt auf die Rate, nicht noch
+   einmal über die Feuchte.
+
+### Gemessene Wirkung (synthetische Szenarien, gleiches Einsatztagwetter)
+
+| | 60 Tage trocken | 60 Tage nass | ohne Vorgeschichte |
+|---|---|---|---|
+| Feuchte 1 h / 10 h / 100 h | 6,7 / 9,2 / 8,9 % | 10,7 / 15,1 / 20,1 % | 6,1 / 7,1 / 8,1 % |
+| Lebendfeuchte Kraut | 54 % | 80 % | 90 % (fest) |
+| FFMC / DMC / DC | 91,6 / 210 / 487 | 82,4 / 9 / 153 | – |
+| BUI / FWI | 210 / 40,3 („sehr hoch“) | 15 / 3,7 („sehr gering“) | – |
+| Kopffeuerrate Mischwald (FM8) | 0,30 m/min | 0,19 m/min | 0,26 m/min |
+| Kopffeuerrate Grasland (FM1) | 29,2 m/min | 8,8 m/min | – |
+| Referenzfläche nach 6 h | 0,69 ha | 0,31 ha | 0,50 ha |
+
+Der große Unterschied beim Grasland kommt daher, dass FM1 eine Extinktionsfeuchte von nur 12 % hat – das ist eine
+Eigenschaft des Rothermel-Modells, keine Eigenschaft dieses Moduls. Die 1-h-Klasse läuft innerhalb des 6-h-Horizonts
+auf die Gleichgewichtsfeuchte der Prognosestunden zu; der bleibende Effekt kommt aus der 10-h- und 100-h-Klasse,
+der Lebendfeuchte, dem Dürre-Faktor und der Ensemble-Spannweite.
+
+### Quellenlage – wichtig
+
+- **Belegt**: FWI-Gleichungen (Van Wagner 1987, Fassung `cffdrs`/`xclim`, gegen `xclim` geprüft), `past_days` und
+  Archiv-API von Open-Meteo (heruntergeladene Doku), Daten unter CC BY 4.0, Mittagswert-Definition des FWI.
+  Abweichung zur Originalschrift: Faktor 1·10⁻⁴ statt 1·10⁻⁶ in der DMC-Trocknungsrate (wie `cffdrs`/`xclim`).
+- **Nicht belegt / Annahme**: Regenbenetzung der toten Klassen, Lebendfeuchte-Monatswerte, Dreistufung der Ampel,
+  alle Kopplungsgrenzen. Die FWI-Klassengrenzen (5,2 / 11,2 / 21,3 / 38,0 / 50,0) sind bei EFFIS gebräuchlich, die
+  **Primärquelle wurde nicht eingesehen**.
+- **Open-Meteo ist nur für nichtkommerzielle Nutzung frei** (< 10.000 Abrufe/Tag). Ob der Einsatzbetrieb einer
+  Feuerwehr darunter fällt, ist **ungeklärt** und vor einem Einsatz zu klären (betrifft auch den bisherigen
+  Wetterabruf).
+- Der Abruf wurde **nicht gegen den echten Dienst geprüft** (in der Entwicklungsumgebung gesperrt); URL-Bau,
+  Auswertung, Zwischenspeicher und Fehlerwege sind gegen einen Mock getestet.
+
+### Grenzen
+
+- **Der DC-Startwert ist die größte Unsicherheit**: Der Drought Code ist ein Summenspeicher und wird nur von Regen
+  über 2,8 mm gesenkt. Nach 60 trockenen Tagen unterscheiden sich die Startwerte 85/6/15 und 60/60/150 noch um
+  **121 DC-Punkte** (DMC 8,1; FFMC 0). Die **Überwinterung des DC** (Van Wagner/Lawson) ist nicht umgesetzt – im
+  Frühjahr ist der DC deshalb besonders unsicher.
+- **Das FWI-System ist für kanadische Nadelwälder kalibriert und für deutsche Mischwälder nicht validiert.**
+  Die Trockenheitsampel ist **keine amtliche Waldbrandgefahrenstufe**; der DWD-Waldbrandgefahrenindex (WBI) ist
+  nicht angebunden und nicht abgeglichen.
+- **Punktwetter** aus einem Modellgitterpunkt, keine Messung am Brandort; Niederschlag ist dort besonders unsicher.
+- Keine Schneedecke, kein Frostboden, keine Feuersaison-Logik (Winterwerte sind nicht aussagekräftig), kein
+  Bodenwasser-/Verdunstungsmodell, kein 1000-h-Brennstoff, keine Humusauflage als eigene Klasse, keine Beschattung
+  durch den Bestand (Waldinnenklima ist feuchter als die Freifläche).
+- Vorgeschichte und Dürre gelten **für das ganze Rechengebiet gleich**; nur die Expositionskorrektur unterscheidet
+  Zellen. Keine Validierung an realen Bränden.
+
+### Offene Fragen an die Feuerwehr
+
+1. Darf die Trockenheitsampel im Einsatz gezeigt werden, solange sie **keine** amtliche Gefahrenstufe ist – oder
+   soll stattdessen der DWD-WBI angebunden werden (und über welche Schnittstelle)?
+2. Welche FWI-Klassengrenzen und welche Ampelzuordnung sollen gelten (EFFIS-Werte bestätigen oder ersetzen)?
+3. Wie stark darf die Vorgeschichte das Lagebild verschieben? Sind ± 6 / 8 / 12 %-Punkte Feuchte, × 1,20 auf die
+   Rate und × 1,6 auf das Unsicherheitsband angemessen?
+4. Welcher DC-Startwert gilt zu Saisonbeginn, und soll eine Überwinterungsregel umgesetzt werden?
+5. Gibt es Messwerte zur Brennstofffeuchte (Forst, Landesbetrieb Wald und Holz NRW), gegen die das Modell geprüft
+   werden kann – insbesondere zur Regenbenetzung und zur Lebendfeuchte?
+6. Soll die Vorgeschichte beim Start automatisch geladen werden (Datenvolumen im Feld: 60 Tage ≈ 300–500 kB) oder
+   nur auf Knopfdruck wie jetzt?
+7. Darf Open-Meteo im Einsatz genutzt werden, oder ist ein vertraglich abgesicherter Dienst nötig?
+
 ## Karten-Interaktion (Windpfeil, Fahrzeuge ziehen)
 
 Neu in 0.8.0. **Kein eigener Reiter**: der Windpfeil liegt als Leaflet-Control unten links auf der Karte (über
@@ -505,7 +648,7 @@ Reines HTML/CSS/JavaScript ohne Build-Schritt, Leaflet 1.9.4 lokal unter `vendor
 |---|---|
 | `config.js` | Betriebskonfiguration (Google-Key, Dienst-URLs). Keine Secrets im Code. |
 | `js/params.js` | Versionierte Modellparameter und alle Annahmen (Brennstoffzuordnung, Ensemble, Schwellen, Vorschlagsgewichte). |
-| `js/model.js` | Berechnungskern: Rothermel, Ellipse, Raster-Minimum-Travel-Time, Ensemble (inkl. Zeit „möglich“/„wahrscheinlich“ je Zelle), Kennzahlen. Reine Funktionen, Seed-deterministisch. Schnittstelle `FireModel.runEnsemble()`. |
+| `js/model.js` | Berechnungskern: Rothermel, Ellipse, Raster-Minimum-Travel-Time, Ensemble (inkl. Zeit „möglich“/„wahrscheinlich“ je Zelle), Kennzahlen. Reine Funktionen, Seed-deterministisch. Schnittstelle `FireModel.runEnsemble()`; seit 0.9.0 optional mit Basisfeuchte je Stunde (`input.moistureSeries`) und Dürre-Faktoren (`input.drought`) aus der Wettervorgeschichte – ohne diese Felder bitgenau wie bisher. |
 | `js/contour.js` | Anzeigegeometrie: Isochronen (Marching Squares, lineare Interpolation), Chaikin-Glättung, Douglas-Peucker, Löcher/Teilflächen, Zellumrisse für die Rasteransicht. |
 | `js/grid.js` | Rechenraster, lokale Projektion, Rasterisierung von Polygonen/Linien, Höhe/Neigung je Zelle (Horn). |
 | `js/dem.js` | Geländemodell laden (`data/dgm25.*`), bilineare Höhenabfrage, Schummerung. |
@@ -519,6 +662,10 @@ Reines HTML/CSS/JavaScript ohne Build-Schritt, Leaflet 1.9.4 lokal unter `vendor
 | `js/water-params.js` | Parameterblock `PARAMS.wasser` (eigene Datei, ändert `js/params.js` nicht). Jede Zahl eine Annahme, Herkunft im Kommentar ([A] [F] [P] [V] [App]). |
 | `js/water-ui.js` | Oberfläche der Wasserversorgung: Leaflet-Ebenen (Becken mit Füllstand, Schlauch, Pendelrouten, Fahrzeuge), Zeitregler mit Animation, Canvas-Diagramme ohne Zusatzbibliothek, Kennzahlen-/Entnahmestellen-/Fahrzeugtabellen. |
 | `css/water.css` | Stile der Wasserversorgung (Präfix `w-`, `wbasin`, `wsrc`, `wveh`), nutzt die Tokens aus `css/app.css`. |
+| `js/fuelhistory.js` | Trockenheit / Vorgeschichte des Wetters (Rechenkern, DOM-frei, deterministisch): Abruf mit `past_days` (Forecast- und Archiv-API), Zwischenspeicher, manuelle Ersatzeingabe, stündliche Brennstofffeuchte (Simard 1968 + Zeitkonstanten + Regenbenetzung), Lebendfeuchte, FWI-System nach Van Wagner (1987) mit Mittagswerten in Lokalzeit, Kennzahlen, Trockenheitsampel, begrenzte Kopplungsfaktoren (`baseMoistureForHours`, `couplingFactors`). |
+| `js/fuelhistory-params.js` | Parameterblock `PARAMS.trockenheit` (eigene Datei wie `js/water-params.js`). Jede Zahl eine Annahme, Herkunft im Kommentar ([Q] [Q?] [A] [V] [App]). |
+| `js/fuelhistory-ui.js` | Oberfläche der Trockenheit: Bedienfeld (Schalter, Vortage 30–60, Laden), Trockenheitsampel mit Muster, Canvas-Diagramm (Niederschlag + Feuchteklassen, letzte 7 Tage hervorgehoben), Kennzahlen/Rechenweg und Ersatzeingabe als aufklappbare Karten, Baustein für den Modellgrenzen-Dialog (`limitsHtml()`). |
+| `css/fuelhistory.css` | Stile der Trockenheit (Präfix `fh-`), eigene Farben `--fh-*`, nutzt die Tokens aus `css/app.css` (Tag-/Nachtmodus, `--tap`). |
 | `js/windrose.js` | Windpfeil (Rechenteil, DOM-frei): Winkel und Rastung, Interpolation über 0°, Zeitplan, Kennzeichnung der Überschreibung für Anzeige/Protokoll/Export, A/B-Kennzahlen, Entprellung und Abbruchwache. |
 | `js/vehicle-drag.js` | Fahrzeuge ziehen: Zuordnung zur Riegellinie, Linienanpassung (verlängern/verschieben/unverändert), Prüfung und Warnung mit Zahlen, Hilfslinien, Ablage mit Sperre, Rückgängig/Wiederherstellen. Nutzt `Suggest.checkPosition` und `Suggest.lineCellsOk` – keine eigene Sicherheitslogik. |
 | `js/interaktion-ui.js` | Bedienteil: Windpfeil als Leaflet-Control (Pointer Events für Maus/Touch/Stift, ARIA-Slider), entprellte Neuberechnung mit Fortschritt und Abbruch, A/B-Kennzahlentabelle. |
@@ -530,13 +677,13 @@ Reines HTML/CSS/JavaScript ohne Build-Schritt, Leaflet 1.9.4 lokal unter `vendor
 | `js/search.js` | Ortssuche: Index laden (lazy), Bewertung/Ranking, Hausnummern, Rettungspunkt-Nummern, Koordinatenparser (Grad/UTM, Krüger-Reihen ohne proj4), Online-Abfrage (Nominatim, gedrosselt), Quellenvermerke. Ohne Abhängigkeiten, auch unter Node (Tests). |
 | `js/search-ui.js` | Bedienung der Suche (Leaflet): Combobox/Listbox, Tastatur, Ergebniskarte, Marker/Rechtecke, Kartenebene „Rettungspunkte“ mit Nummern-Entzerrung. |
 | `css/search.css` | Stile der Suche (Präfix `sx-`), nutzt die Tokens aus `css/app.css` (Tag-/Nachtmodus). |
-| `js/app.js` | UI, verdrahtet auch die Suche (Zündpunkt, Protokoll, Ebene, Quellenangaben), die Wasserversorgung (Adapter `waterInput()`, Reiter, Ebenen, Protokoll, Export) und die Rückzugsflächen (`computeSafeAreas()` am Ende von `computeSuggestions()`, Warnung je Fahrzeugkarte und Marker, Protokoll, Export) und die Karten-Interaktion (Windpfeil als Control, `Windrose.applyOverride()` in `buildInputs()`, entprellte Neuberechnung, `VehicleDrag.attach()`, Ziehgriffe in der Fahrzeugliste, A/B-Anzeige, Protokoll, Export). |
+| `js/app.js` | UI, verdrahtet auch die Suche (Zündpunkt, Protokoll, Ebene, Quellenangaben), die Wasserversorgung (Adapter `waterInput()`, Reiter, Ebenen, Protokoll, Export) und die Rückzugsflächen (`computeSafeAreas()` am Ende von `computeSuggestions()`, Warnung je Fahrzeugkarte und Marker, Protokoll, Export) und die Karten-Interaktion (Windpfeil als Control, `Windrose.applyOverride()` in `buildInputs()`, entprellte Neuberechnung, `VehicleDrag.attach()`, Ziehgriffe in der Fahrzeugliste, A/B-Anzeige, Protokoll, Export) und die Trockenheit (`ladeVorgeschichte()`, `droughtForHours()` in `buildInputs()`, Zusammenfassung mit Datenalter, Protokolltyp `trockenheit`, Export, Quellenkarte). |
 | `data/fahrzeuge.json` | Fahrzeug- und Wachendaten Rhein-Sieg-Kreis (schema 2), editierbar, Quelle/Quellentyp je Eintrag (ca. 220 KB). |
 | `data/gemeindeteile.json` | Gemarkungen Neunkirchen-Seelscheid (ALKIS) mit Zuordnung zu den Gemeindeteilen (ca. 50 KB). |
 | `data/dgm25.bin`, `data/dgm25.json` | Geländemodell 25 m (Int16, Dezimeter) mit Metadaten (Quelle, Stand, Lizenz, Raster). |
 | `data/suche-index.json` | Offline-Suchindex: 7 Kommunen, 306 Ortslagen, 3.223 Straßen, 62.152 Adressen (ca. 860 KB, delta-kodierte Mikrograd). Wird erst beim ersten Fokus im Suchfeld geladen. |
 | `data/rettungspunkte-kwf.json` | KWF-Rettungspunkte v2.21 (Stand 10/2026), Gebietsausschnitt 655 Punkte, Attribute unverändert (ca. 98 KB). |
-| `tests/` | Unit-/Szenariotests (`model.test.mjs`, `search.test.mjs`, `water.test.mjs`, `safearea.test.mjs`, `interaktion.test.mjs`), Browser-Test (`e2e.mjs`), synthetische OSM-Testdaten (`synth-osm.mjs`, `safearea-scenario.cjs`, keine echten Daten), Stichproben aus den Rohdaten (`fixtures/`). |
+| `tests/` | Unit-/Szenariotests (`model.test.mjs`, `search.test.mjs`, `water.test.mjs`, `safearea.test.mjs`, `interaktion.test.mjs`, `fuelhistory.test.mjs`), Browser-Test (`e2e.mjs`), synthetische Testdaten (`synth-osm.mjs`, `safearea-scenario.cjs`, `fuelhistory-scenarios.cjs`, keine echten Daten), Stichproben und Referenzwerte (`fixtures/`, u. a. `fwi_xclim.json` aus `xclim` 1.0.0). |
 | `tools/build-artifact.mjs` | Erzeugt die Einzeldatei-Vorschau. |
 | `tools/build-dgm.py` | Erzeugt `data/dgm25.*` aus dem DGM1 NRW. |
 | `tools/build-suche.py` | Erzeugt `data/suche-index.json` aus gebref, Basis-DLM und DVG1 (pyproj, pyshp). |
@@ -554,7 +701,9 @@ Reines HTML/CSS/JavaScript ohne Build-Schritt, Leaflet 1.9.4 lokal unter `vendor
 | Gemeindegrenze (nur Build) | DVG1 Verwaltungsgrenzen, Geobasis NRW (Stand 12.11.2025), opengeodata.nrw.de | Lizenz im Paket nicht angegeben (Nutzerinformation ohne Lizenzhinweis); vermutlich dl-de/zero-2-0, **zu prüfen** | nur zur Bestimmung des DGM-Ausschnitts |
 | Ersatzkarte | OpenStreetMap-Kacheln `tile.openstreetmap.org` | ODbL, Tile Usage Policy (kein Massenabruf) | Fallback-Ebene; für Betrieb eigener Kachelserver **zu prüfen** |
 | Wetter | Open-Meteo Forecast-API (`past_days=3`, stündlich, `best_match`) | Daten CC BY 4.0, kostenlos für nicht-kommerzielle Nutzung | **Zu prüfen**: Nutzungsbedingungen für Behörden-/Einsatznutzung. Im Test blockiert, Fallback „Beispieldaten“ getestet. |
-| Wetter (DWD) | DWD Open Data, Waldbrandgefahrenindex | – | **Nicht angebunden** |
+| Wettervorgeschichte (0.9.0) | Open-Meteo Forecast-API mit `past_days` (30–60 Tage, stündlich); Archiv `archive-api.open-meteo.com/v1/archive` (ERA5, 5 Tage Verzögerung) nur für längere Zeiträume | Daten CC BY 4.0, **frei nur für nichtkommerzielle Nutzung** (< 10.000 Abrufe/Tag) | **Zu prüfen**: Eignung für den Feuerwehreinsatz ungeklärt. Im Test blockiert; URL-Bau, Auswertung, Cache und Fehlerwege gegen Mock geprüft, Verhalten ohne Netz im E2E geprüft. |
+| Fire Weather Index | Van Wagner (1987), Forestry Technical Report 35, Fassung `cffdrs`/`xclim` | Literatur; Referenzwerte mit `xclim` 1.0.0 (Apache-2.0) erzeugt | **Verifiziert** gegen `xclim` (Abweichung ≤ 5,7·10⁻¹⁴, `tests/fixtures/fwi_xclim.json`). Für kanadische Nadelwälder kalibriert, **für deutsche Mischwälder nicht validiert**. |
+| Wetter (DWD) | DWD Open Data, Waldbrandgefahrenindex | – | **Nicht angebunden** (kein Abgleich der Trockenheitsampel mit dem WBI) |
 | Brennstoff, Wege, Gewässer, Gebäude, Hydranten | OSM über Overpass API (`overpass-api.de`) | ODbL, Overpass-Nutzungsregeln | Code fertig, im Test mit **synthetischen Testdaten** geprüft (Overpass in der Sandbox blockiert). Für den Betrieb eigene Instanz/Geofabrik-Extrakt **zu prüfen**. |
 | Geokodierung Wachen | Nominatim (manuell per Knopf in „Fahrzeuge“) | ODbL, Nutzungsregeln (max. 1 Anfrage/s) | in der Sandbox blockiert, Koordinaten daher **offen** |
 | Fahrzeuge/Wachen NKS | www.ffnkse.de | Inhalte der Feuerwehr | siehe unten |
@@ -585,7 +734,8 @@ Reines HTML/CSS/JavaScript ohne Build-Schritt, Leaflet 1.9.4 lokal unter `vendor
 - **Hangneigung vereinfacht** (DGM1 NRW, 25 m): je Rasterkante Steigung = Höhendifferenz / Kantenlänge; bergauf Zuschlag R0 · 5,275 · β^−0,3 · tan² (Rothermel 1972) **addiert** zur Wind-Ellipsenrate, Steigung begrenzt auf tan 0,7 (≈ 35°, Annahme); bergab keine Verlangsamung (konservativ). Keine vektorielle Kombination von Wind und Hang (effektiver Windvektor nach Rothermel/Albini: Phase 2); Hang-/Talwinde nur vereinfacht über den Geländewind (siehe unten). Das DGM deckt nur Neunkirchen-Seelscheid + 5 km ab; außerhalb wird eben gerechnet (Warnung). Ohne DGM-Datei rechnet die App wie bisher ohne Hang und zeigt „Hangneigung nicht berücksichtigt“.
 - **Rothermel vereinfacht**: Gewichtung nur über Oberflächenanteile (keine Größenklassen-Gewichtung nach Albini 1976b), Windbegrenzung nach Rothermel 1972. Gleichungen aus der Literatur übertragen, nicht aus einer geprüften Bibliothek. Plausibilitätsabgleich: Für die Anderson-Modelle 1, 2, 3, 8, 9, 10 liegen die Raten bei 8 % Feuchte und 5 mi/h innerhalb ±10 % der Anderson-Tabellenwerte, FM5 ca. −20 %. Die Referenzwerte selbst sind ebenfalls aus Literaturkenntnis übernommen und gegen die Primärquelle **zu prüfen**.
 - **Brennstoffzuordnung** OSM → Anderson-13 (Nadelwald FM10, Laubwald FM9, Mischwald FM8, Grünland/Acker FM1, Gebüsch/Heide FM5, Siedlung/Wasser nicht brennbar) ist eine **Annahme** und muss mit Forst (z. B. Wald und Holz NRW) abgestimmt werden. Nordamerikanische Modelle sind nur begrenzt übertragbar.
-- **Brennstofffeuchte**: Gleichgewichtsfeuchte nach Simard (1968) + Regenzuschlag (Annahme). Lebendfeuchte fest 90/120 %.
+- **Brennstofffeuchte**: ohne Vorgeschichte Gleichgewichtsfeuchte nach Simard (1968) + Regenzuschlag (Annahme), Lebendfeuchte fest 90/120 %. Mit eingeschalteter Vorgeschichte (0.9.0) stündliche Fortschreibung über 30–60 Vortage und jahreszeitliche Lebendfeuchte, begrenzt auf ± 6 / 8 / 12 %-Punkte gegenüber der bisherigen Herleitung (Lebendfeuchte ± 60 %-Punkte).
+- **Trockenheit / Vorgeschichte** (0.9.0): Punktwetter eines Modellgitterpunkts, kein Bodenwassermodell, keine Schneedecke, keine Überwinterung des DC, keine flächige Differenzierung. **Der DC-Startwert verschiebt das Ergebnis nach 60 Tagen noch um 121 Punkte.** Das FWI-System ist für kanadische Nadelwälder kalibriert und für deutsche Mischwälder nicht validiert; die Trockenheitsampel ist **keine amtliche Waldbrandgefahrenstufe** (DWD-WBI nicht angebunden). Regenbenetzung, Lebendfeuchte und alle Kopplungsgrenzen sind Annahmen.
 - **Wind**: 10-m-Wind × Reduktionsfaktor (offen 0,4, Wald 0,2; Annahme). Wetter stündlich, an der Quellzelle zum Ankunftszeitpunkt.
 - **Projektion**: lokale äquidistante Näherung statt EPSG:25832 (Fehler im 10-km-Gebiet < 0,1 %).
 - **Raster** 25 m, Gebiet 10 × 10 km um den Brandschwerpunkt. Wege schmaler als eine Zelle werden nicht als Barriere gerechnet (konservativ), Straßen ab „residential“ und Flüsse schon (optimistisch).

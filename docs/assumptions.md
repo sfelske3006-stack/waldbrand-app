@@ -569,3 +569,154 @@ auf 60 m begrenzt, die Achse ändert sich also praktisch nicht. **Annahme, mit d
 6. Welche Wind-Obergrenze ist sinnvoll (hier 120 km/h)? Sollen Böen getrennt eingebbar bleiben, und ist die
    Ableitung „Böe mindestens Mittelwind“ akzeptabel?
 7. Soll der Windpfeil bei aktivem Zeitplan eine Zeitleiste zeigen (ein Pfeil je Stunde)?
+
+## Neu in 0.9.0 (Trockenheit / Vorgeschichte des Wetters)
+
+Parameter: `PARAMS.trockenheit` (eigene Datei `js/fuelhistory-params.js`, Version `0.9.0-prototyp`).
+Rechenkern `js/fuelhistory.js`, Oberfläche `js/fuelhistory-ui.js`, Tests `tests/fuelhistory.test.mjs`.
+Kennzeichnung wie im Modul: **[Q]** belegt (Quelle genannt und eingesehen), **[Q?]** Quelle genannt,
+Primärquelle nicht eingesehen → *zu prüfen*, **[A]** eigene Annahme, **[V]** Vorgabe Auftraggeber,
+**[App]** aus den bestehenden App-Parametern übernommen.
+
+**Alles in diesem Modul ist unvalidiert. Die Trockenheitsampel ist keine amtliche Waldbrandgefahrenstufe**;
+der DWD-Waldbrandgefahrenindex (WBI) ist nicht angebunden und nicht abgeglichen.
+
+### Wetterabruf (Vorgeschichte)
+
+| Punkt | Status | Anmerkung |
+|---|---|---|
+| Vergangenheit über `past_days` der Forecast-API | **[Q]** | heruntergeladene Open-Meteo-Doku: `past_days`, Integer, Standard 0 |
+| Größter belegter Wert 92 Tage | **[Q]** | Optionsliste der Doku bis „3 months“; eine harte Obergrenze nennt die Parametertabelle nicht → *zu prüfen*. Die Bedienung bietet 30–60 Tage ([V]), der Parameter `pastDaysMax` bleibt 92. |
+| Archiv/Reanalyse `archive-api.open-meteo.com/v1/archive` | **[Q]** | ERA5/ERA5-Land „Daily with 5 days delay“; deckt die letzten Tage nicht ab, deshalb für „heute“ immer die Forecast-API |
+| Lizenz CC BY 4.0, Quellen u. a. DWD, ECMWF/Copernicus | **[Q]** | Namensnennung erfolgt im Bedienfeld |
+| Freie Nutzung nur **nichtkommerziell** (< 10.000 Abrufe/Tag) | **[Q]** | **Ob der Einsatzbetrieb einer Feuerwehr darunter fällt, ist ungeklärt → zu prüfen.** Gilt auch für den bisherigen Wetterabruf in `js/weather.js`. |
+| Niederschlag = Summe der vorangegangenen Stunde, übrige Werte Momentanwerte | **[Q]** | daraus die 24-h-Summe für den FWI: Stunden [Mittag−23 h … Mittag] |
+| Variablen `temperature_2m`, `relative_humidity_2m`, `precipitation`, `wind_speed_10m` | **[A]** | Böen und Strahlung werden nicht gebraucht |
+| Koordinaten auf 2 Nachkommastellen (ca. 1 km) gerundet | **[App]** | wie `js/weather.js` (Datenschutz) |
+| Zwischenspeicher 12 h, Warnung ab 48 h, Platzgrenze 1,5 MB | **[A]** | `localStorage` in `try/catch`; bei Platzmangel wird nur jede dritte Stunde gespeichert |
+| **Der Abruf wurde nicht gegen den echten Dienst geprüft** | | Open-Meteo ist in der Entwicklungsumgebung gesperrt. URL-Bau, Auswertung, Cache und Fehlerwege sind gegen einen Mock getestet, das Verhalten ohne Netz zusätzlich im Browser-Test. **Vor dem Einsatz einmal gegen den echten Dienst prüfen** (Feldnamen, Einheiten, Zeitstempel). |
+
+**Punktwetter**: alle Werte stammen aus einem Modellgitterpunkt, nicht aus einer Messung am Brandort.
+Niederschlag ist im Modellgitter besonders unsicher (Gewitterzellen) – gerade „Tage seit dem letzten Regen“ kann
+daneben liegen. Dafür gibt es die manuelle Ersatzeingabe (synthetisch, überall gekennzeichnet).
+
+### Tote Brennstofffeuchte (1 h / 10 h / 100 h)
+
+| Punkt | Status | Anmerkung |
+|---|---|---|
+| Gleichgewichtsfeuchte nach Simard (1968) | **[App]/[Q?]** | identische Funktion wie `FireModel.equilibriumMoisture`; Test prüft Gleichheit auf 1e−12 |
+| Fortschreibung `m ← EMC + (m − EMC)·e^(−Δt/τ)`, τ = 1/10/100 h | **[Q?]** | Standardansatz („timelag“, Byram 1963, Fosberg 1971, zusammengefasst in Andrews 2018 RMRS-GTR-371), **Primärquellen nicht eingesehen**. Test prüft die 63-%- und 95-%-Marken. |
+| **Regenbenetzung: eigene Annahme** | **[A]** | Zuschlag je Stunde = min(k · Regen[mm/h], max/h), danach auf die Sättigung begrenzt: 1 h `k = 6,0 %/mm`, 12 %/h, Sättigung 35 %; 10 h `2,0`/5/30; 100 h `0,6`/2/25. **Keine Literaturformel übernommen** (NFDRS-Randbedingung, Nelson 2000 nicht sicher bekannt). |
+| Gegenprobe zur 1-h-Klasse | **[Q]** | `FuelHistory.ffmcMoisture(FFMC)` (Van Wagner 1987 Gl. 1 umgestellt) liefert die Feuchte der FFMC-Streuschicht als unabhängigen Vergleichswert; im Trockenszenario liegen beide 2,5 %-Punkte auseinander (Testschranke 6). |
+| Keine getrennte Adsorptions-/Desorptions-EMC | **[A]** | vereinfachend, tendenziell zu trocken beim Befeuchten |
+| Regen unter 0,1 mm/h zählt nicht; Schranken 1,5 … 40 % | **[A]/[App]** | Obergrenze wie `PARAMS.moisture.max` |
+| Startwert = Gleichgewichtsfeuchte der ersten Stunde | **[A]** | nach 5·τ ohne Einfluss (100 h ≈ 21 Tage), bei 30–60 Tagen Vorlauf bedeutungslos |
+| Kein 1000-h-Brennstoff, keine Humusauflage als eigene Klasse | **[A]** | Tiefenwirkung steckt nur in DMC/DC und im Dürre-Faktor |
+
+### Lebende Brennstofffeuchte — alles [A]
+
+In Deutschland wird Live Fuel Moisture nicht flächig erhoben (*zu prüfen*, ob der Landesbetrieb Wald und Holz NRW
+Werte hat). Monatswerte (% Trockenmasse), linear zwischen Monatsmitten interpoliert:
+Kraut/Gras `30, 30, 45, 90, 120, 120, 100, 80, 60, 45, 30, 30`;
+Gehölz/Nadeln `90, 90, 95, 110, 130, 130, 120, 110, 100, 95, 90, 90`.
+Dürre-Abschlag über den Drought Code: linearer Anteil 0 bei DC ≤ 200, 1 bei DC ≥ 600; Kraut bis −45 %
+(Untergrenze 30 %), Gehölz bis −20 % (Untergrenze 70 %). Bisher standen hier die Festwerte 90 % / 120 %
+(`PARAMS.moisture.liveHerb/liveWoody`); die Abweichung ist auf ± 60 %-Punkte begrenzt.
+**Vergilben („curing“)**: Bei hohem BUI wird ein Teil der Krautbeladung als **toter** Feinbrennstoff gerechnet
+(bis 50 % bei BUI ≥ 160, ab BUI 60) – der einzige Eingriff in die Brennstoffmodelle, nur bei Modellen mit
+Krautanteil (FM2, FM4–FM7, FM10).
+
+### FWI-System (Van Wagner 1987)
+
+| Punkt | Status | Anmerkung |
+|---|---|---|
+| Gleichungen FFMC, DMC, DC, ISI, BUI, FWI, DSR | **[Q]** | Van Wagner, C. E. (1987), Forestry Technical Report 35, in der Fassung von `cffdrs`/`xclim`; der Quelltext von `xclim` 1.0.0 (`xclim/compute/fire/_cffwis.py`) wurde eingesehen, die Gleichungsnummern stehen im Code |
+| **Verifikation** | **[Q]** | 150 synthetische Tage inkl. Grenzfällen (Regen 0,5/1,5/2,8 mm, Starkregen, Frost, 100 % rF, Windstille, 40 Tage Dürre) gegen `xclim`: größte absolute Abweichung **FFMC 2,8·10⁻¹⁴, DMC 0, DC 0, ISI 4,0·10⁻¹⁵, BUI 0, FWI 5,7·10⁻¹⁴** – reine Gleitkomma-Rundung. Referenz `tests/fixtures/fwi_xclim.json`. |
+| Faktor `1e-4` statt `1e-6` in der DMC-Trocknungsrate (Gl. 16) | **[Q]** | so in `cffdrs` und `xclim`; mit `1e-6` wäre der DMC um den Faktor 100 zu klein |
+| Eingang 12 Uhr Lokalzeit, Niederschlag der vorangegangenen 24 h | **[Q]** | Definition des Systems; umgesetzt mit `Intl` und `Europe/Berlin` (Sommerzeit, Test prüft 120 min im Juli, 60 min im Dezember). Ohne `Intl`: dokumentierter Rückfall auf +60 min. |
+| Tageslängen `Le`/`Lf` für 30–90° N | **[Q]** | Tabellen aus Van Wagner (1987) in der Fassung von `xclim`; das Gebiet liegt bei ca. 50,85° N, also in derselben Tabellenzeile |
+| Startwerte FFMC 85 / DMC 6 / DC 15 („spring startup“) | **[Q?]** | übliche Startwerte, Primärquelle nicht eingesehen. **Gemessener Einfluss nach 60 trockenen Tagen** (Test „FWI-Startwerte“) gegenüber 60/60/150: **ΔFFMC = 0, ΔDMC = 8,1, ΔDC = 121,5**. |
+| **Der DC-Startwert ist die wichtigste Einzelannahme** | | Der DC ist ein **Summenspeicher** und wird nur von Regen über 2,8 mm gesenkt; in Trockenperioden bleibt der Startwert praktisch erhalten. |
+| **Überwinterung des DC** (Van Wagner/Lawson) nicht umgesetzt | **[A]** | *zu prüfen*; bei Einsätzen im Frühjahr ist der DC deshalb besonders unsicher |
+| Keine Schneedecke, keine Feuersaison-Logik | **[A]** | FWI-Werte im Winter sind nicht aussagekräftig |
+| **Kalibrierung** | | Das FWI-System ist für **kanadische Nadelwälder** entwickelt und **nicht für deutsche Mischwälder validiert**. |
+| Tage ohne vollständige Mittagswerte | **[A]** | Codes werden fortgeschrieben, nicht neu gerechnet; die Anzahl wird gezählt und im Bedienfeld gemeldet. „Vollständig“ = Mittagswerte vorhanden und mindestens 12 der 24 Regenstunden bekannt. |
+
+### Trockenheitsampel
+
+| Punkt | Status | Anmerkung |
+|---|---|---|
+| FWI-Klassengrenzen 5,2 / 11,2 / 21,3 / 38,0 / 50,0 | **[Q?]** | so im europäischen Waldbrandinformationssystem **EFFIS** gebräuchlich; **Primärquelle (JRC/EFFIS) nicht eingesehen** → *zu prüfen*, Zahlen nicht ohne Beleg ändern |
+| Dreistufung grün / gelb / rot (Klasse ≤ 1 / = 2 / ≥ 3) | **[A]** | eigene Zusammenfassung, damit die Ampel im Einsatz schnell lesbar ist; FWI-Zahl und Klassenbezeichnung stehen immer daneben. Zusätzlich ein Muster im Ampelpunkt (Farbfehlsichtigkeit). |
+| Hinweistexte DC > 300 / > 500, BUI > 40 / > 90, Trockentage 10 / 21 | **[A]** | keine Quelle, im Bedienfeld als Annahme gekennzeichnet |
+| Kennzahlen: Tage seit Regen ≥ 1 mm und ≥ 5 mm, Summen 7/30/60 Tage | **[V]** | Vorgabe Auftraggeber; Tagesgrenze Mittag bis Mittag wie beim FWI |
+| Kein Abgleich mit dem DWD-WBI | | anderes Verfahren, **nicht angebunden**; die Ampel darf nicht als amtliche Stufe gelesen werden |
+
+### Kopplung an das Ausbreitungsmodell (alle Zahlen [A], alle Wirkungen begrenzt)
+
+1. **Basisfeuchte** je Prognosestunde ersetzt die bisherige Herleitung; begrenzt auf ± 6 (1 h) / ± 8 (10 h) /
+   ± 12 (100 h) %-Punkte, Lebendfeuchte ± 60 %-Punkte. Begründung: Die bisherige Herleitung ist grob, aber
+   eingeführt; eine größere Verschiebung wäre ein anderer Modellcharakter und soll nicht unbemerkt passieren.
+   Jede Begrenzung wird im Bedienfeld, im Protokoll und in den Warnungen des Ergebnisses gemeldet.
+2. **Dürre-Effekt** über den BUI (Voreinstellung; DC wählbar): linearer Anteil 0 bei BUI ≤ 40, 1 bei BUI ≥ 120.
+   Voreinstellung `modus = "reaktionsintensitaet"`: Faktor auf die Reaktionsintensität und damit auf die Rate,
+   höchstens **× 1,20**. Alternative `"brennstoffmenge"` (nicht voreingestellt): Beladungen bis × 1,25 –
+   **Warnung**: mehr Grobbrennstoff bei gleicher Brennstofftiefe erhöht die Packungsdichte, die Rate kann dadurch
+   *sinken* (gemessen FM8: trocken/nass nur × 1,05).
+3. **Ensemble-Spannweite** der toten Feuchte: × 1,0 bis × 1,6 mit der Dürre, mindestens × 1,4 bei manueller
+   Ersatzeingabe und **× 1,8 ohne Vorgeschichte**. Die Zufallsfolge bleibt unverändert (gleiche Zahl von
+   `rand()`-Aufrufen), nur die Amplitude ändert sich.
+4. **Plausibilitätsrahmen**: Das Verhältnis der Kopffeuerrate „mit Vorgeschichte“ zu „ohne“ soll zwischen 0,3 und
+   3,0 liegen (im Test geprüft; gemessen trocken × 1,14, nass × 0,74 gegenüber der bisherigen Herleitung).
+5. **Schalter aus = bisheriges Verhalten, bitgenau** (Test: gleiche Referenz- und Ensemble-Ergebnisse).
+6. **Keine doppelte Austrocknung**: Die Vorgeschichte liefert nur die Basis; die Expositionskorrektur aus
+   `js/terrain.js` (± 3 %-Punkte) wird danach addiert, der Dürre-Faktor wirkt auf die Rate statt auf die Feuchte.
+   Zusammen höchstens 9 %-Punkte trockener als die bisherige Rechnung.
+
+### Gemessene Wirkung (synthetische Szenarien, gleiches Einsatztagwetter)
+
+| | 60 Tage trocken | 60 Tage nass | Schalter aus |
+|---|---|---|---|
+| Feuchte 1 h / 10 h / 100 h | 6,7 / 9,2 / 8,9 % | 10,7 / 15,1 / 20,1 % | 6,1 / 7,1 / 8,1 % |
+| Lebendfeuchte Kraut | 54 % | 80 % | 90 % |
+| FFMC / DMC / DC | 91,6 / 210 / 487 | 82,4 / 9 / 153 | – |
+| BUI / FWI | 210 / 40,3 („sehr hoch“) | 15 / 3,7 („sehr gering“) | – |
+| Kopffeuerrate Mischwald (FM8) | 0,297 m/min | 0,193 m/min | 0,259 m/min |
+| Kopffeuerrate Grasland (FM1) | 29,2 m/min | 8,8 m/min | – |
+| Referenzfläche nach 6 h | 0,69 ha | 0,31 ha | 0,50 ha |
+| Fläche „möglich“ nach 6 h | 1,31 ha | 0,69 ha | – |
+
+Der große Unterschied beim Grasland kommt von der Extinktionsfeuchte von nur 12 % in FM1 – eine Eigenschaft des
+Rothermel-Modells, nicht dieses Moduls. Die 1-h-Klasse läuft innerhalb des 6-h-Horizonts auf die
+Gleichgewichtsfeuchte der Prognosestunden zu; der bleibende Effekt kommt aus der 10-h- und 100-h-Klasse, der
+Lebendfeuchte, dem Dürre-Faktor und der Ensemble-Spannweite.
+
+### Verhalten ohne Netz oder ohne Vorgeschichte
+
+Es werden **keine Ersatzwerte erfunden**. Ohne abrufbare Vorgeschichte bleibt die Brennstofffeuchte bei der
+bisherigen Herleitung (Gleichgewichtsfeuchte + Regenzuschlag), das Unsicherheitsband der Feuchte wird auf × 1,8
+verbreitert, und der Rückfall steht sichtbar im Bedienfeld, im Ergebnisblock, im Protokoll (`trockenheit`,
+`ausgewertet: false`) und im GeoJSON-Export. Die Prognose läuft weiter. Geprüft im Browser-Test (`tests/e2e.mjs`).
+
+### Grenzen des Moduls
+
+* kein Bodenwasser-/Verdunstungsmodell, keine Schneedecke, kein Frostboden, keine DC-Überwinterung
+* keine flächige Differenzierung: Vorgeschichte und Dürre gelten für das ganze Rechengebiet gleich
+* keine Beschattung durch den Bestand (Waldinnenklima ist feuchter als die Freifläche)
+* keine Messung am Brandort, keine Bodenfeuchtesensoren, keine Waldbrandgefahrenstufen des DWD
+* keine Validierung an realen Bränden
+
+### Offene Fragen an die Feuerwehr (Trockenheit)
+
+1. EFFIS-FWI-Klassengrenzen gegen die Primärquelle prüfen, Ampelzuordnung abstimmen, Verhältnis zum DWD-WBI klären
+   (soll der WBI angebunden werden, und über welche Schnittstelle?).
+2. Darf die Ampel im Einsatz gezeigt werden, solange sie keine amtliche Gefahrenstufe ist?
+3. Grenzen der Kopplung (± 6/8/12 %-Punkte, × 1,20 auf die Rate, × 1,6 bzw. × 1,8 auf das Unsicherheitsband) mit
+   der Einsatzleitung abstimmen: Sie bestimmen, wie stark die Vorgeschichte das Lagebild verschieben darf.
+4. DC-Startwert und Überwinterungsregel für das Frühjahr klären.
+5. Regenbenetzungs-Parameter und Lebendfeuchte-Monatswerte gegen Messwerte oder ein Literaturmodell prüfen
+   (Forst / Landesbetrieb Wald und Holz NRW).
+6. Nutzungsbedingungen von Open-Meteo für den Einsatzbetrieb klären (nichtkommerziell); Abruf einmal gegen den
+   echten Dienst prüfen.
+7. Soll die Vorgeschichte automatisch beim Start geladen werden (Datenvolumen im Feld) oder nur auf Knopfdruck?
+8. `past_days` > 92 Tage: Verhalten der API prüfen, sonst Archiv-API verwenden.
